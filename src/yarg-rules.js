@@ -5,6 +5,9 @@
  *   YARG.Core (https://github.com/YARC-Official/YARG.Core):
  *     YARG.Core/Engine/BaseEngine.Generic.cs (UpdateStars: whole stars while score > threshold,
  *     then the inverse-lerp progress towards the next threshold)
+ *     YARG.Core/Engine/BaseEngine.cs (star power: GainStarPower and AwardStarPower, a quarter bar per
+ *     completed phrase; ActivateStarPower, deploy from half a bar; a full bar lasting 8 measures;
+ *     the doubled multiplier while active)
  *   YARG (https://github.com/YARC-Official/YARG, also LGPL-3.0):
  *     Assets/Script/Gameplay/Player/FiveFretGuitarPlayer.cs (guitar star score multipliers)
  *     Assets/Script/Gameplay/Player/BasePlayer.cs (thresholds are multiples of the
@@ -19,8 +22,14 @@
  * above files and stays under LGPL-3.0. The rest of the plugin is MIT (see NOTICE.md) and only uses
  * this file through its exports.
  * Modifications: a dependency-free ES module working on plain numbers; thresholds take any base score
- * (the plugin passes note_detect's full-combo score) in place of YARG's chart-derived base.
+ * (the plugin passes note_detect's full-combo score) in place of YARG's chart-derived base; star power
+ * is reduced to its numbers (fractions of a bar, measures and the multiplier).
  */
+
+// BaseEngine.cs star power: a completed phrase gains a quarter bar (GainStarPower / AwardStarPower),
+// deploying needs half a bar (ActivateStarPower), a full bar lasts 8 measures and the score multiplier
+// doubles while it is active.
+export const OVERDRIVE = Object.freeze({ phraseGain: 0.25, deployMin: 0.5, barMeasures: 8, multiplier: 2 });
 
 // FiveFretGuitarPlayer.cs star score multipliers (1 to 6 stars).
 export const GUITAR_STAR_MULTIPLIERS = Object.freeze([0.06, 0.12, 0.2, 0.47, 0.78, 1.15]);

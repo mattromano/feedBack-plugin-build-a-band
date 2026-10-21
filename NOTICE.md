@@ -11,13 +11,13 @@ builds on the GNU GPL v3.0, whose text is in [`LICENSE.GPL-3.0`](LICENSE.GPL-3.0
 
 | File | Status |
 |------|--------|
-| `src/yarg-rules.js` | LGPL-3.0. JavaScript re-implementation, with modifications, of YARG's star rules: the guitar star score multipliers from YARG's `Assets/Script/Gameplay/Player/FiveFretGuitarPlayer.cs`, thresholds as multiples of the full-combo score (`BasePlayer.cs`), and star progress from YARG.Core's `YARG.Core/Engine/BaseEngine.Generic.cs` (`UpdateStars`). Copyright (c) YARC (YARG) contributors. |
+| `src/yarg-rules.js` | LGPL-3.0. JavaScript re-implementation, with modifications, of YARG's star and star power rules: the guitar star score multipliers from YARG's `Assets/Script/Gameplay/Player/FiveFretGuitarPlayer.cs`, thresholds as multiples of the full-combo score (`BasePlayer.cs`), star progress from YARG.Core's `YARG.Core/Engine/BaseEngine.Generic.cs` (`UpdateStars`), and the star power (overdrive) numbers from YARG.Core's `YARG.Core/Engine/BaseEngine.cs` (`GainStarPower`, `AwardStarPower`, `ActivateStarPower`: a quarter bar per phrase, deploy from half a bar, a full bar lasting 8 measures, the doubled multiplier). Copyright (c) YARC (YARG) contributors. |
 | `tests/yarg-rules.test.mjs` | LGPL-3.0. Tests for `src/yarg-rules.js`. |
 
 `src/yarg-rules.js` is a standalone, unminified ES module with no dependencies, shipped as its own file.
-The rest of the plugin (for example `src/stars.js` and `src/band-score.js`) only uses it through its
-exports, so it remains a separate MIT work that uses the Library as described in LGPL-3.0 section 4
-("Combined Works"). You may replace `src/yarg-rules.js` with a modified version. If you distribute changes
+The rest of the plugin (for example `src/stars.js`, `src/band-score.js` and `src/overdrive.js`) only uses
+it through its exports, so it remains a separate MIT work that uses the Library as described in LGPL-3.0
+section 4 ("Combined Works"). You may replace `src/yarg-rules.js` with a modified version. If you distribute changes
 to `src/yarg-rules.js`, they must stay under LGPL-3.0 and their source must stay available. Combining an
 LGPL-3.0 file with MIT code this way is permitted by both licenses, and both are compatible with
 feedBack's AGPL-3.0.

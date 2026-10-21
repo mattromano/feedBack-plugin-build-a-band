@@ -6,7 +6,7 @@
 // Re-implemented in JavaScript (node:test) for the feedBack Build-a-Band plugin. See ../NOTICE.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { GUITAR_STAR_MULTIPLIERS, starScoreThresholds, starsFromScore } from '../src/yarg-rules.js';
+import { GUITAR_STAR_MULTIPLIERS, OVERDRIVE, starScoreThresholds, starsFromScore } from '../src/yarg-rules.js';
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-3, `${a} ≈ ${b}`);
 
@@ -27,4 +27,9 @@ test('starsFromScore: whole stars on strictly greater, then the fraction', () =>
     assert.equal(starsFromScore(780, th), 5);
     assert.equal(starsFromScore(1150, th), 6);
     assert.equal(starsFromScore(5000, th), 6);
+});
+
+test('overdrive numbers', () => {
+    assert.deepEqual(OVERDRIVE, { phraseGain: 0.25, deployMin: 0.5, barMeasures: 8, multiplier: 2 });
+    assert.ok(Object.isFrozen(OVERDRIVE));
 });
