@@ -48,10 +48,14 @@ function prefsWith({ guitar = {}, drums = {}, vocals = {} } = {}) {
 const ITEM = { filename: 'My Song.sloppak', arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Bass' }] };
 const DRUM_ITEM = { filename: 'Beat.sloppak', arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Drums' }] };
 
-function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 } } = {}) {
+function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 },
+    karaoke = true, karaokePitch = true } = {}) {
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
-        setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [] };
+        setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
+        karaoke: [], karaokeAt: [], playSongAt: [] };
+    // Shared sequence counter: orders karaoke calls against playSong and unmount.
+    let seq = 0;
     const doc = makeDoc();
     const player = doc.createElement('div');
     player.id = 'player';
@@ -86,7 +90,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         localStorage: storage,
         highway: { setMastery: (f) => calls.setMastery.push(f) },
         setMastery: () => { throw new Error('window.setMastery persists; never call it'); },
-        playSong: (f, i) => calls.playSong.push([f, i]),
+        playSong: (f, i) => { calls.playSongAt.push(++seq); calls.playSong.push([f, i]); },
         showScreen: (id) => calls.showScreen.push(id),
         setViz: (id) => { calls.setViz.push(id); storage.setItem('vizSelection', id); },
         feedBackViz_drums: () => ({ draw() {} }),
@@ -96,11 +100,26 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         },
         slopsmithSplitscreen: { isActive: () => ssActive, start: () => { calls.splitStart++; }, stop() { ssActive = false; } },
     };
+    // Lyrics Karaoke's v1 API, recording [name, arg] into calls.karaoke.
+    if (karaoke) {
+        const rec = (name, ...args) => { calls.karaoke.push([name, ...args]); calls.karaokeAt.push(++seq); };
+        win.lyricsKaraoke = {
+            apiVersion: 1,
+            mountStrip: (el) => { rec('mountStrip', el); return true; },
+            setKaraokeMode: (on) => { rec('setKaraokeMode', on); return Promise.resolve(on ? karaokePitch : false); },
+            startMic: () => { rec('startMic'); return Promise.resolve('listening'); },
+            stopMic: () => { rec('stopMic'); },
+            setDifficulty: (id) => { rec('setDifficulty', id); return true; },
+            setHearMyself: (on) => { rec('setHearMyself', on); return true; },
+        };
+    }
     const mounts = [];
     const mountStage = ({ player: p, song, prefs }) => {
         // The real stage stops splitscreen, which clears the stored pref.
         storage.setItem('splitscreenActive', 'false');
-        const s = { player: p, song, prefs, unmounted: 0, unmount() { this.unmounted++; } };
+        const s = { player: p, song, prefs, unmounted: 0, unmountedAt: null,
+            stripSlot: prefs.parts.vocals && prefs.parts.vocals.on ? doc.createElement('div') : null,
+            unmount() { this.unmounted++; this.unmountedAt = ++seq; } };
         mounts.push(s);
         return s;
     };
@@ -112,7 +131,8 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     // Core's playSong side: loading, then the song becomes current and is ready.
     function loadSong(item, { hasPhraseData = true } = {}) {
         fb.emit('song:loading', { filename: item.filename });
-        fb.currentSong = { filename: item.filename, arrangements: item.arrangements, hasDrumTab: !!item.has_drum_tab };
+        fb.currentSong = { filename: item.filename, arrangements: item.arrangements, hasDrumTab: !!item.has_drum_tab,
+            hasVocalPitch: !!item.has_vocal_pitch };
         fb.emit('song:loaded', fb.currentSong);
         fb.emit('song:ready', { hasPhraseData });
     }
@@ -500,7 +520,7 @@ test('guitar set to Bass on a song with no Bass plays the Lead index', () => {
 });
 
 test('vocals on with no vocal pitch is ignored', async () => {
-    const { rt, mounts, loadSong, storage } = setup();
+    const { rt, calls, mounts, loadSong, storage } = setup();
     rt.startSession({ song: ITEM, prefs: prefsWith({ vocals: { on: true, deviceId: 'usb-mic' } }) });
     loadSong(ITEM);
     await flush();
@@ -508,6 +528,7 @@ test('vocals on with no vocal pitch is ignored', async () => {
     assert.equal(mounts[0].prefs.parts.drums.on, false, 'drums has no chart on this song either');
     assert.equal(storage.getItem('lyrics_karaoke.deviceId'), null, 'karaoke mic left alone');
     rt.dispose();
+    assert.deepEqual(calls.karaoke, [], 'karaoke never called');
 });
 
 test('drums only plays the drum arrangement index, not its list position', () => {
@@ -567,4 +588,164 @@ test('with no saved view, teardown re-applies the picker view and leaves nothing
     assert.deepEqual(calls.setViz, ['highway_3d']);
     assert.equal(storage.getItem('vizSelection'), null, "never 'auto' or anything else");
     rt.dispose();
+});
+
+// ── Vocals: karaoke joins the band session ──
+
+const PITCH_ITEM = { ...ITEM, filename: 'Sing.sloppak', has_vocal_pitch: true };
+const SINGER = { on: true, difficulty: 'hard', hearMyself: false, deviceId: 'usb-mic' };
+const names = (calls) => calls.karaoke.map((c) => c[0]);
+
+test('Go with vocals arms difficulty and hear-myself before playSong', () => {
+    const { rt, calls } = setup();
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    assert.deepEqual(calls.karaoke.slice(0, 2), [['setDifficulty', 'hard'], ['setHearMyself', false]]);
+    assert.equal(calls.playSong.length, 1);
+    assert.ok(calls.karaokeAt[1] < calls.playSongAt[0], 'armed before playSong');
+    assert.ok(!names(calls).includes('setKaraokeMode'), 'karaoke mode waits for song:ready');
+    rt.dispose();
+});
+
+test('song:ready hosts the strip in the stage slot, then starts the mic with the band mic', async () => {
+    const { rt, calls, mounts, loadSong, storage } = setup();
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    assert.equal(mounts.length, 1);
+    assert.ok(mounts[0].stripSlot);
+    assert.deepEqual(calls.karaoke.slice(2), [['mountStrip', mounts[0].stripSlot], ['setKaraokeMode', true], ['startMic']]);
+    assert.equal(storage.getItem('lyrics_karaoke.deviceId'), 'usb-mic');
+    rt.dispose();
+});
+
+test('vocals alone is a session: no arrangement index, the stage mounts', async () => {
+    const { rt, calls, mounts, loadSong } = setup();
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ guitar: { on: false }, drums: { on: false }, vocals: SINGER }) });
+    assert.deepEqual(calls.playSong, [['Sing.sloppak', undefined]]);
+    loadSong(PITCH_ITEM);
+    await flush();
+    assert.equal(mounts.length, 1);
+    assert.equal(mounts[0].prefs.parts.vocals.on, true);
+    assert.equal(rt.isMounted(), true);
+    assert.ok(names(calls).includes('startMic'));
+    rt.dispose();
+});
+
+test('teardown stops karaoke before the stage unmounts and clears every override', async () => {
+    const { rt, fb, calls, mounts, loadSong } = setup();
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    const n = calls.karaoke.length;
+    fb.emit('screen:changing', { id: 'v3-songs', from: 'player' });
+    assert.deepEqual(calls.karaoke.slice(n), [
+        ['stopMic'], ['setKaraokeMode', false], ['mountStrip', null], ['setDifficulty', null], ['setHearMyself', null],
+    ]);
+    assert.equal(mounts[0].unmounted, 1);
+    assert.ok(calls.karaokeAt.slice(n).every((at) => at < mounts[0].unmountedAt), 'all before the stage unmounts');
+    rt.dispose();
+});
+
+test('no karaoke plugin: vocals sits out and karaoke is never called', async () => {
+    const { rt, calls, mounts, loadSong, storage } = setup({ karaoke: false });
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    assert.equal(mounts[0].prefs.parts.vocals.on, false);
+    assert.equal(mounts[0].stripSlot, null);
+    assert.deepEqual(calls.karaoke, []);
+    assert.equal(storage.getItem('lyrics_karaoke.deviceId'), null);
+    rt.dispose();
+});
+
+test('karaoke has no pitch for the song: toast, no mic', async () => {
+    const { rt, calls, loadSong, player } = setup({ karaokePitch: false });
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+    assert.ok(toasts.includes('No vocal pitch for this song'), JSON.stringify(toasts));
+    assert.ok(!names(calls).includes('startMic'));
+    rt.dispose();
+});
+
+test('leaving the player while karaoke is loading never opens the mic', async () => {
+    const { rt, fb, win, calls, loadSong } = setup();
+    let resolve;
+    const real = win.lyricsKaraoke.setKaraokeMode;
+    win.lyricsKaraoke.setKaraokeMode = (on) => {
+        real(on);
+        return on ? new Promise((r) => { resolve = r; }) : Promise.resolve(false);
+    };
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    assert.equal(typeof resolve, 'function', 'karaoke mode requested');
+    fb.emit('screen:changing', { from: 'player', id: 'v3-songs' });
+    resolve(true);
+    await flush();
+    assert.ok(!names(calls).includes('startMic'));
+    assert.deepEqual(calls.karaoke.at(-1), ['setKaraokeMode', false], 'karaoke mode not left on');
+    rt.dispose();
+});
+
+test('a splitscreen remount re-hosts the strip in the new slot', async () => {
+    const env = setup();
+    const { rt, calls, mounts, loadSong, timers } = env;
+    const ss = fakeSplitscreen(env);
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    ss.start();
+    timers.fire(50);
+    assert.equal(mounts.length, 2);
+    const strips = calls.karaoke.filter((c) => c[0] === 'mountStrip');
+    assert.equal(strips.at(-1)[1], mounts[1].stripSlot);
+    assert.notEqual(mounts[1].stripSlot, mounts[0].stripSlot);
+    rt.dispose();
+});
+
+test('drums alone with vocals: the stage mounts and the drum difficulty is pinned to #highway', async () => {
+    const { rt, fb, calls, mounts, loadSong, highwayCanvas } = setup();
+    const item = { ...DRUM_ITEM, filename: 'BeatSing.sloppak', has_vocal_pitch: true };
+    rt.startSession({ song: item, prefs: prefsWith({ guitar: { on: false }, drums: { difficulty: 'hard' }, vocals: SINGER }) });
+    assert.deepEqual(calls.playSong, [['BeatSing.sloppak', 1]], 'the drum arrangement on the main highway');
+    loadSong(item);
+    await flush();
+    assert.equal(mounts.length, 1, 'the strip needs a stage');
+    assert.equal(mounts[0].prefs.parts.guitar.on, false);
+    assert.equal(mounts[0].prefs.parts.drums.on, true);
+    assert.equal(mounts[0].prefs.parts.vocals.on, true);
+    assert.deepEqual(calls.setDifficulty, [['hard', highwayCanvas]]);
+    assert.ok(names(calls).includes('startMic'));
+    fb.emit('song:stop', {});
+    assert.equal(mounts[0].unmounted, 1);
+    assert.ok(calls.clearDifficulty.includes(highwayCanvas));
+    rt.dispose();
+});
+
+test("hear-myself off that karaoke didn't take: no mic, toast, overrides still cleared", async () => {
+    for (const broken of [() => false, () => { throw new Error('boom'); }]) {
+        const { rt, fb, win, calls, mounts, loadSong, player, storage } = setup();
+        const real = win.lyricsKaraoke.setHearMyself;
+        win.lyricsKaraoke.setHearMyself = (on) => { real(on); return on === false ? broken() : true; };
+        const warns = [];
+        const warn = console.warn;
+        console.warn = (...a) => warns.push(a.join(' '));
+        try {
+            rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+        } finally {
+            console.warn = warn;
+        }
+        assert.ok(warns.some((w) => /hear-myself off could not be applied/.test(w)));
+        loadSong(PITCH_ITEM);
+        await flush();
+        assert.deepEqual(names(calls), ['setDifficulty', 'setHearMyself'], 'nothing past arming');
+        assert.equal(mounts[0].prefs.parts.vocals.on, false, 'vocals sits out: no strip');
+        assert.equal(storage.getItem('lyrics_karaoke.deviceId'), null, 'mic id never written');
+        const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+        assert.ok(toasts.includes("Vocals couldn't start"), JSON.stringify(toasts));
+        fb.emit('song:stop', {});
+        assert.deepEqual(calls.karaoke.slice(-3), [['mountStrip', null], ['setDifficulty', null], ['setHearMyself', null]]);
+        rt.dispose();
+    }
 });

@@ -388,3 +388,11 @@ test('no vocals: no strip and the plan-2 layout', () => {
     assert.ok(!log.some((l) => l.startsWith('main.setVisible')));
     s.unmount();
 });
+
+test('vocals alone: a mount that throws never leaves the main highway hidden', () => {
+    const { player, log, deps } = setup();
+    deps.bus = { on: () => { throw new Error('bus down'); }, off: () => {} };
+    assert.throws(() => mountStage({ player, song: withDrums, prefs: vocalsOn(false, false), deps }), /bus down/);
+    assert.ok(!player.classList.contains('bab-main-hidden'));
+    assert.ok(!log.includes('main.setVisible(false)'));
+});

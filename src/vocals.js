@@ -23,9 +23,17 @@ function guard(fn) {
 }
 
 // Before playSong: the scorer built on song load already uses these.
+// Returns whether the mic is safe to open: false when hear-myself is wanted
+// off but karaoke didn't take it (threw, refused or lacks the setter), since
+// karaoke's own default is on and would route the mic to the speakers.
 export function armVocals(api, vocalsPrefs) {
+    const hear = !!vocalsPrefs.hearMyself;
     guard(() => api.setDifficulty(vocalsDifficultyId(vocalsPrefs.difficulty)));
-    guard(() => api.setHearMyself(!!vocalsPrefs.hearMyself));
+    let applied = false;
+    try {
+        applied = typeof api.setHearMyself === 'function' && api.setHearMyself(hear) !== false;
+    } catch (_) { /* not applied */ }
+    return hear || applied;
 }
 
 // After the stage mounts. Re-checks isCurrent() after every await so a session
@@ -34,7 +42,11 @@ export async function startVocals({ api, slot, deviceId, storage, isCurrent }) {
     try {
         api.mountStrip(slot);
         const ok = await api.setKaraokeMode(true);
-        if (!isCurrent()) return 'cancelled';
+        if (!isCurrent()) {
+            // Teardown's setKaraokeMode(false) can run before this one lands.
+            if (ok) offKaraoke(api);
+            return 'cancelled';
+        }
         if (!ok) return 'no-pitch';
         applyMicDevice(deviceId, storage);
         const state = await api.startMic();
@@ -48,13 +60,18 @@ export async function startVocals({ api, slot, deviceId, storage, isCurrent }) {
     }
 }
 
-// Teardown, before the stage unmounts. Each step is guarded.
-export function stopVocals(api) {
-    guard(() => api.stopMic());
+// Karaoke mode off, ignoring a throw or a rejection.
+function offKaraoke(api) {
     guard(() => {
         const p = api.setKaraokeMode(false);
         if (p && typeof p.catch === 'function') p.catch(() => {});
     });
+}
+
+// Teardown, before the stage unmounts. Each step is guarded.
+export function stopVocals(api) {
+    guard(() => api.stopMic());
+    offKaraoke(api);
     guard(() => api.mountStrip(null));
     guard(() => api.setDifficulty(null));
     guard(() => api.setHearMyself(null));

@@ -10,6 +10,7 @@ import { drumArrIndex } from './arrangements.js';
 import { applyDevices } from './devices.js';
 import { planStage } from './stage.js';
 import { PART_TYPES, getPart, hasChart, songFacts } from './parts.js';
+import { karaokeApi, armVocals, startVocals, stopVocals } from './vocals.js';
 
 const BAND_SCREEN = 'plugin-build_a_band';
 const SPLIT_KEY = 'splitscreenActive';
@@ -17,6 +18,8 @@ const VIZ_KEY = 'vizSelection';
 const EXIT_WAIT_MS = 1500;
 const TOAST_MS = 4000;
 const ONE_DIFFICULTY = 'This chart has one difficulty';
+const NO_PITCH = 'No vocal pitch for this song';
+const VOCALS_FAILED = "Vocals couldn't start";
 const STEM_SOUND_MODES = ['rockband', 'kit'];
 // Splitscreen coming up mid-session is stopped and the stage remounted once it
 // is down; the third time in one session ends the session (no stop/start loop).
@@ -41,14 +44,23 @@ const isOn = (prefs, id) => !!(prefs && prefs.parts && prefs.parts[id] && prefs.
 
 // The parts this session plays, decided once at Go: a part plays only when it
 // is on AND the song has its chart (the band screen's rule for greying a
-// column). Every later step reads these `on` flags.
-function effectivePrefs(prefs, item) {
+// column); vocals also needs the Lyrics Karaoke API. Every later step reads
+// these `on` flags.
+function effectivePrefs(prefs, item, win) {
     const parts = { ...((prefs && prefs.parts) || {}) };
     for (const part of PART_TYPES) {
         const pp = parts[part.id];
-        if (pp) parts[part.id] = { ...pp, on: !!pp.on && hasChart(part, item, pp) };
+        if (!pp) continue;
+        const usable = part.id !== 'vocals' || !!karaokeApi(win);
+        parts[part.id] = { ...pp, on: !!pp.on && hasChart(part, item, pp) && usable };
     }
     return { ...prefs, parts };
+}
+
+// The same prefs with vocals switched off (vocals sat out at Go).
+function withoutVocals(prefs) {
+    const vocals = prefs.parts.vocals;
+    return { ...prefs, parts: { ...prefs.parts, vocals: { ...vocals, on: false } } };
 }
 
 // createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer, deviceMemo })
@@ -107,6 +119,12 @@ export function createBandRuntime({
             splitWaiting: false,
             splitTimer: null,
             splitPolls: 0,
+            vocals: isOn(prefs, 'vocals'),
+            vocalsArmed: false,
+            vocalsStarted: false,
+            // Hear-myself off couldn't be applied: vocals sits out (no mic).
+            vocalsFailed: false,
+            karaoke: null,
         };
     }
 
@@ -239,6 +257,22 @@ export function createBandRuntime({
                 })
                 .catch(() => { /* keep null: nothing to restore */ });
         },
+        // Before playSong, so the scorer karaoke builds on song load already
+        // uses the band difficulty. Teardown clears these overrides.
+        armVocals(s) {
+            if (!s.vocals) return;
+            const api = karaokeApi(win);
+            if (!api) { s.vocals = false; s.prefs = withoutVocals(s.prefs); return; }
+            s.karaoke = api;
+            s.vocalsArmed = true;
+            if (armVocals(api, s.prefs.parts.vocals)) return;
+            // Karaoke's default is hear-myself on: opening the mic would put the
+            // singer through the speakers. Sit vocals out for this session.
+            console.warn('[build-a-band] hear-myself off could not be applied; vocals skipped');
+            s.vocals = false;
+            s.vocalsFailed = true;
+            s.prefs = withoutVocals(s.prefs);
+        },
         play(s) {
             let arrIndex;
             if (isOn(s.prefs, 'guitar')) arrIndex = s.guitarIndex;
@@ -257,7 +291,10 @@ export function createBandRuntime({
         mount(s) {
             const player = doc.getElementById('player');
             const song = fb.currentSong;
-            if (!player || !song || planStage(song, s.prefs.parts).lanes.length === 0) return;
+            if (!player || !song) return;
+            const plan = planStage(song, s.prefs.parts);
+            // Drums alone without vocals plays on the main highway: no stage.
+            if (!plan.strip && plan.lanes.length === 0) return;
             if (s.splitWaiting) return; // mounted once splitscreen is down
             unmountStage();
             try {
@@ -265,6 +302,12 @@ export function createBandRuntime({
             } catch (e) {
                 console.error('[build-a-band] stage failed to mount', e);
                 stage = null;
+                return;
+            }
+            // A remount (splitscreen) re-hosts the running strip in the new slot.
+            if (s.vocalsStarted && stage && stage.stripSlot && s.karaoke) {
+                const api = s.karaoke;
+                safe(() => api.mountStrip(stage.stripSlot));
             }
         },
         applyDifficulties(s) {
@@ -288,6 +331,20 @@ export function createBandRuntime({
                 .then(() => applyDevices(s.prefs, win, storage, deviceMemo))
                 .catch((e) => console.warn('[build-a-band] device routing failed', e));
         },
+        // After the band song's song:ready and the mount (R9): karaoke mode,
+        // the band mic, then karaoke's mic. A session that ended meanwhile
+        // never opens the mic (startVocals re-checks after every await).
+        startVocals(s) {
+            if (s.vocalsFailed) { showToast(s, VOCALS_FAILED); return; }
+            if (!s.vocals || !s.karaoke || !stage || !stage.stripSlot) return;
+            s.vocalsStarted = true;
+            const isCurrent = () => session === s && state.phase === 'playing';
+            startVocals({
+                api: s.karaoke, slot: stage.stripSlot, deviceId: s.prefs.parts.vocals.deviceId, storage, isCurrent,
+            }).then((result) => {
+                if (result === 'no-pitch' && isCurrent()) showToast(s, NO_PITCH);
+            }, (e) => console.warn('[build-a-band] vocals failed to start', e));
+        },
         holdExit() {
             release = (typeof fb.holdAutoExit === 'function') ? safe(() => fb.holdAutoExit()) || null : null;
         },
@@ -299,6 +356,14 @@ export function createBandRuntime({
             release = null;
         },
         teardown(s) {
+            // 0. Karaoke, before its strip's slot goes: mic off, karaoke mode
+            // off, strip back to its own place, band overrides cleared.
+            if (s.vocalsArmed && s.karaoke) {
+                s.vocalsArmed = false;
+                s.vocalsStarted = false;
+                const api = s.karaoke;
+                safe(() => stopVocals(api));
+            }
             // 1. Stage.
             unmountStage();
             // 2. Drums-only: the main highway's band difficulty.
@@ -357,7 +422,7 @@ export function createBandRuntime({
 
     function startSession({ song, prefs } = {}) {
         if (state.phase !== 'idle' || !song || !song.filename) return false;
-        const s = newSession(song, effectivePrefs(sessionPrefs(prefs, song), song));
+        const s = newSession(song, effectivePrefs(sessionPrefs(prefs, song), song, win));
         session = s;
         dispatch({ type: 'go', filename: song.filename });
         if (state.phase === 'idle') return false;

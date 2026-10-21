@@ -83,6 +83,9 @@ test('a session that ended while karaoke was loading never opens the mic', async
     const r = await startVocals({ api, slot: {}, deviceId: 'x', storage: memStorage(), isCurrent: () => current });
     assert.equal(r, 'cancelled');
     assert.ok(!api.calls.some((c) => c[0] === 'startMic'));
+    // Teardown's setKaraokeMode(false) ran while this one was pending; karaoke
+    // mode must not be left on after it.
+    assert.deepEqual(api.calls.at(-1), ['setKaraokeMode', false]);
 });
 
 test('a session that ended while the mic was starting stops it', async () => {
@@ -106,4 +109,59 @@ test('stopVocals undoes everything in order, even when one call throws', () => {
     assert.deepEqual(api.calls, [
         ['stopMic'], ['setKaraokeMode', false], ['mountStrip', null], ['setDifficulty', null], ['setHearMyself', null],
     ]);
+});
+
+test('armVocals passes hear-myself as a boolean: true when on, false when missing', () => {
+    const on = fakeApi();
+    armVocals(on, { difficulty: 'easy', hearMyself: true });
+    assert.deepEqual(on.calls[1], ['setHearMyself', true]);
+    const missing = fakeApi();
+    armVocals(missing, { difficulty: 'easy' });
+    assert.deepEqual(missing.calls[1], ['setHearMyself', false]);
+});
+
+test('armVocals reports whether the mic is safe to open', () => {
+    // Hear-myself off took effect, or hear-myself is wanted on: safe.
+    assert.equal(armVocals(fakeApi(), { difficulty: 'easy', hearMyself: false }), true);
+    const refusesOn = fakeApi();
+    refusesOn.setHearMyself = () => false;
+    assert.equal(armVocals(refusesOn, { difficulty: 'easy', hearMyself: true }), true);
+    // Hear-myself off did not take: karaoke's default (on) would route the
+    // mic to the speakers, so the mic must stay shut.
+    for (const broken of [() => false, () => { throw new Error('boom'); }, undefined]) {
+        const api = fakeApi();
+        api.setHearMyself = broken;
+        assert.equal(armVocals(api, { difficulty: 'easy', hearMyself: false }), false);
+        assert.deepEqual(api.calls[0], ['setDifficulty', 'easy'], 'difficulty still armed');
+    }
+});
+
+const STOP_ALL = [
+    ['stopMic'], ['setKaraokeMode', false], ['mountStrip', null], ['setDifficulty', null], ['setHearMyself', null],
+];
+
+test('stopVocals clears everything after startVocals failed early', async () => {
+    const api = fakeApi();
+    const mount = api.mountStrip;
+    api.mountStrip = (a) => { mount(a); if (a) throw new Error('bad host'); };
+    const r = await startVocals({ api, slot: {}, deviceId: 'x', storage: memStorage(), isCurrent: () => true });
+    assert.equal(r, 'mic-error');
+    api.calls.length = 0;
+    stopVocals(api);
+    assert.deepEqual(api.calls, STOP_ALL);
+});
+
+test('stopVocals clears everything when setKaraokeMode(false) rejects, with no unhandled rejection', async () => {
+    const unhandled = [];
+    const onUnhandled = (e) => unhandled.push(e);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+        const api = fakeApi({ setKaraokeMode: (on) => (on ? Promise.resolve(true) : Promise.reject(new Error('busy'))) });
+        stopVocals(api);
+        assert.deepEqual(api.calls, STOP_ALL);
+        await new Promise((r) => setTimeout(r, 0));
+        assert.deepEqual(unhandled, []);
+    } finally {
+        process.off('unhandledRejection', onUnhandled);
+    }
 });

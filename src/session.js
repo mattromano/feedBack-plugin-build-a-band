@@ -9,11 +9,11 @@ const IDLE = Object.freeze({ phase: 'idle', filename: null });
 // phase -> event type -> (state, event) => { phase/filename change, effects }
 const TABLE = {
     idle: {
-        go: (s, e) => [{ phase: 'armed', filename: e.filename }, ['saveRestorePoint', 'play']],
+        go: (s, e) => [{ phase: 'armed', filename: e.filename }, ['saveRestorePoint', 'armVocals', 'play']],
     },
     armed: {
         ready: (s, e) => (e.filename === s.filename
-            ? [{ phase: 'playing', filename: s.filename }, ['mount', 'applyDifficulties', 'applyDevices']]
+            ? [{ phase: 'playing', filename: s.filename }, ['mount', 'applyDifficulties', 'applyDevices', 'startVocals']]
             : [IDLE, ['teardown']]),
         loading: (s) => [s, []],
         left: () => [IDLE, ['teardown']],

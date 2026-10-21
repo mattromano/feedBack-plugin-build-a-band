@@ -1,6 +1,9 @@
-// Build-a-Band stage: lays out guitar + drum lanes inside core's #player.
-// The guitar lane is the main window.highway sized into a slot; the drum lane
-// is its own createHighway() with the drums renderer, fed by a lane clock.
+// Build-a-Band stage: lays out the vocal strip and the guitar + drum lanes
+// inside core's #player. The strip is an empty slot under the HUD row that
+// Lyrics Karaoke draws into. The main window.highway is sized into the guitar
+// lane (or the drums lane for drums alone with vocals, or hidden for vocals
+// alone); a drum lane beside guitar is its own createHighway() with the drums
+// renderer, fed by a lane clock.
 // No DOM or browser access at module top level: planStage imports under node.
 import { drumArrIndex } from './arrangements.js';
 import { clampSplit, computeStageLayout, computeStageRows } from './layout.js';
@@ -11,9 +14,10 @@ import { getWsUrl } from './ws-url.js';
 
 const LABEL_STEP = 0.25;
 
-// Which lanes a song gets for the parts switched on. Guitar off means no
-// stage (a drums-only session plays the drum chart on the main highway);
-// drums gets a lane when it is on and the song has a drum chart: a drum
+// Which lanes a song gets for the parts switched on. With guitar off there is
+// no stage unless vocals needs the strip (drums alone without vocals plays the
+// drum chart on the main highway, no stage); drums gets a lane when it is on
+// and the song has a drum chart: a drum
 // arrangement, or a song-level drum_tab. `drumIndex` is the drum
 // arrangement's index (-1 when there is none); `laneArrangement` is what the
 // drum lane's WS opens. Core streams a song's drum_tab on every arrangement's
@@ -184,15 +188,11 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     applyLayout();
 
     // 4-5. Main highway into its slot (CSS positions #highway over it). With
-    // no lane (vocals alone) it is hidden: setVisible(false) stops its drawing
-    // and the class hides the last frame it left on the canvas.
+    // no lane (vocals alone) it is hidden at the very end of mount, after
+    // everything that can throw, so an aborted mount never leaves #highway
+    // hidden for solo play.
     const mainHidden = !plan.mainPart;
-    if (mainHidden) {
-        player.classList.add('bab-main-hidden');
-        safe(() => mainHw.setVisible(false));
-    } else {
-        safe(() => mainHw.setContainer(slots[plan.mainPart]));
-    }
+    if (!mainHidden) safe(() => mainHw.setContainer(slots[plan.mainPart]));
 
     // The drum canvas core is actually drawing on. A renderer whose context
     // type differs from the canvas's (the drums 3D view is webgl2) makes core
@@ -321,6 +321,13 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         footerObserver.observe(footerEl);
     }
     resizeAll();
+
+    // Vocals alone: setVisible(false) stops the main highway's drawing and the
+    // class hides the last frame it left on the canvas.
+    if (mainHidden) {
+        player.classList.add('bab-main-hidden');
+        safe(() => mainHw.setVisible(false));
+    }
 
     let mounted = true;
     return {

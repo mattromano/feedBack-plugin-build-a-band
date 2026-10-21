@@ -10,8 +10,8 @@ test('initial state', () => {
 });
 
 const rows = [
-    ['idle go', st('idle', null), { type: 'go', filename: 'a.psarc' }, 'armed', ['saveRestorePoint', 'play']],
-    ['armed ready same', st('armed'), { type: 'ready', filename: 'a.psarc' }, 'playing', ['mount', 'applyDifficulties', 'applyDevices']],
+    ['idle go', st('idle', null), { type: 'go', filename: 'a.psarc' }, 'armed', ['saveRestorePoint', 'armVocals', 'play']],
+    ['armed ready same', st('armed'), { type: 'ready', filename: 'a.psarc' }, 'playing', ['mount', 'applyDifficulties', 'applyDevices', 'startVocals']],
     ['armed ready different', st('armed'), { type: 'ready', filename: 'b.psarc' }, 'idle', ['teardown']],
     ['armed loading', st('armed'), { type: 'loading' }, 'armed', []],
     ['playing loading', st('playing'), { type: 'loading' }, 'idle', ['teardown']],
@@ -46,8 +46,8 @@ test('a full session', () => {
         { type: 'ended' }, { type: 'exitTimer' }]) {
         const r = step(s, e); s = r.state; all.push(...r.effects);
     }
-    assert.deepEqual(all, ['saveRestorePoint', 'play', 'mount', 'applyDifficulties', 'applyDevices',
-        'holdExit', 'startExitTimer', 'teardown', 'releaseExit', 'showBandScreen']);
+    assert.deepEqual(all, ['saveRestorePoint', 'armVocals', 'play', 'mount', 'applyDifficulties', 'applyDevices',
+        'startVocals', 'holdExit', 'startExitTimer', 'teardown', 'releaseExit', 'showBandScreen']);
     assert.equal(s.phase, 'idle');
 });
 
