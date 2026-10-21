@@ -36,10 +36,24 @@ function connected(doc, el) {
     return contains(doc.body, el);
 }
 
-// restoreFocus(doc, el): focus `el` when it's still in the page, else the player.
+function focus(el) {
+    try { el.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
+}
+
+// restoreFocus(doc, el): focus `el` when it's still in the page, else the player (the
+// stage root). #player is a plain div, so it gets tabindex="-1" when it has none, and
+// that tabindex goes again once the player loses focus.
 export function restoreFocus(doc, el) {
-    const to = el && connected(doc, el) ? el : doc.getElementById('player');
-    if (to && typeof to.focus === 'function') {
-        try { to.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
+    if (el && typeof el.focus === 'function' && connected(doc, el)) { focus(el); return; }
+    const player = doc.getElementById('player');
+    if (!player || typeof player.focus !== 'function') return;
+    if (!player.hasAttribute('tabindex')) {
+        player.setAttribute('tabindex', '-1');
+        const drop = () => {
+            player.removeEventListener('blur', drop);
+            player.removeAttribute('tabindex');
+        };
+        player.addEventListener('blur', drop);
     }
+    focus(player);
 }

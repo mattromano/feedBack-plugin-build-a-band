@@ -99,7 +99,25 @@ test('focus left inside the sidebar goes back where it was on close', () => {
     other.remove();
     overlay.close();
     assert.equal(doc.activeElement, player);
+    assert.equal(player.getAttribute('tabindex'), '-1');
+    player.fire('blur');
+    assert.equal(player.hasAttribute('tabindex'), false);
     assert.ok(sidebar);
+});
+
+test('follow leaves focus to the page even when navigation destroys the overlay', () => {
+    const { doc, sidebar, songsLink, overlay, isOpenClass } = setup();
+    const stageBtn = doc.createElement('button');
+    doc.body.appendChild(stageBtn);
+    stageBtn.focus();
+    overlay.open();
+    songsLink.focus();
+    // Shell's go() runs inside the click; the band teardown destroys the overlay there.
+    songsLink.addEventListener('click', () => overlay.destroy());
+    overlay.follow(songsLink);
+    assert.equal(isOpenClass(), false);
+    assert.equal(doc.activeElement, songsLink);
+    assert.equal(sidebar.hasAttribute('aria-modal'), false);
 });
 
 test('an existing role on the sidebar is put back on close', () => {

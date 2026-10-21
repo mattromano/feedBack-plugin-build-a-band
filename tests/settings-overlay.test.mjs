@@ -213,8 +213,42 @@ test('closing puts focus back where it was, else on the player', () => {
     assert.notEqual(doc.activeElement, stageBtn);
     first.close();
     assert.equal(doc.activeElement, stageBtn);
+    // Gone from the page: the player, made focusable for it (fake focus() takes anything).
     const second = openSettingsOverlay({ doc, win, onClose() {} });
     stageBtn.remove();
-    second.close({ silent: true });
+    second.close();
     assert.equal(doc.activeElement, player);
+    assert.equal(player.getAttribute('tabindex'), '-1');
+    // The tabindex we added goes when the player loses focus.
+    player.fire('blur');
+    assert.equal(player.hasAttribute('tabindex'), false);
+});
+
+test("the player's own tabindex is kept", () => {
+    const doc = makeDoc();
+    const player = doc.createElement('div');
+    player.id = 'player';
+    player.setAttribute('tabindex', '0');
+    const settings = doc.createElement('div');
+    settings.id = 'settings';
+    doc.body.append(player, settings);
+    const overlay = openSettingsOverlay({ doc, win: makeWin(), onClose() {} });
+    overlay.close();
+    assert.equal(doc.activeElement, player);
+    player.fire('blur');
+    assert.equal(player.getAttribute('tabindex'), '0');
+});
+
+test('a silent close (teardown) leaves focus to the page', () => {
+    const doc = makeDoc();
+    const stageBtn = doc.createElement('button');
+    const settings = doc.createElement('div');
+    settings.id = 'settings';
+    const next = doc.createElement('button');
+    doc.body.append(stageBtn, settings, next);
+    stageBtn.focus();
+    const overlay = openSettingsOverlay({ doc, win: makeWin(), onClose() {} });
+    next.focus(); // the page being navigated to took focus
+    overlay.close({ silent: true });
+    assert.equal(doc.activeElement, next);
 });

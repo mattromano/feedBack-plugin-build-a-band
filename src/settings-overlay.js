@@ -69,7 +69,8 @@ export function openSettingsOverlay({ doc, win, onClose }) {
             else settings.setAttribute(k, v);
         }
         doc.body.classList.remove(OVER_CLASS);
-        restoreFocus(doc, prevFocus);
+        // A silent close is teardown: the page being navigated to owns focus.
+        if (!silent) restoreFocus(doc, prevFocus);
         if (!silent && typeof onClose === 'function') onClose();
     }
 

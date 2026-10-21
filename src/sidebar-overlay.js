@@ -64,8 +64,9 @@ export function createSidebarOverlay({ doc, onNavigate }) {
         return true;
     }
 
-    // A followed link's navigation owns focus, so follow() closes without restoring it.
-    function close({ keepFocus = false } = {}) {
+    // While follow() runs, the link's navigation owns focus (it may destroy us mid-click),
+    // so no close restores it then.
+    function close() {
         if (!open) return;
         open = false;
         const focusInside = contains(sidebar, doc.activeElement);
@@ -76,13 +77,13 @@ export function createSidebarOverlay({ doc, onNavigate }) {
         }
         saved = null;
         doc.body.classList.remove(OPEN_CLASS);
-        if (focusInside && !keepFocus) restoreFocus(doc, prevFocus);
+        if (focusInside && !following) restoreFocus(doc, prevFocus);
         prevFocus = null;
     }
 
     return {
         open: openIt,
-        close: () => close(),
+        close,
         toggle(via) {
             if (open) close();
             else openIt(via);
@@ -91,8 +92,12 @@ export function createSidebarOverlay({ doc, onNavigate }) {
         isOpen: () => open,
         follow(link) {
             following = true;
-            try { link.click(); } finally { following = false; }
-            close({ keepFocus: true });
+            try {
+                link.click();
+            } finally {
+                close();
+                following = false;
+            }
         },
         destroy() {
             if (destroyed) return;
