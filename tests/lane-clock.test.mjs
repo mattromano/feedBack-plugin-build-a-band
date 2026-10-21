@@ -35,7 +35,7 @@ test('remove stops updates', () => {
 });
 
 test("throwing lane doesn't block others", () => {
-    const clock = createLaneClock({ getTime: () => 2 });
+    const clock = createLaneClock({ getTime: () => 2, warn: () => {} });
     const bad = fakeHw(() => { throw new Error('boom'); });
     const good = fakeHw();
     clock.add(bad); clock.add(good);
@@ -72,7 +72,7 @@ test("getTime throwing doesn't kill the loop", () => {
     const hw = fakeHw();
     const clock = createLaneClock({
         getTime: () => { if (fail) throw new Error('boom'); return 7; },
-        schedule: s.schedule, cancel: s.cancel,
+        schedule: s.schedule, cancel: s.cancel, warn: () => {},
     });
     clock.add(hw);
     clock.start();
@@ -109,4 +109,35 @@ test('stop() then start() inside a callback leaves exactly one loop', () => {
     assert.equal(s.n, 2); // only the restart scheduled; old frame did not
     s.pending();
     assert.equal(s.n, 3);
+});
+
+test('errors warn once per lane and once per getTime error kind', () => {
+    const warned = [];
+    let msg = 'no song time';
+    let failTime = true;
+    const clock = createLaneClock({
+        getTime: () => { if (failTime) throw new Error(msg); return 1; },
+        warn: (...a) => warned.push(a.map(String).join(' ')),
+    });
+    const bad1 = fakeHw(() => { throw new Error('lane 1 broke'); });
+    const bad2 = fakeHw(() => { throw new Error('lane 2 broke'); });
+    clock.add(bad1); clock.add(bad2);
+    clock.tick(); clock.tick();
+    assert.equal(warned.length, 1, 'getTime error warned once');
+    assert.match(warned[0], /no song time/);
+    msg = 'clock gone';
+    clock.tick();
+    assert.equal(warned.length, 2, 'a different getTime error warns again');
+    failTime = false;
+    clock.tick(); clock.tick(); clock.tick();
+    assert.equal(warned.length, 4, 'one warning per failing lane');
+    assert.match(warned[2], /lane 1 broke/);
+    assert.match(warned[3], /lane 2 broke/);
+});
+
+test('without an injected warn, errors go to console.warn', (t) => {
+    const calls = t.mock.method(console, 'warn', () => {});
+    const clock = createLaneClock({ getTime: () => { throw new Error('x'); } });
+    clock.tick();
+    assert.equal(calls.mock.callCount(), 1);
 });

@@ -1,20 +1,43 @@
 // Build-a-Band lane clock: one shared time read per frame fed to every
 // lane's highway. schedule/cancel default lazily to rAF/cAF so importing
 // under node never touches browser globals.
-export function createLaneClock({ getTime, schedule, cancel } = {}) {
+//
+// Errors never stop the loop, but they are not silent either: each failing
+// lane, and each distinct getTime error message, is reported once through
+// `warn` (default console.warn) so a broken lane shows up in the real app
+// without flooding the console at 60 Hz.
+export function createLaneClock({ getTime, schedule, cancel, warn } = {}) {
     const lanes = new Set();
     let handle = null;
     let running = false;
     let generation = 0;
+    const warnedLanes = new WeakSet();
+    const warnedTimeErrors = new Set();
 
     const sched = (fn) => (schedule || globalThis.requestAnimationFrame.bind(globalThis))(fn);
     const unsched = (h) => (cancel || globalThis.cancelAnimationFrame.bind(globalThis))(h);
+    const report = (...args) => {
+        try { (warn || console.warn)('[build-a-band]', ...args); } catch (_) { /* never let logging throw */ }
+    };
 
     function tick() {
         let t;
-        try { t = getTime(); } catch (_) { return; } // skip this tick, keep the loop alive
+        try { t = getTime(); } catch (e) {
+            const kind = String((e && e.message) || e);
+            if (!warnedTimeErrors.has(kind)) {
+                warnedTimeErrors.add(kind);
+                report('lane clock: reading song time failed:', e);
+            }
+            return; // skip this tick, keep the loop alive
+        }
         for (const hw of lanes) {
-            try { hw.setTime(t); } catch (_) { /* one bad lane must not block the rest */ }
+            try { hw.setTime(t); } catch (e) {
+                // One bad lane must not block the rest.
+                if (!warnedLanes.has(hw)) {
+                    warnedLanes.add(hw);
+                    report('lane clock: a lane failed to take the time:', e);
+                }
+            }
         }
     }
 
