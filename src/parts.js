@@ -1,5 +1,5 @@
 // Part registry: what each band member can play and what chart it needs.
-import { findDrumArrangement } from './arrangements.js';
+import { drumArrIndex } from './arrangements.js';
 import { DIFFICULTIES, guitarArrIndex } from './mappings.js';
 
 // Normalises a library item (has_drum_tab, has_vocal_pitch, stem_ids) or
@@ -36,7 +36,7 @@ export const PART_TYPES = Object.freeze([
         color: '#e0533d', difficulties: DIFFICULTIES, extras: ['soundMode'],
         chartFrom(itemOrSong) {
             const { arrangements, hasDrumTab } = songFacts(itemOrSong);
-            const i = findDrumArrangement(arrangements, { hasDrumTab });
+            const i = drumArrIndex(arrangements, { hasDrumTab });
             if (i >= 0) return i;
             return hasDrumTab ? true : -1;
         },

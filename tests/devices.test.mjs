@@ -13,7 +13,8 @@ const DEVICES = [
     { kind: 'audioinput', deviceId: 'usb-mic', label: 'USB Mic' },
 ];
 
-function fakeWin({ sessionSources = [], devices = DEVICES, midiSources = [], afterDiscover = null } = {}) {
+function fakeWin({ sessionSources = [], devices = DEVICES, midiSources = [], afterDiscover = null,
+    sessionSelected = null, midiSelected = null } = {}) {
     const calls = { gum: 0, listOpts: [], select: [], noteDetect: [], midiSelect: [], drums: [], discover: 0 };
     let midi = midiSources;
     const win = {
@@ -25,13 +26,14 @@ function fakeWin({ sessionSources = [], devices = DEVICES, midiSources = [], aft
         },
         feedBack: {
             audioSession: {
-                listInputSources: (opts) => { calls.listOpts.push(opts); return { outcome: 'handled', payload: { sources: sessionSources } }; },
+                listInputSources: (opts) => { calls.listOpts.push(opts); return { outcome: 'handled', payload: { sources: sessionSources, selected: sessionSelected ? { logicalSourceKey: sessionSelected } : null } }; },
                 selectInputSource: (q, r) => { calls.select.push([q, r]); return { outcome: 'handled' }; },
             },
             midiInput: {
                 listSources: () => midi,
                 discover: async () => { calls.discover++; if (afterDiscover) midi = afterDiscover; },
                 select: (k) => { calls.midiSelect.push(k); },
+                getSelected: () => midiSelected,
             },
         },
         noteDetect: { setDevice: (id) => { calls.noteDetect.push(id); } },
@@ -40,8 +42,8 @@ function fakeWin({ sessionSources = [], devices = DEVICES, midiSources = [], aft
     return { win, calls };
 }
 
-function memStorage() {
-    const m = new Map();
+function memStorage(init = {}) {
+    const m = new Map(Object.entries(init));
     return { m, getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
 }
 
@@ -161,6 +163,54 @@ test('applyDevices skips parts that are off or have no key', async () => {
     assert.deepEqual(b.calls.noteDetect, ['usb-mic']);
     assert.deepEqual(b.calls.drums, ['webmidi:kit']);
     assert.equal(st2.m.has('lyrics_karaoke.deviceId'), false);
+});
+
+test('a desktop source key never reaches note_detect when the session list is empty', async () => {
+    const b = fakeWin();
+    assert.equal(await applyGuitarDevice('native::in1', b.win), 'browser');
+    assert.deepEqual(b.calls.noteDetect, [], 'not a browser deviceId: note_detect keeps its device');
+    assert.equal(await applyGuitarDevice('usb-mic', b.win), 'browser');
+    assert.deepEqual(b.calls.noteDetect, ['usb-mic']);
+});
+
+test('applyDevices leaves inputs that are already selected alone', async () => {
+    const prefs = { parts: {
+        guitar: { on: true, deviceKey: 'native::in1' },
+        drums: { on: true, deviceKey: 'webmidi:kit' },
+        vocals: { on: true, deviceId: 'usb-mic' },
+    } };
+    const a = fakeWin({ sessionSources: SESSION, sessionSelected: 'native::in1', midiSelected: 'webmidi:kit' });
+    a.win.feedBackDrums.getMidiInput = () => 'webmidi:kit';
+    const st = memStorage({ 'lyrics_karaoke.deviceId': 'usb-mic' });
+    let writes = 0;
+    const setItem = st.setItem;
+    st.setItem = (k, v) => { writes++; setItem(k, v); };
+    await applyDevices(prefs, a.win, st, {});
+    assert.deepEqual(a.calls.select, [], 'audioSession selection unchanged');
+    assert.deepEqual(a.calls.midiSelect, [], 'core MIDI selection unchanged');
+    assert.deepEqual(a.calls.drums, [], 'no drums MIDI reconnect');
+    assert.equal(writes, 0, 'karaoke key unchanged');
+
+    // A different selection is still applied.
+    const b = fakeWin({ sessionSources: SESSION, sessionSelected: 'native::other', midiSelected: 'webmidi:old' });
+    b.win.feedBackDrums.getMidiInput = () => 'webmidi:old';
+    await applyDevices(prefs, b.win, memStorage({ 'lyrics_karaoke.deviceId': 'old' }), {});
+    assert.deepEqual(b.calls.select, [[{ logicalSourceKey: 'native::in1' }, 'build_a_band']]);
+    assert.deepEqual(b.calls.midiSelect, ['webmidi:kit']);
+    assert.deepEqual(b.calls.drums, ['webmidi:kit']);
+});
+
+test('unreadable note_detect and drums inputs are applied once per key in a runtime', async () => {
+    const prefs = (g, d) => ({ parts: { guitar: { on: true, deviceKey: g }, drums: { on: true, deviceKey: d } } });
+    const { win, calls } = fakeWin();
+    const memo = {};
+    await applyDevices(prefs('usb-mic', 'webmidi:kit'), win, memStorage(), memo);
+    await applyDevices(prefs('usb-mic', 'webmidi:kit'), win, memStorage(), memo);
+    assert.deepEqual(calls.noteDetect, ['usb-mic'], 'note_detect does not restart capture on the next Go');
+    assert.deepEqual(calls.drums, ['webmidi:kit'], 'drums does not reconnect on the next Go');
+    await applyDevices(prefs('blank', 'webmidi:pad'), win, memStorage(), memo);
+    assert.deepEqual(calls.noteDetect, ['usb-mic', 'blank']);
+    assert.deepEqual(calls.drums, ['webmidi:kit', 'webmidi:pad']);
 });
 
 test('isPadHit', () => {

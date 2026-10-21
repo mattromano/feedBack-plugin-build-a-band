@@ -7,17 +7,27 @@ const KARAOKE_DEVICE_KEY = 'lyrics_karaoke.deviceId';
 
 const midiOf = (win) => (win && win.feedBack && win.feedBack.midiInput) || null;
 
-// Desktop session sources (native interfaces), or [] when there are none.
-async function sessionSources(win) {
+// The desktop session's input list: { sources, selected } where `selected`
+// is the logicalSourceKey core has selected (or null).
+async function sessionInputs(win) {
     const as = win && win.feedBack && win.feedBack.audioSession;
-    if (!as || typeof as.listInputSources !== 'function') return [];
+    if (!as || typeof as.listInputSources !== 'function') return { sources: [], selected: null };
     try {
         const r = await as.listInputSources({ includeUnavailable: false });
-        const sources = r && r.payload && r.payload.sources;
-        return Array.isArray(sources) ? sources : [];
+        const payload = (r && r.payload) || {};
+        const sel = payload.selected;
+        return {
+            sources: Array.isArray(payload.sources) ? payload.sources : [],
+            selected: (sel && typeof sel.logicalSourceKey === 'string') ? sel.logicalSourceKey : null,
+        };
     } catch (_) {
-        return [];
+        return { sources: [], selected: null };
     }
+}
+
+// Desktop session sources (native interfaces), or [] when there are none.
+async function sessionSources(win) {
+    return (await sessionInputs(win)).sources;
 }
 
 // Browser audioinput devices. enumerateDevices() never prompts.
@@ -66,42 +76,70 @@ export function listMicInputs(win) {
     return browserAudioInputs(win);
 }
 
-export async function applyGuitarDevice(key, win) {
+// A getter's value, or undefined when the API has none (or it throws).
+function read(obj, name) {
+    if (!obj || typeof obj[name] !== 'function') return undefined;
+    try { return obj[name](); } catch (_) { return undefined; }
+}
+
+// `memo` (optional, one per band runtime) remembers the keys last handed to
+// note_detect and drums, which have no getter for their current input: an
+// unchanged key is not re-applied, so a Go never restarts note_detect's
+// capture or drums' MIDI connection for the device they already have.
+export async function applyGuitarDevice(key, win, memo) {
     if (!key) return 'none';
-    if ((await sessionSources(win)).length) {
+    const session = await sessionInputs(win);
+    if (session.sources.length) {
         const as = win.feedBack.audioSession;
-        if (typeof as.selectInputSource === 'function') as.selectInputSource({ logicalSourceKey: key }, REQUESTER);
+        if (session.selected !== key && typeof as.selectInputSource === 'function') {
+            as.selectInputSource({ logicalSourceKey: key }, REQUESTER);
+        }
         return 'session';
     }
+    // Browser path: only a real audioinput deviceId may reach note_detect. A
+    // stale desktop source key would overwrite its device with one that does
+    // not exist.
     const nd = win && win.noteDetect;
-    if (nd && typeof nd.setDevice === 'function') nd.setDevice(key);
+    if (!nd || typeof nd.setDevice !== 'function') return 'browser';
+    if (!(await browserAudioInputs(win)).some((d) => d.key === key)) return 'browser';
+    const current = read(nd, 'getDevice');
+    const unchanged = current !== undefined ? current === key : !!memo && memo.noteDetect === key;
+    if (!unchanged) nd.setDevice(key);
+    if (memo) memo.noteDetect = key;
     return 'browser';
 }
 
-export function applyDrumDevice(key, win) {
+export function applyDrumDevice(key, win, memo) {
     if (!key) return 'none';
     const midi = midiOf(win);
-    if (midi && typeof midi.select === 'function') {
+    if (midi && typeof midi.select === 'function' && read(midi, 'getSelected') !== key) {
         const r = midi.select(key);
         if (r && typeof r.catch === 'function') r.catch(() => {});
     }
     const drums = win && win.feedBackDrums;
-    if (drums && typeof drums.setMidiInput === 'function') drums.setMidiInput(key);
+    if (drums && typeof drums.setMidiInput === 'function') {
+        const current = read(drums, 'getMidiInput');
+        const unchanged = current !== undefined ? current === key : !!memo && memo.drums === key;
+        if (!unchanged) drums.setMidiInput(key);
+        if (memo) memo.drums = key;
+    }
     return 'ok';
 }
 
 // Karaoke reads its mic from this key as a raw string. An empty id (the
-// placeholder) leaves karaoke's own pick alone.
+// placeholder) leaves karaoke's own pick alone, and so does the same id.
 export function applyMicDevice(deviceId, storage) {
     if (!deviceId) return 'none';
-    try { storage.setItem(KARAOKE_DEVICE_KEY, deviceId); } catch (_) { /* blocked storage */ }
+    try {
+        if (storage.getItem(KARAOKE_DEVICE_KEY) !== deviceId) storage.setItem(KARAOKE_DEVICE_KEY, deviceId);
+    } catch (_) { /* blocked storage */ }
     return 'ok';
 }
 
-export async function applyDevices(prefs, win, storage) {
+export async function applyDevices(prefs, win, storage, memo) {
     const p = (prefs && prefs.parts) || {};
-    if (p.guitar && p.guitar.on && p.guitar.deviceKey) await applyGuitarDevice(p.guitar.deviceKey, win);
-    if (p.drums && p.drums.on && p.drums.deviceKey) applyDrumDevice(p.drums.deviceKey, win);
+    if (p.guitar && p.guitar.on && p.guitar.deviceKey) await applyGuitarDevice(p.guitar.deviceKey, win, memo);
+    if (p.drums && p.drums.on && p.drums.deviceKey) applyDrumDevice(p.drums.deviceKey, win, memo);
     if (p.vocals && p.vocals.on && p.vocals.deviceId) applyMicDevice(p.vocals.deviceId, storage);
 }
 

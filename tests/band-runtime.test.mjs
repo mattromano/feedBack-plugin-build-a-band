@@ -51,7 +51,7 @@ const DRUM_ITEM = { filename: 'Beat.sloppak', arrangements: [{ index: 0, name: '
 function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 } } = {}) {
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
-        setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [] };
+        setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [] };
     const doc = makeDoc();
     const player = doc.createElement('div');
     player.id = 'player';
@@ -88,6 +88,8 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         setMastery: () => { throw new Error('window.setMastery persists; never call it'); },
         playSong: (f, i) => calls.playSong.push([f, i]),
         showScreen: (id) => calls.showScreen.push(id),
+        setViz: (id) => { calls.setViz.push(id); storage.setItem('vizSelection', id); },
+        feedBackViz_drums: () => ({}),
         feedBackDrums: {
             setDifficulty: (id, c) => calls.setDifficulty.push([id, c]),
             clearDifficulty: (c) => calls.clearDifficulty.push(c),
@@ -110,7 +112,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     // Core's playSong side: loading, then the song becomes current and is ready.
     function loadSong(item, { hasPhraseData = true } = {}) {
         fb.emit('song:loading', { filename: item.filename });
-        fb.currentSong = { filename: item.filename, arrangements: item.arrangements };
+        fb.currentSong = { filename: item.filename, arrangements: item.arrangements, hasDrumTab: !!item.has_drum_tab };
         fb.emit('song:loaded', fb.currentSong);
         fb.emit('song:ready', { hasPhraseData });
     }
@@ -472,4 +474,63 @@ test('a failed playSong rejects startSession and returns the runtime to idle', a
         assert.equal(rt.phase(), 'armed');
         rt.dispose();
     }
+});
+
+// ── Effective parts: a part plays only when it is on AND the song has its chart ──
+
+test('a drum-only pack with default prefs is a drums-only session', () => {
+    const { rt, calls, mounts, loadSong, highwayCanvas } = setup();
+    const kit = { filename: 'Kit.sloppak', arrangements: [{ index: 0, name: 'Drums' }] };
+    rt.startSession({ song: kit, prefs: prefsWith() });
+    assert.deepEqual(calls.playSong, [['Kit.sloppak', 0]]);
+    loadSong(kit);
+    assert.equal(mounts.length, 0, 'no guitar lane for a song with no guitar part');
+    assert.deepEqual(calls.setMastery, [], 'no guitar mastery');
+    assert.deepEqual(calls.setDifficulty, [['medium', highwayCanvas]]);
+    assert.deepEqual(calls.setViz, [], 'a Drums arrangement needs no view switch');
+    rt.dispose();
+});
+
+test('guitar set to Bass on a song with no Bass plays the Lead index', () => {
+    const { rt, calls } = setup();
+    const song = { filename: 'g.sloppak', arrangements: [{ index: 0, name: 'Rhythm' }, { index: 2, name: 'Lead' }] };
+    rt.startSession({ song, prefs: prefsWith({ guitar: { arrangement: 'Bass' } }) });
+    assert.deepEqual(calls.playSong, [['g.sloppak', 2]]);
+    rt.dispose();
+});
+
+test('vocals on with no vocal pitch is ignored', async () => {
+    const { rt, mounts, loadSong, storage } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith({ vocals: { on: true, deviceId: 'usb-mic' } }) });
+    loadSong(ITEM);
+    await flush();
+    assert.equal(mounts[0].prefs.parts.vocals.on, false);
+    assert.equal(mounts[0].prefs.parts.drums.on, false, 'drums has no chart on this song either');
+    assert.equal(storage.getItem('lyrics_karaoke.deviceId'), null, 'karaoke mic left alone');
+    rt.dispose();
+});
+
+test('drums only plays the drum arrangement index, not its list position', () => {
+    const { rt, calls } = setup();
+    const song = { filename: 'd.sloppak', arrangements: [{ index: 0, name: 'Lead' }, { index: 2, name: 'Drums' }] };
+    rt.startSession({ song, prefs: prefsWith({ guitar: { on: false } }) });
+    assert.deepEqual(calls.playSong, [['d.sloppak', 2]]);
+    rt.dispose();
+});
+
+test('drums only on a drum-tab-only pack shows the drums view on the main highway, then restores it', () => {
+    const { rt, fb, calls, mounts, loadSong, highwayCanvas, storage } = setup({
+        storageInit: { splitscreenActive: 'true', vizSelection: 'highway_3d' } });
+    const tab = { filename: 'deep.feedpak', has_drum_tab: true,
+        arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Bass' }] };
+    rt.startSession({ song: tab, prefs: prefsWith({ guitar: { on: false } }) });
+    assert.deepEqual(calls.playSong, [['deep.feedpak', undefined]], 'any arrangement streams the drum tab');
+    loadSong(tab);
+    assert.equal(mounts.length, 0);
+    assert.deepEqual(calls.setViz, ['drums']);
+    assert.deepEqual(calls.setDifficulty, [['medium', highwayCanvas]]);
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.setViz, ['drums', 'highway_3d'], "the user's view is put back");
+    assert.equal(storage.getItem('vizSelection'), 'highway_3d');
+    rt.dispose();
 });

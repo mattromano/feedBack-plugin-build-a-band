@@ -19,3 +19,13 @@ export function findDrumArrangement(arrangements, { hasDrumTab = false } = {}) {
     }
     return -1;
 }
+
+// The drum arrangement's index as core and the highway WS number it (`.index`,
+// which can differ from the list position), or -1. Use this, never the raw
+// position, for playSong and ?arrangement=.
+export function drumArrIndex(arrangements, opts) {
+    const i = findDrumArrangement(arrangements, opts);
+    if (i < 0) return -1;
+    const a = arrangements[i];
+    return (a && a.index !== undefined) ? a.index : i;
+}

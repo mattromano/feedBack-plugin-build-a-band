@@ -5,14 +5,16 @@
 // Everything is injected, so this is testable under node; screen.js passes
 // the real window/document. Nothing here plays sound.
 import { initialSession, reduceSession } from './session.js';
-import { drumsDifficultyId, guitarArrIndex, masteryFor, masteryFromPct } from './mappings.js';
-import { findDrumArrangement } from './arrangements.js';
+import { drumsDifficultyId, masteryFor, masteryFromPct } from './mappings.js';
+import { drumArrIndex } from './arrangements.js';
 import { applyDevices } from './devices.js';
 import { planStage } from './stage.js';
-import { songFacts } from './parts.js';
+import { PART_TYPES, getPart, hasChart, songFacts } from './parts.js';
 
 const BAND_SCREEN = 'plugin-build_a_band';
 const SPLIT_KEY = 'splitscreenActive';
+const VIZ_KEY = 'vizSelection';
+const DRUMS_VIZ = 'drums';
 const EXIT_WAIT_MS = 1500;
 const TOAST_MS = 4000;
 const ONE_DIFFICULTY = 'This chart has one difficulty';
@@ -38,6 +40,18 @@ function sessionPrefs(prefs, item) {
 
 const isOn = (prefs, id) => !!(prefs && prefs.parts && prefs.parts[id] && prefs.parts[id].on);
 
+// The parts this session plays, decided once at Go: a part plays only when it
+// is on AND the song has its chart (the band screen's rule for greying a
+// column). Every later step reads these `on` flags.
+function effectivePrefs(prefs, item) {
+    const parts = { ...((prefs && prefs.parts) || {}) };
+    for (const part of PART_TYPES) {
+        const pp = parts[part.id];
+        if (pp) parts[part.id] = { ...pp, on: !!pp.on && hasChart(part, item, pp) };
+    }
+    return { ...prefs, parts };
+}
+
 // createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer })
 //   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase() }
 // startSession returns false when it refuses (a session is running, no song);
@@ -59,6 +73,8 @@ export function createBandRuntime({
     let stage = null;
     let release = null;
     let exitTimer = null;
+    // Inputs handed to note_detect / drums, so a Go doesn't re-apply them.
+    const deviceMemo = {};
 
     function sliderMastery() {
         const slider = doc.getElementById('mastery-slider');
@@ -66,9 +82,19 @@ export function createBandRuntime({
     }
 
     function newSession(item, prefs) {
+        const guitarOn = isOn(prefs, 'guitar');
+        const drumsOnly = !guitarOn && isOn(prefs, 'drums');
+        const drumIndex = drumsOnly ? drumArrIndex(item.arrangements, { hasDrumTab: songFacts(item).hasDrumTab }) : -1;
         return {
             item, prefs,
-            drumsOnly: !isOn(prefs, 'guitar') && isOn(prefs, 'drums'),
+            // The guitar part's arrangement, with the Lead fallback.
+            guitarIndex: guitarOn ? getPart('guitar').chartFrom(item, prefs.parts.guitar) : undefined,
+            drumsOnly,
+            drumIndex,
+            // Drums only on a drum-tab-only pack: the drums view draws the tab
+            // on whatever arrangement the main highway opens.
+            drumView: drumsOnly && drumIndex < 0,
+            savedViz: undefined,
             savedSplit: null,
             savedMastery: null,
             readyDetail: null,
@@ -160,6 +186,22 @@ export function createBandRuntime({
         pinDrumDifficulty(s);
     }
 
+    // Core's Auto view and its instrument takeover both leave a guitar part on
+    // a guitar view, so the drums view is picked explicitly through core's
+    // window.setViz (what the picker does) and the user's pick put back after.
+    function showDrumView(s) {
+        if (!s.drumView || typeof win.setViz !== 'function' || typeof win.feedBackViz_drums !== 'function') return;
+        s.savedViz = safe(() => storage.getItem(VIZ_KEY)) ?? null;
+        safe(() => win.setViz(DRUMS_VIZ));
+    }
+
+    function restoreView(s) {
+        if (s.savedViz === undefined) return;
+        const saved = s.savedViz;
+        s.savedViz = undefined;
+        safe(() => win.setViz(saved || 'auto'));
+    }
+
     function pinDrumDifficulty(s) {
         const api = win.feedBackDrums;
         if (!api || typeof api.setDifficulty !== 'function' || !s.drumCanvas) return;
@@ -181,14 +223,9 @@ export function createBandRuntime({
                 .catch(() => { /* keep null: nothing to restore */ });
         },
         play(s) {
-            const arrs = s.item.arrangements;
             let arrIndex;
-            if (isOn(s.prefs, 'guitar')) {
-                arrIndex = guitarArrIndex(arrs, s.prefs.parts.guitar.arrangement);
-            } else if (isOn(s.prefs, 'drums')) {
-                const i = findDrumArrangement(arrs, { hasDrumTab: songFacts(s.item).hasDrumTab });
-                arrIndex = i >= 0 ? i : undefined;
-            }
+            if (isOn(s.prefs, 'guitar')) arrIndex = s.guitarIndex;
+            else if (s.drumsOnly && s.drumIndex >= 0) arrIndex = s.drumIndex;
             safe(() => fb.setReturnScreen(BAND_SCREEN));
             s.setReturn = true;
             // Splitscreen's playSong wrapper auto-starts from this pref; a band
@@ -222,6 +259,7 @@ export function createBandRuntime({
                 }
             }
             if (s.drumsOnly) {
+                showDrumView(s);
                 s.drumCanvas = doc.getElementById('highway');
                 pinDrumDifficulty(s);
                 fb.on('highway:canvas-replaced', onCanvasReplaced);
@@ -230,7 +268,7 @@ export function createBandRuntime({
         },
         applyDevices(s) {
             Promise.resolve()
-                .then(() => applyDevices(s.prefs, win, storage))
+                .then(() => applyDevices(s.prefs, win, storage, deviceMemo))
                 .catch((e) => console.warn('[build-a-band] device routing failed', e));
         },
         holdExit() {
@@ -254,6 +292,8 @@ export function createBandRuntime({
                     for (const c of canvases) safe(() => api.clearDifficulty(c));
                 }
             }
+            // The user's own view, when drums only switched it.
+            restoreView(s);
             // 3. The user's mastery, unpersisted (window.setMastery would save
             // it): the slider's current value, else the one saved at Go.
             const mastery = sliderMastery() ?? s.savedMastery;
@@ -300,7 +340,7 @@ export function createBandRuntime({
 
     function startSession({ song, prefs } = {}) {
         if (state.phase !== 'idle' || !song || !song.filename) return false;
-        const s = newSession(song, sessionPrefs(prefs, song));
+        const s = newSession(song, effectivePrefs(sessionPrefs(prefs, song), song));
         session = s;
         dispatch({ type: 'go', filename: song.filename });
         if (state.phase === 'idle') return false;

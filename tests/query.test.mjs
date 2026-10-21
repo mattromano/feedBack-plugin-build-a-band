@@ -11,6 +11,15 @@ test('playable by this band follows the parts switched on', () => {
     assert.equal(buildLibraryQuery({ q: '', parts }), 'q=&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_drums=1');
 });
 
+// Until the vocals lane ships (plan 3), playable never asks for vocal pitch.
+test('playable by this band ignores vocals; the explicit vocals filter still applies', () => {
+    const parts = { guitar: { on: true }, drums: { on: false }, vocals: { on: true } };
+    assert.equal(buildLibraryQuery({ q: '', parts }), 'q=&size=30&arrangements_has=Lead%2CRhythm%2CBass');
+    const filters = { ...DEFAULT_FILTERS, vocals: true };
+    assert.equal(buildLibraryQuery({ q: '', filters, parts }),
+        'q=&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_lyrics=pitch');
+});
+
 test('explicit filters add to playable', () => {
     const filters = { ...DEFAULT_FILTERS, playable: false, vocals: true, drumStem: true };
     assert.equal(buildLibraryQuery({ q: '', filters }), 'q=&size=30&has_lyrics=pitch&stems_has=drums');

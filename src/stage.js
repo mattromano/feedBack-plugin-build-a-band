@@ -2,7 +2,7 @@
 // The guitar lane is the main window.highway sized into a slot; the drum lane
 // is its own createHighway() with the drums renderer, fed by a lane clock.
 // No DOM or browser access at module top level: planStage imports under node.
-import { findDrumArrangement } from './arrangements.js';
+import { drumArrIndex } from './arrangements.js';
 import { clampSplit, computeStageLayout } from './layout.js';
 import { createLaneClock } from './lane-clock.js';
 import { clampLabelScale, savePrefs } from './prefs.js';
@@ -12,14 +12,24 @@ import { getWsUrl } from './ws-url.js';
 const LABEL_STEP = 0.25;
 
 // Which lanes a song gets for the parts switched on. Guitar off means no
-// stage (a drums-only session plays the drum arrangement on the main
-// highway); drums gets a lane when it is on and the song has a drum chart.
+// stage (a drums-only session plays the drum chart on the main highway);
+// drums gets a lane when it is on and the song has a drum chart: a drum
+// arrangement, or a song-level drum_tab. `drumIndex` is the drum
+// arrangement's index (-1 when there is none); `laneArrangement` is what the
+// drum lane's WS opens. Core streams a song's drum_tab on every arrangement's
+// WS (ws_highway.py) and the drums renderer draws it on a non-drum part
+// (drums screen.js _drumTabFor), so a drum-tab-only song opens the guitar
+// arrangement the main highway is on (undefined: core's default).
 export function planStage(song, parts = { guitar: { on: true }, drums: { on: true } }) {
-    const drumIndex = findDrumArrangement(song && song.arrangements,
-        { hasDrumTab: !!(song && (song.hasDrumTab || song.has_drum_tab)) });
+    const hasDrumTab = !!(song && (song.hasDrumTab || song.has_drum_tab));
+    const drumIndex = drumArrIndex(song && song.arrangements, { hasDrumTab });
+    const current = song && song.arrangementIndex;
+    const laneArrangement = drumIndex >= 0 ? drumIndex
+        : (hasDrumTab && Number.isInteger(current) && current >= 0 ? current : undefined);
+    const plan = (lanes) => ({ lanes, drumIndex, laneArrangement });
     const on = (id) => !(parts && parts[id] && parts[id].on === false);
-    if (!on('guitar')) return { lanes: [], drumIndex };
-    return { lanes: on('drums') && drumIndex >= 0 ? ['guitar', 'drums'] : ['guitar'], drumIndex };
+    if (!on('guitar')) return plan([]);
+    return plan(on('drums') && (drumIndex >= 0 || hasDrumTab) ? ['guitar', 'drums'] : ['guitar']);
 }
 
 function safe(fn) {
@@ -201,7 +211,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             if (drumCanvas.parentNode !== slots.drums) adoptCanvas(slotCanvas());
             // secondary: parse and draw the drum chart without rebroadcasting
             // it as the current song (song:loaded / song:ready / beats:loaded).
-            hw.connect(wsUrl(song.filename, plan.drumIndex), { onSongInfo() {}, secondary: true });
+            hw.connect(wsUrl(song.filename, plan.laneArrangement), { onSongInfo() {}, secondary: true });
             hw.resize();
             clock.add(hw);
             clock.start();

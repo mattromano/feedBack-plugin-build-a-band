@@ -100,6 +100,8 @@ function setup() {
 
 const withDrums = { filename: 'a.psarc', arrangements: [{ name: 'Lead' }, { name: 'Drums' }] };
 const noDrums = { filename: 'a.psarc', arrangements: [{ name: 'Lead' }] };
+const tabOnly = { filename: 'deep.feedpak', hasDrumTab: true, arrangementIndex: 0,
+    arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Rhythm' }, { index: 2, name: 'Bass' }] };
 
 // The lane clock defaults to rAF; give node a no-op pair.
 globalThis.requestAnimationFrame ??= () => 1;
@@ -292,4 +294,12 @@ test('drums switched off in the band prefs mounts the guitar lane alone', () => 
     assert.equal(player.children[0].children.length, 1);
     assert.equal(drumHws.length, 0);
     s.unmount();
+});
+
+test('a drum-tab-only song gets a drum lane on the guitar arrangement', () => {
+    const { player, log, deps } = setup();
+    mountStage({ player, song: tabOnly, prefs: {}, deps });
+    const parts = player.children[0].children.map((c) => c.dataset && c.dataset.part).filter(Boolean);
+    assert.deepEqual(parts, ['guitar', 'drums']);
+    assert.ok(log.includes('drum.connect ws://x/deep.feedpak?arrangement=0'), log.join('\n'));
 });
