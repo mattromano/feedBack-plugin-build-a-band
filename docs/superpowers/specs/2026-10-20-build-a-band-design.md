@@ -330,3 +330,55 @@ None left. Q1 was answered on 2026-10-20 (see "Sidebar mid-song").
   5. overdrive and fail
   6. drum sound modes
   7. full screen and the sidebar
+
+## Song pick flow (v1.1)
+
+Added 2026-10-21 after v1 shipped. Matt's feedback: *"I would like to add a browse screen to choose a song, not a search drop down, so like once the band is confirmed you can go into the browse screen, the confirm instruments before the song starts. Even the current browse selections is confusing if I even selected a song or not."* He chose to reuse the app's own Song Library grid in a "pick for band" mode. This section replaces the band screen's song picker (User flow step 2, "Song picker and filters") wherever they differ. The binding rulings are in `.superpowers/sdd/plan-8-inputs.md`.
+
+### Flow
+
+1. **Band setup.** Who plays and on what: each part's on/off toggle, input device and live signal light, the vocals hear-myself switch and mic-hit check, plus the band-wide Failing and Full screen stage. There's no song and no search box here. Buttons:
+   - **Choose a song** (primary) opens the Song Library in pick mode.
+   - **Continue with <last song>** goes straight to Confirm with the last song, when that song is still in the library.
+2. **Song Library, picking for the band.** This is core's own Songs screen (`v3-songs`): the same grid, art, search, sort and filter drawer. A bar along the bottom shows:
+   - the title "Pick a song for the band"
+   - band filter chips: **Playable by band** (on by default), **Drum stem**, **Drum chart**, **Vocal pitch**, **Guitar part**
+   - what is selected ("Nothing selected yet" or "Selected: Title — Artist")
+   - **Back to the band** and **Use this song**
+
+   Clicking a card selects it and never plays it. The selected card gets a ring and a **Selected** badge. Clicking the selected card again, or pressing Use this song, takes the song to Confirm.
+3. **Confirm.** The chosen song is shown big: art, title, artist and its chips. Under it is one row per part:
+   - its on/off toggle
+   - the device it will use
+   - its difficulty
+   - Guitar: its arrangement (Lead / Rhythm / Bass), with the ones the song lacks greyed out
+   - Drums: the drum sound mode, with Rock Band and My kit only greyed out when the song has no drum stem
+   - parts the song can't support are greyed, with the existing notes
+
+   Buttons: **Change song** (back to the library with this song already selected), **Band setup**, and **GO**. Space or any drum pad starts the song **only here**.
+4. **Stage and results** are unchanged. **Next song** now goes straight to the library pick. Back from there lands on Confirm for the song just played.
+
+### Back and Esc
+
+| Where | Esc / Back goes to |
+|---|---|
+| Band setup | nothing (the sidebar leaves, as on any screen) |
+| Library pick | where the pick was opened from (Setup or Confirm), with the song unchanged |
+| Confirm | the library pick, with this song selected |
+| Stage, results | unchanged (plan 7 R4) |
+
+Leaving the library through the sidebar cancels the pick. Nothing changes, and the band screen keeps its view for the next visit.
+
+### Core change: `feedBack.library.pick`
+
+A small, generic, additive hook in core, not a copy of the grid:
+- `window.feedBack.library.pick({ title, filters, selected, returnTo, confirmLabel, backLabel })` → `Promise<{ item, filters, reason }>`.
+- It opens `v3-songs` in pick mode. The chips' params are added to the grid's `/api/library` query.
+- It resolves with the picked row (`reason: 'picked'`), or with `item: null` on Back, on leaving the screen, or when another pick replaces it.
+- Songs without a pick session behave exactly as today.
+
+### What goes away
+
+- The band screen's search dropdown, its result list and its Recent list (`src/song-picker.js`).
+- `recentSongs` is still recorded in the prefs but has no UI.
+- `lastSong` stays: it feeds "Continue with" on Setup.
