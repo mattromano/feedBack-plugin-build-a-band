@@ -89,7 +89,7 @@ function setup() {
     const createHighway = () => {
         const hw = {
             getRenderScale: () => 1,
-            setRenderer: (r) => log.push('drum.setRenderer'),
+            setRenderer: (r) => { hw.renderer = r; log.push('drum.setRenderer'); },
             init: (c, container) => { hw.initArgs = [c, container]; log.push('drum.init'); hw.resize(); },
             connect: (url, opts) => { hw.connectOpts = opts; log.push('drum.connect ' + url); },
             setTime: () => {},
@@ -102,14 +102,28 @@ function setup() {
     const targets = [];
     const drumsApi = { setInputTarget: (c) => { targets.push(c); log.push(c ? 'drums.target(canvas)' : 'drums.target(null)'); } };
     const splitscreen = { stop: () => log.push('split.stop') };
+    // A fake CONTROLLER_KINDS registry: pins live in a canvas -> opts map.
+    const pins = new Map();
+    const kinds = {
+        five_fret: {
+            renderer: () => ({ fiveFret: true }),
+            laneRenderer: () => kinds.five_fret.renderer,
+            pin(canvas, controllerKey, opts) {
+                log.push('pin ' + controllerKey);
+                pins.set(canvas, { controllerKey, ...opts });
+                return true;
+            },
+            unpin(canvas) { log.push('unpin ' + (pins.get(canvas) || {}).controllerKey); pins.delete(canvas); },
+        },
+    };
     const deps = {
-        mainHighway: mainHw, createHighway, drumsApi, splitscreen, bus,
+        mainHighway: mainHw, createHighway, drumsApi, splitscreen, bus, kinds,
         getWsUrl: (f, i) => `ws://x/${f}?arrangement=${i}`,
         getDisplayTime: () => 1.5,
         drumRenderer: () => ({}),
         savePrefs: (p) => log.push('save ' + JSON.stringify(p)),
     };
-    return { win, doc, player, log, deps, drumHws, mainHw, bus, targets };
+    return { win, doc, player, log, deps, drumHws, mainHw, bus, targets, pins, kinds };
 }
 
 const mainContainer = (deps) => deps.mainHighway.containers.at(-1);
@@ -558,4 +572,248 @@ test('refit sets the transport height and resizes', () => {
     assert.doesNotThrow(() => s.refit());
     assert.deepEqual(log, []);
     assert.equal(player.style.getPropertyValue('--bab-transport-h'), '');
+});
+
+// ---- Controller lanes ----
+
+const ctl = (id, key, part, extra = {}) => ({ id, key, name: key, playsAs: 'five_fret', part,
+    difficulty: 'medium', lefty: false, partAudio: 'rockband', on: true, ...extra });
+const ctlSong = { ...withDrums, arrangementIndex: 0 };
+const laneHw = (drumHws, slot) => drumHws.find((hw) => hw.initArgs && hw.initArgs[0].parentNode === slot);
+const laneParts = (player) => player.children[0].children.map((c) => (c.className === 'bab-divider' ? '|' : c.dataset.part));
+const quietErrors = (fn) => {
+    const errors = [];
+    const error = console.error;
+    console.error = (...a) => errors.push(a);
+    try { return [fn(), errors]; } finally { console.error = error; }
+};
+
+test('each controller lane gets its own highway, WS and pin', () => {
+    const { player, log, deps, drumHws, pins } = setup();
+    const prefs = { split: 62, controllers: [
+        ctl('ctl1', 'pad#1', 'bass', { difficulty: 'expert', lefty: true }),
+        ctl('ctl2', 'gtr#1', 'guitar', { difficulty: 'easy' }),
+        ctl('ctl3', 'pad#2', 'rhythm', { on: false }),
+    ] };
+    const frames = [];
+    const raf = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = (f) => { frames.push(f); return frames.length; };
+    let s;
+    try { s = mountStage({ player, song: ctlSong, prefs, deps }); } finally { globalThis.requestAnimationFrame = raf; }
+    assert.deepEqual(laneParts(player), ['guitar', '|', 'drums', 'ctl1', 'ctl2']);
+    const slot1 = s.laneSlot('ctl1');
+    const slot2 = s.laneSlot('ctl2');
+    assert.equal(s.laneSlot('ctl3'), null, 'a controller switched off gets no lane');
+    assert.equal(slot1.style.left, '56%');
+    assert.equal(slot1.style.width, '22%');
+    assert.equal(slot2.style.left, '78%');
+    assert.ok(Math.abs(parseFloat(s.laneSlot('guitar').style.width) - 34.72) < 0.01);
+    for (const [slot, key, opts] of [[slot1, 'pad#1', { part: 'bass', difficulty: 'expert', lefty: true }],
+        [slot2, 'gtr#1', { part: 'guitar', difficulty: 'easy', lefty: false }]]) {
+        assert.ok(slot.classList.contains('bab-lane-ctl'));
+        assert.ok(!slot.classList.contains('bab-lane-main'));
+        assert.ok(!slot.children.some((c) => c.className === 'bab-lane-chrome'), 'no zoom chrome');
+        const hw = laneHw(drumHws, slot);
+        assert.ok(hw, 'own highway');
+        const [canvas, box] = hw.initArgs;
+        assert.equal(box.parentNode, slot);
+        assert.equal(box.style.width, '100%');
+        assert.deepEqual(hw.renderer, { fiveFret: true });
+        assert.equal(hw.connectOpts.secondary, true);
+        assert.deepEqual(pins.get(canvas), { controllerKey: key, ...opts });
+    }
+    assert.equal(drumHws.length, 3, 'drums + two controller lanes');
+    // Highway order per lane: renderer, init, connect on the song's arrangement, then the pin.
+    const ctlLog = log.slice(log.lastIndexOf('drums.target(canvas)') + 1)
+        .filter((l) => /^drum\.(setRenderer|init|connect)|^pin/.test(l));
+    assert.deepEqual(ctlLog, [
+        'drum.setRenderer', 'drum.init', 'drum.connect ws://x/a.psarc?arrangement=0', 'pin pad#1',
+        'drum.setRenderer', 'drum.init', 'drum.connect ws://x/a.psarc?arrangement=0', 'pin gtr#1',
+    ]);
+    // One lane clock feeds every lane.
+    const times = drumHws.map(() => []);
+    drumHws.forEach((hw, i) => { hw.setTime = (t) => times[i].push(t); });
+    assert.equal(frames.length, 1, 'one clock');
+    frames[0]();
+    assert.deepEqual(times, [[1.5], [1.5], [1.5]]);
+    assert.equal(s.getLaneCanvas('ctl1'), laneHw(drumHws, slot1).initArgs[0]);
+    assert.equal(s.getLaneCanvas('drums'), s.getDrumCanvas());
+    assert.equal(s.getLaneCanvas('ctl3'), null);
+    assert.equal(s.getLaneCanvas('guitar'), null);
+    s.unmount();
+});
+
+test('a controllers-only band hides the main highway; its lanes share the row', () => {
+    const { player, log, deps } = setup();
+    const prefs = { parts: { guitar: { on: false }, drums: { on: false } },
+        controllers: [ctl('ctl1', 'pad#1', 'guitar'), ctl('ctl2', 'pad#2', 'bass')] };
+    const s = mountStage({ player, song: ctlSong, prefs, deps });
+    assert.deepEqual(laneParts(player), ['ctl1', 'ctl2']);
+    assert.equal(s.laneSlot('ctl2').style.left, '50%');
+    assert.equal(s.laneSlot('ctl2').style.width, '50%');
+    assert.ok(log.includes('main.setVisible(false)'));
+    assert.ok(!log.includes('main.setContainer(slot)'));
+    s.unmount();
+    assert.ok(log.includes('main.setVisible(null)'));
+});
+
+test('two controllers on one part: two lanes pinned to their own keys', () => {
+    const { player, deps, drumHws, pins } = setup();
+    const prefs = { controllers: [ctl('ctl1', 'Xbox#1', 'guitar'), ctl('ctl2', 'Xbox#2', 'guitar')] };
+    const s = mountStage({ player, song: ctlSong, prefs, deps });
+    const c1 = s.getLaneCanvas('ctl1');
+    const c2 = s.getLaneCanvas('ctl2');
+    assert.ok(c1 && c2 && c1 !== c2, 'two canvases');
+    assert.notEqual(laneHw(drumHws, s.laneSlot('ctl1')), laneHw(drumHws, s.laneSlot('ctl2')), 'two highways');
+    assert.equal(pins.get(c1).controllerKey, 'Xbox#1');
+    assert.equal(pins.get(c2).controllerKey, 'Xbox#2');
+    assert.equal(pins.get(c1).part, 'guitar');
+    assert.equal(pins.get(c2).part, 'guitar');
+    s.unmount();
+});
+
+test('canvas replacement re-pins', () => {
+    const { player, doc, deps, bus, pins, drumHws } = setup();
+    const make = deps.createHighway;
+    let n = 0;
+    // The second highway (ctl1) swaps its canvas during init without announcing it.
+    deps.createHighway = () => { const hw = make(); if (++n === 2) replacingInit(hw, doc, bus, { announce: false }); return hw; };
+    const prefs = { controllers: [ctl('ctl1', 'pad#1', 'bass'), ctl('ctl2', 'pad#2', 'guitar')] };
+    const s = mountStage({ player, song: ctlSong, prefs, deps });
+    const swapped = drumHws[1].replacement;
+    assert.equal(s.getLaneCanvas('ctl1'), swapped, 'read back from the slot');
+    assert.equal(pins.get(swapped).controllerKey, 'pad#1');
+    // A later, announced replacement on ctl2.
+    const old2 = s.getLaneCanvas('ctl2');
+    const fresh = doc.createElement('canvas');
+    bus.emit('highway:canvas-replaced', { oldCanvas: doc.createElement('canvas'), newCanvas: doc.createElement('canvas') });
+    assert.equal(s.getLaneCanvas('ctl2'), old2, 'another highway is ignored');
+    bus.emit('highway:canvas-replaced', { oldCanvas: old2, newCanvas: fresh });
+    assert.equal(s.getLaneCanvas('ctl2'), fresh);
+    assert.deepEqual(pins.get(fresh), { controllerKey: 'pad#2', part: 'guitar', difficulty: 'medium', lefty: false });
+    s.unmount();
+    assert.ok(!pins.has(fresh), 'live canvas unpinned');
+    assert.equal(fresh.parentNode, null);
+    assert.equal(bus.count(), 0);
+});
+
+for (const [why, breakIt] of [
+    ['pin refused', (deps) => { const pin = deps.kinds.five_fret.pin; deps.kinds.five_fret.pin = (c, k, o) => (k === 'bad#1' ? false : pin(c, k, o)); }],
+    ['no renderer from the kind', (deps) => { const lr = deps.kinds.five_fret.laneRenderer; let n = 0; deps.kinds.five_fret.laneRenderer = () => (++n === 1 ? null : lr()); }],
+    ['init throws', (deps) => { const make = deps.createHighway; let n = 0; deps.createHighway = () => { const hw = make(); if (++n === 2) hw.init = () => { throw new Error('boom'); }; return hw; }; }],
+    ['connect throws', (deps) => { const make = deps.createHighway; let n = 0; deps.createHighway = () => { const hw = make(); if (++n === 2) hw.connect = () => { throw new Error('ws'); }; return hw; }; }],
+]) {
+    test(`one lane failing leaves the others (${why})`, () => {
+        const { player, log, deps, drumHws, pins } = setup();
+        breakIt(deps);
+        const prefs = { split: 62, controllers: [ctl('ctl1', 'bad#1', 'bass'), ctl('ctl2', 'pad#2', 'guitar')] };
+        const [s, errors] = quietErrors(() => mountStage({ player, song: ctlSong, prefs, deps }));
+        assert.match(String(errors[0] && errors[0][0]), /controller lane failed to start/);
+        assert.deepEqual(laneParts(player), ['guitar', '|', 'drums', 'ctl2']);
+        assert.equal(s.laneSlot('ctl1'), null);
+        assert.equal(s.getLaneCanvas('ctl1'), null, 'reported as not started');
+        assert.ok(s.getLaneCanvas('ctl2'));
+        assert.ok(s.getDrumCanvas(), 'drum lane kept');
+        // Re-laid out for one controller.
+        assert.equal(s.laneSlot('ctl2').style.left, '78%');
+        assert.ok(Math.abs(parseFloat(s.laneSlot('guitar').style.width) - 48.36) < 0.01);
+        // The failed lane's highway (if any) is stopped and nothing of it stays pinned.
+        const stopped = log.filter((l) => l === 'drum.stop').length;
+        assert.equal(stopped, drumHws.length - 2, 'only the failed lane stopped');
+        assert.deepEqual([...pins.values()].map((p) => p.controllerKey), ['pad#2']);
+        s.unmount();
+        assert.equal(pins.size, 0);
+        assert.equal(player.children.length, 0);
+    });
+}
+
+test('a controller whose kind is not registered leaves only its lane', () => {
+    const { player, deps } = setup();
+    const prefs = { controllers: [ctl('ctl1', 'pad#1', 'bass'), ctl('ctl2', 'pad#2', 'guitar')] };
+    delete deps.kinds.five_fret;
+    deps.kinds.other = {};
+    const [s, errors] = quietErrors(() => mountStage({ player, song: ctlSong, prefs, deps }));
+    assert.equal(errors.length, 2);
+    assert.deepEqual(laneParts(player), ['guitar', '|', 'drums']);
+    assert.equal(s.laneSlot('drums').style.width, '38%');
+    s.unmount();
+});
+
+test('divider drag with controllers converts through splitFromPointer', () => {
+    const { win, player, log, deps } = setup();
+    const prefs = { split: 62, controllers: [ctl('ctl1', 'pad#1', 'bass')] };
+    const s = mountStage({ player, song: ctlSong, prefs, deps });
+    const [guitar, divider, drums] = player.children[0].children;
+    assert.ok(Math.abs(parseFloat(divider.style.left) - 48.36) < 0.01, 'divider at the guitar lane edge');
+    divider.fire('pointerdown', { preventDefault() {} });
+    win.fire('pointermove', { clientX: 390 }); // 39% of the row = 50% of the 78% real region
+    assert.equal(guitar.style.width, '39%');
+    assert.equal(drums.style.left, '39%');
+    assert.equal(drums.style.width, '39%');
+    assert.equal(divider.style.left, '39%');
+    assert.equal(s.laneSlot('ctl1').style.left, '78%');
+    win.fire('pointermove', { clientX: 770 }); // past the real region: clamped to 80
+    assert.ok(Math.abs(parseFloat(guitar.style.width) - 62.4) < 0.01);
+    win.fire('pointerup', {});
+    assert.ok(log.includes('save {"split":80}'));
+    s.setSplit(50);
+    assert.equal(guitar.style.width, '39%');
+    s.unmount();
+});
+
+test('unmount clears every pin', () => {
+    const { player, log, deps, drumHws, pins, bus, win } = setup();
+    const prefs = { controllers: [ctl('ctl1', 'pad#1', 'bass'), ctl('ctl2', 'pad#2', 'guitar')] };
+    const s = mountStage({ player, song: ctlSong, prefs, deps });
+    const canvases = [s.getLaneCanvas('ctl1'), s.getLaneCanvas('ctl2')];
+    log.length = 0;
+    s.unmount();
+    assert.equal(pins.size, 0);
+    assert.equal(log.filter((l) => l === 'drum.stop').length, drumHws.length, 'every highway stopped');
+    // Each lane's highway stops (its renderer lets the controller go) before its pin is cleared.
+    assert.deepEqual(log.filter((l) => l === 'drum.stop' || l.startsWith('unpin')),
+        ['drum.stop', 'drum.stop', 'unpin pad#1', 'drum.stop', 'unpin pad#2']);
+    for (const c of canvases) assert.equal(c.parentNode, null);
+    assert.equal(s.getLaneCanvas('ctl1'), null);
+    assert.equal(bus.count(), 0);
+    assert.equal(win.count(), 0);
+    log.length = 0;
+    s.unmount();
+    assert.deepEqual(log, []);
+});
+
+// Task 8 hand-off: Go on the band screen can mount the stage while build_a_band still
+// claims the joined pads (released on screen:changing). The lane is pinned anyway and
+// stays; the five-fret renderer retries its claim on core's `change` event, which the
+// release fires. This fake kind models that retry against a fake core gamepadInput.
+test('a lane pinned while the band screen still claims its pad gets it once the screen releases', () => {
+    const { player, deps, log } = setup();
+    const owners = new Map([['pad#1', 'build_a_band']]);
+    const changeFns = new Set();
+    const gi = {
+        claim(key, owner) { if (owners.has(key)) return null; owners.set(key, owner); return { key }; },
+        release(key) { owners.delete(key); for (const f of [...changeFns]) f({ type: 'release', key }); },
+        on(type, fn) { if (type === 'change') changeFns.add(fn); return () => changeFns.delete(fn); },
+    };
+    const lanes = new Map();
+    deps.kinds.five_fret.pin = (canvas, controllerKey) => {
+        const lane = { controllerKey, handle: null };
+        const tryClaim = () => { if (!lane.handle) lane.handle = gi.claim(controllerKey, 'five_fret'); };
+        lane.off = gi.on('change', tryClaim);
+        tryClaim();
+        lanes.set(canvas, lane);
+        return true;   // setLane accepts the pin whether or not the pad is free yet
+    };
+    deps.kinds.five_fret.unpin = (canvas) => { const l = lanes.get(canvas); if (l) l.off(); lanes.delete(canvas); log.push('unpin'); };
+    const s = mountStage({ player, song: ctlSong, prefs: { controllers: [ctl('ctl1', 'pad#1', 'bass')] }, deps });
+    const canvas = s.getLaneCanvas('ctl1');
+    assert.ok(canvas, 'the lane is not treated as failed');
+    assert.equal(owners.get('pad#1'), 'build_a_band');
+    assert.equal(lanes.get(canvas).handle, null);
+    gi.release('pad#1');   // the band screen hides (screen:changing)
+    assert.equal(owners.get('pad#1'), 'five_fret');
+    assert.ok(lanes.get(canvas).handle);
+    assert.ok(!log.includes('unpin'), 'the pin was never dropped');
+    s.unmount();
+    assert.equal(changeFns.size, 0);
 });

@@ -350,7 +350,8 @@
     bottom: 0;
     overflow: hidden;
 }
-#player .bab-lane[data-part="drums"] {
+#player .bab-lane[data-part="drums"],
+#player .bab-lane.bab-lane-ctl {
     pointer-events: auto;
     background: #050508;
 }

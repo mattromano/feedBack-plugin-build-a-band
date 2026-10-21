@@ -92,3 +92,22 @@ test('planStage drums alone gets the drums lane on the main highway', () => {
         { guitar: { on: false }, drums: { on: true }, vocals: { on: false } });
     assert.deepEqual({ strip: p.strip, mainPart: p.mainPart, lanes: p.lanes }, { strip: false, mainPart: 'drums', lanes: ['drums'] });
 });
+
+test('controllers on add lanes after the real ones; controllers only hide the main highway', () => {
+    const song = { arrangements: [{ name: 'Lead' }, { name: 'Drums' }] };
+    const ctls = [
+        { key: 'pad#1', id: 'ctl1', on: true },
+        { key: 'pad#2', id: 'ctl2', on: false },
+        { key: 'gtr#1', id: 'ctl3', on: true },
+    ];
+    assert.deepEqual(planStage(song, undefined, ctls).lanes, ['guitar', 'drums', 'ctl1', 'ctl3']);
+    assert.equal(planStage(song, undefined, ctls).mainPart, 'guitar');
+    const drumsOnly = planStage(song, { guitar: { on: false }, drums: { on: true } }, ctls);
+    assert.deepEqual({ mainPart: drumsOnly.mainPart, lanes: drumsOnly.lanes }, { mainPart: 'drums', lanes: ['drums', 'ctl1', 'ctl3'] });
+    const alone = planStage(song, { guitar: { on: false }, drums: { on: false }, vocals: { on: true } }, ctls);
+    assert.deepEqual({ strip: alone.strip, mainPart: alone.mainPart, lanes: alone.lanes },
+        { strip: true, mainPart: null, lanes: ['ctl1', 'ctl3'] });
+    // Without controllers (or with none on) the plan is unchanged.
+    assert.deepEqual(planStage(song, undefined, []), planStage(song));
+    assert.deepEqual(planStage(song, undefined, [{ id: 'ctl1', on: false }, null]), planStage(song));
+});
