@@ -6,14 +6,19 @@ import { findDrumArrangement } from './arrangements.js';
 import { clampSplit, computeStageLayout } from './layout.js';
 import { createLaneClock } from './lane-clock.js';
 import { clampLabelScale, savePrefs } from './prefs.js';
+import { drumsDifficultyId } from './mappings.js';
 import { getWsUrl } from './ws-url.js';
 
 const LABEL_STEP = 0.25;
 
-// Which lanes a song gets. Guitar is always on; drums when it has a drum chart.
-export function planStage(song) {
+// Which lanes a song gets for the parts switched on. Guitar off means no
+// stage (a drums-only session plays the drum arrangement on the main
+// highway); drums gets a lane when it is on and the song has a drum chart.
+export function planStage(song, parts = { guitar: { on: true }, drums: { on: true } }) {
     const drumIndex = findDrumArrangement(song && song.arrangements);
-    return { lanes: drumIndex >= 0 ? ['guitar', 'drums'] : ['guitar'], drumIndex };
+    const on = (id) => !(parts && parts[id] && parts[id].on === false);
+    if (!on('guitar')) return { lanes: [], drumIndex };
+    return { lanes: on('drums') && drumIndex >= 0 ? ['guitar', 'drums'] : ['guitar'], drumIndex };
 }
 
 function safe(fn) {
@@ -47,7 +52,14 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     // 1. Band mode and splitscreen never run at once.
     safe(() => splitscreen && splitscreen.stop());
 
-    const plan = planStage(song);
+    const parts = (prefs && prefs.parts) || undefined;
+    const plan = planStage(song, parts);
+    // The band drum difficulty, pinned to whichever canvas takes kit input.
+    const drumsDiff = drumsDifficultyId(parts && parts.drums && parts.drums.difficulty);
+    function pinDrums(canvas) {
+        safe(() => drumsApi && drumsApi.setInputTarget(canvas));
+        if (drumsApi && typeof drumsApi.setDifficulty === 'function') safe(() => drumsApi.setDifficulty(drumsDiff, canvas));
+    }
     let lanes = plan.lanes;
     if (lanes.includes('drums') && (typeof drumRenderer !== 'function' || typeof makeHighway !== 'function')) {
         console.warn('[build-a-band] drums plugin or createHighway missing; guitar lane only');
@@ -147,7 +159,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     function adoptCanvas(next) {
         if (!next || next === drumCanvas) return;
         drumCanvas = next;
-        if (drumHw) safe(() => drumsApi && drumsApi.setInputTarget(drumCanvas));
+        if (drumHw) pinDrums(drumCanvas);
     }
     function onCanvasReplaced(e) {
         const d = e && e.detail;
@@ -192,7 +204,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             hw.resize();
             clock.add(hw);
             clock.start();
-            safe(() => drumsApi && drumsApi.setInputTarget(drumCanvas));
+            pinDrums(drumCanvas);
         } catch (e) {
             // Fall back to the guitar lane alone rather than an empty slot.
             console.error('[build-a-band] drum lane failed to start; guitar lane only', e);

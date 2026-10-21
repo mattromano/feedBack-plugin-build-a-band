@@ -17,7 +17,8 @@ function init() {
     if (prev && typeof prev.dispose === 'function') {
         try { prev.dispose(); } catch (_) { /* ignore */ }
     }
-    window.__buildABandRuntime = createBandRuntime({ win: window, doc: document, mountStage, loadPrefs });
+    const runtime = createBandRuntime({ win: window, doc: document, mountStage, loadPrefs });
+    window.__buildABandRuntime = runtime;
 
     const prevScreen = window.__buildABandScreen;
     if (prevScreen && typeof prevScreen.dispose === 'function') {
@@ -29,7 +30,10 @@ function init() {
     if (root) {
         window.__buildABandScreen = createBandScreen({
             root, win: window, doc: document, loadPrefs, savePrefs,
-            onGo: () => {}, // Task 11 wires Go to the band session.
+            onGo: (item, prefs) => {
+                savePrefs(prefs);
+                runtime.startSession({ song: item, prefs });
+            },
         });
     }
 }

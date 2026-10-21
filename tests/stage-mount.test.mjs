@@ -265,3 +265,26 @@ test('a later canvas replacement on the drum lane re-pins the input target', () 
     assert.equal(targets.at(-1), fresh);
     s.unmount();
 });
+
+test('the band drum difficulty is pinned to the drum canvas and follows a replacement', () => {
+    const { player, doc, deps, bus, drumHws } = setup();
+    const diffs = [];
+    deps.drumsApi.setDifficulty = (id, c) => diffs.push([id, c]);
+    const prefs = { split: 62, parts: { guitar: { on: true }, drums: { on: true, difficulty: 'hard' } } };
+    const s = mountStage({ player, song: withDrums, prefs, deps });
+    const [drumCanvas] = drumHws[0].initArgs;
+    assert.deepEqual(diffs.at(-1), ['hard', drumCanvas]);
+    const fresh = doc.createElement('canvas');
+    bus.emit('highway:canvas-replaced', { oldCanvas: drumCanvas, newCanvas: fresh });
+    assert.deepEqual(diffs.at(-1), ['hard', fresh]);
+    s.unmount();
+});
+
+test('drums switched off in the band prefs mounts the guitar lane alone', () => {
+    const { player, deps, drumHws } = setup();
+    const prefs = { split: 62, parts: { guitar: { on: true }, drums: { on: false } } };
+    const s = mountStage({ player, song: withDrums, prefs, deps });
+    assert.equal(player.children[0].children.length, 1);
+    assert.equal(drumHws.length, 0);
+    s.unmount();
+});

@@ -19,3 +19,15 @@ test('planStage missing arrangements', () => {
 test('planStage tolerates a null song', () => {
     assert.deepEqual(planStage(null), { lanes: ['guitar'], drumIndex: -1 });
 });
+
+test('planStage drums off', () => {
+    assert.deepEqual(planStage({ arrangements: [{ name: 'Lead' }, { name: 'Drums' }] },
+        { guitar: { on: true }, drums: { on: false } }),
+    { lanes: ['guitar'], drumIndex: 1 });
+});
+
+test('planStage guitar off', () => {
+    assert.deepEqual(planStage({ arrangements: [{ name: 'Lead' }, { name: 'Drums' }] },
+        { guitar: { on: false }, drums: { on: true } }),
+    { lanes: [], drumIndex: 1 });
+});
