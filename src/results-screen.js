@@ -13,7 +13,7 @@ const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 // through to the player while the results show.
 export const PLAYER_KEYS = new Set([' ', 'Spacebar', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '[', ']', '+', '-', '=']);
 
-function isTyping(target) {
+export function isTyping(target) {
     if (!target) return false;
     if (target.isContentEditable) return true;
     return TYPING_TAGS.has(String(target.tagName || '').toUpperCase());

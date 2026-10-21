@@ -24,7 +24,12 @@ import { createBandHud } from './hud.js';
 import { createToastStack } from './toasts.js';
 import { createCountInOverlay } from './count-in-overlay.js';
 import { resultsModel } from './results.js';
-import { showResultsScreen } from './results-screen.js';
+import { showResultsScreen, isTyping } from './results-screen.js';
+import { createFullScreen } from './full-screen.js';
+import { createStageChrome } from './stage-chrome.js';
+import { createSidebarOverlay } from './sidebar-overlay.js';
+import { openSettingsOverlay } from './settings-overlay.js';
+import { otherModalOpen } from './modal-open.js';
 
 const BAND_SCREEN = 'plugin-build_a_band';
 const SPLIT_KEY = 'splitscreenActive';
@@ -45,6 +50,10 @@ const BAND_SONG_CLASS = 'bab-band-song';
 const DRUM_JUDGMENTS = ['hit', 'miss', 'overhit'];
 // The overdrive tick while the song plays (plan 5 R16).
 const OD_TICK_MS = 100;
+// note_detect's input failure while it stays quiet in a band song (plan 7 R16).
+const GUITAR_INPUT_FAILED = "Guitar input couldn't start";
+// The sidebar's other items ask first (plan 7 R8).
+const LEAVE_PROMPT = { title: 'Leave the song?', body: 'This ends the band song.', confirmText: 'Leave', cancelText: 'Stay' };
 
 function safe(fn) {
     try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
@@ -91,7 +100,8 @@ function withoutVocals(prefs) {
 //   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase(),
 //        snapshot(): the current session's band score snapshot, or null,
 //        overdrive(): its overdrive meters (overdrive-session snapshot), or null,
-//        again(), next(): Play again / Next song while the results show }
+//        again(), next(): Play again / Next song while the results show,
+//        stageUi(): { full, fullScreen, sidebar, overlay } for the current session, or null }
 // startSession returns false when it refuses (a session is running, no song);
 // otherwise a promise of core's playSong that rejects, after the session went
 // back to idle, when playSong throws or rejects.
@@ -123,6 +133,12 @@ export function createBandRuntime({
     // always follows the mute it undoes, even across Play again (claim ids are
     // per part, not per session). part -> { promise, done }.
     const stemOps = new Map();
+    // Window full screen for full mode (plan 7 R2, R20): one per runtime, so a
+    // Play again finds the full screen the session before asked for.
+    const fullScreen = createFullScreen({ doc, win });
+    const offFullScreen = fullScreen.onChange(onFullScreenChange);
+    // notedetect:input-error arrives twice with one detail, as its judgments do.
+    const seenInputError = new WeakSet();
 
     function sliderMastery() {
         const slider = doc.getElementById('mastery-slider');
@@ -205,14 +221,28 @@ export function createBandRuntime({
             // a sound mute was sent and not yet restored.
             drumSound: null,
             soundClaim: false,
+            // Plan 7: full mode (the stored pref sets where it starts), the hover
+            // chrome, the sidebar overlay (one per session, as its click takeover
+            // starts at create), the overlay over the paused song ({ kind }), the
+            // pause token it resumes with, and note_detect's quiet value before
+            // the band set it (null: untouched).
+            full: !!prefs.fullScreenStage,
+            chrome: null,
+            sidebar: null,
+            overlay: null,
+            pauseToken: null,
+            ndQuiet: null,
         };
     }
 
-    function unmountStage() {
+    // The chrome sits on the stage, so it goes with every unmount: full mode's
+    // CSS (#player.bab-full) never outlives the stage into solo play.
+    function unmountStage(s) {
+        if (s) destroyChrome(s);
         if (!stage) return;
-        const s = stage;
+        const st = stage;
         stage = null;
-        try { s.unmount(); } catch (e) { console.error('[build-a-band] unmount failed', e); }
+        try { st.unmount(); } catch (e) { console.error('[build-a-band] unmount failed', e); }
     }
 
     function showToast(s, text) {
@@ -589,7 +619,7 @@ export function createBandRuntime({
         }
         s.splitWaiting = true;
         s.splitPolls = 0;
-        unmountStage();
+        unmountStage(s);
         const ss = splitscreen();
         safe(() => ss && typeof ss.stop === 'function' && ss.stop());
         waitForSplitDown(s);
@@ -674,6 +704,184 @@ export function createBandRuntime({
         safe(() => api.setDifficulty(drumsDifficultyId(s.prefs.parts.drums.difficulty), s.drumCanvas));
     }
 
+    // ---- Plan 7: full mode, the hover chrome, the sidebar and Settings ----
+
+    const refit = () => { if (stage && typeof stage.refit === 'function') safe(() => stage.refit()); };
+
+    function destroyChrome(s) {
+        if (!s.chrome) return;
+        const c = s.chrome;
+        s.chrome = null;
+        safe(() => c.destroy());
+    }
+
+    // The band chrome on the current stage (R5), and the session's sidebar (R7).
+    function mountChrome(s) {
+        destroyChrome(s);
+        const player = doc.getElementById('player');
+        if (!player) return;
+        // The sidebar opens only while this session plays (R21).
+        const openSidebar = (via) => { if (scoring() === s && s.sidebar) s.sidebar.open(via); };
+        s.chrome = safe(() => createStageChrome({
+            doc, player, full: s.full,
+            // open, not toggle: the click lands after the sidebar's own
+            // outside-pointerdown close, so a toggle would fight it.
+            onMenu: () => openSidebar('menu'),
+            onEdge: () => openSidebar('edge'),
+            onLoop: () => cycleLoop(s),
+            onFullScreen: () => setFull(s, !s.full),
+            onEnd: () => { if (typeof win.requestExitSong === 'function') safe(() => win.requestExitSong()); },
+        })) || null;
+        if (s.chrome) { const c = s.chrome; const st = loopState(); safe(() => c.setLoop(st)); }
+        if (!s.sidebar) {
+            s.sidebar = safe(() => createSidebarOverlay({ doc, onNavigate: (link, key) => onSidebarNav(s, link, key) })) || null;
+        }
+        refit();
+        quietGuitarErrors(s);
+    }
+
+    // The chrome's Full screen button (R20): full mode and window full screen together.
+    function setFull(s, on) {
+        s.full = !!on;
+        safe(() => (s.full ? fullScreen.request() : fullScreen.exit()));
+        if (s.chrome) { const c = s.chrome; safe(() => c.setFull(s.full)); }
+        refit();
+    }
+
+    // Leaving window full screen (Esc in Electron, the OS) turns full mode off.
+    function onFullScreenChange() {
+        const s = scoring();
+        if (s && s.full && !fullScreen.isOn()) setFull(s, false);
+    }
+
+    // Core's A-B loop: 'none' | 'a' | 'ab'.
+    function loopState() {
+        const l = typeof fb.getLoop === 'function' ? safe(() => fb.getLoop()) : null;
+        const set = (v) => v !== null && v !== undefined;
+        if (!l || !set(l.loopA)) return 'none';
+        return set(l.loopB) ? 'ab' : 'a';
+    }
+
+    // The loop button: start, then end, then clear, through core's own functions.
+    function cycleLoop(s) {
+        const st = loopState();
+        const name = st === 'none' ? 'setLoopStart' : st === 'a' ? 'setLoopEnd' : 'clearLoop';
+        if (typeof win[name] === 'function') safe(() => win[name]());
+        if (s.chrome) { const c = s.chrome; const next = loopState(); safe(() => c.setLoop(next)); }
+    }
+
+    // M toggles the sidebar; Esc closes an open one and stays in the song (R4,
+    // R7). A window capture listener, so core's document shortcuts never see a
+    // key it takes. Settings and the leave prompt own the keys while they show.
+    function onStageKey(e) {
+        const s = scoring();
+        if (!e || !s || s.overlay || !s.sidebar) return;
+        if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+        const isM = e.code === 'KeyM' || e.key === 'm' || e.key === 'M';
+        const isEsc = e.key === 'Escape' && s.sidebar.isOpen();
+        if (!isM && !isEsc) return;
+        // Another dialog (core's exit confirm) keeps its keys.
+        if (otherModalOpen(doc, win, doc.getElementById('v3-sidebar'))) return;
+        e.preventDefault();
+        if (isM) { s.sidebar.toggle('key'); return; }
+        e.stopPropagation();
+        s.sidebar.close();
+    }
+
+    // A sidebar item during the band song (R8): Settings over the paused song,
+    // anything else asks first. close(), not follow(): an open sidebar is a
+    // modal, and Settings' keys stand down under another modal.
+    function onSidebarNav(s, link, key) {
+        if (s.sidebar) s.sidebar.close();
+        if (scoring() !== s) return;
+        if (key === 'settings') openSettings(s);
+        else confirmLeave(s, link);
+    }
+
+    function openSettings(s) {
+        if (s.overlay) return;
+        s.pauseToken = pausePlayback();
+        s.overlay = safe(() => openSettingsOverlay({
+            doc, win, onClose: () => { s.overlay = null; afterOverlay(s); },
+        })) || null;
+        if (!s.overlay) afterOverlay(s);
+    }
+
+    function confirmLeave(s, link) {
+        if (s.overlay) return;
+        s.pauseToken = pausePlayback();
+        if (typeof win._confirmDialog !== 'function') {
+            if (s.sidebar) s.sidebar.follow(link);
+            return;
+        }
+        const overlay = { kind: 'confirm' };
+        s.overlay = overlay;
+        // A prompt answered after the session ended (or after teardown closed
+        // it) does nothing.
+        const settle = (leave) => {
+            if (session !== s || state.phase !== 'playing' || s.overlay !== overlay) return;
+            s.overlay = null;
+            if (leave === true) { if (s.sidebar) s.sidebar.follow(link); } else afterOverlay(s);
+        };
+        let answer;
+        try { answer = Promise.resolve(win._confirmDialog({ ...LEAVE_PROMPT })); } catch (e) { answer = Promise.reject(e); }
+        answer.then(settle, () => settle(false));
+    }
+
+    // Back to the song (R11): the band guitar mastery first (core's
+    // loadSettings re-applied the solo one), then the resume.
+    function afterOverlay(s) {
+        if (session !== s || state.phase !== 'playing') return;
+        reapplyMastery(s);
+        const token = s.pauseToken;
+        s.pauseToken = null;
+        resumePlayback(token);
+    }
+
+    function reapplyMastery(s) {
+        const hw = win.highway;
+        if (!isOn(s.prefs, 'guitar') || !(s.readyDetail && s.readyDetail.hasPhraseData)) return;
+        if (hw && typeof hw.setMastery === 'function') safe(() => hw.setMastery(masteryFor(s.prefs.parts.guitar.difficulty)));
+    }
+
+    // Core's overlay pause (R10); without it, the transport's togglePlay.
+    function pausePlayback() {
+        if (typeof fb.pauseForOverlay === 'function') return safe(() => fb.pauseForOverlay()) || null;
+        const wasPlaying = fb.isPlaying === true;
+        if (wasPlaying) callTogglePlay();
+        return { wasPlaying };
+    }
+
+    // resumeAfterOverlay's answer is ignored: true can mean a resume still queued.
+    function resumePlayback(token) {
+        if (typeof fb.resumeAfterOverlay === 'function') { safe(() => { fb.resumeAfterOverlay(token); }); return; }
+        if (token && token.wasPlaying && fb.isPlaying === false) callTogglePlay();
+    }
+
+    function callTogglePlay() {
+        if (typeof win.togglePlay !== 'function') return;
+        safe(() => Promise.resolve(win.togglePlay()).catch((e) => console.warn('[build-a-band] togglePlay failed', e)));
+    }
+
+    // note_detect never blocks the band song with an alert (R16): quiet while
+    // guitar scores, its previous value back at teardown.
+    function quietGuitarErrors(s) {
+        const nd = win.noteDetect;
+        if (s.ndQuiet !== null || !s.scoreParts.includes('guitar')) return;
+        if (!nd || typeof nd.setInputErrorsQuiet !== 'function') return;
+        s.ndQuiet = !!(typeof nd.isInputErrorsQuiet === 'function' && safe(() => nd.isInputErrorsQuiet()));
+        safe(() => nd.setInputErrorsQuiet(true));
+    }
+
+    function onInputError(e) {
+        const d = e && e.detail;
+        if (!d || typeof d !== 'object' || seenInputError.has(d)) return;
+        seenInputError.add(d);
+        if (d.isDefault === false) return;
+        const s = scoring();
+        if (s && s.scoreParts.includes('guitar')) showToast(s, GUITAR_INPUT_FAILED);
+    }
+
     const EFFECTS = {
         saveRestorePoint(s) {
             s.savedSplit = safe(() => storage.getItem(SPLIT_KEY)) ?? null;
@@ -736,7 +944,7 @@ export function createBandRuntime({
             // Every session with a playable lane or the strip has a stage (R10).
             if (!plan.strip && plan.lanes.length === 0) return;
             if (s.splitWaiting) return; // mounted once splitscreen is down
-            unmountStage();
+            unmountStage(s);
             try {
                 stage = mountStage({ player, song, prefs: s.prefs });
             } catch (e) {
@@ -767,6 +975,7 @@ export function createBandRuntime({
             startCountIn(s);
             applyHides(s);
             enableGuitarDetect(s);
+            mountChrome(s);
         },
         applyDifficulties(s) {
             if (isOn(s.prefs, 'guitar')) {
@@ -856,6 +1065,8 @@ export function createBandRuntime({
         showResults(s) {
             const player = doc.getElementById('player');
             if (s.results) return;
+            // The sidebar is for the playing song only (plan 7 R21).
+            if (s.sidebar) { const sb = s.sidebar; safe(() => sb.close()); }
             const model = player && safe(() => resultsModel({
                 snapshot: s.score ? s.score.snapshot() : null,
                 prefs: s.prefs,
@@ -883,6 +1094,23 @@ export function createBandRuntime({
             release = null;
         },
         teardown(s) {
+            // Plan 7, first and silently: nothing resumes, every class and
+            // attribute is undone, and full screen is left (Play again keeps it).
+            if (s.overlay) {
+                const o = s.overlay;
+                s.overlay = null;
+                if (typeof o.close === 'function') safe(() => o.close({ silent: true }));
+            }
+            s.pauseToken = null;
+            if (s.sidebar) { const sb = s.sidebar; s.sidebar = null; safe(() => sb.destroy()); }
+            destroyChrome(s);
+            if (!s.keepHides) safe(() => fullScreen.exit());
+            if (s.ndQuiet !== null) {
+                const prev = s.ndQuiet;
+                s.ndQuiet = null;
+                const nd = win.noteDetect;
+                if (nd && typeof nd.setInputErrorsQuiet === 'function') safe(() => nd.setInputErrorsQuiet(prev));
+            }
             // 0. Karaoke, before its strip's slot goes: mic off, karaoke mode
             // off, strip back to its own place, band overrides cleared.
             if (s.vocalsArmed && s.karaoke) {
@@ -907,7 +1135,7 @@ export function createBandRuntime({
             }
             safe(() => toasts.clear());
             // 1. Stage.
-            unmountStage();
+            unmountStage(s);
             // 2. Drums-only: the main highway's band difficulty.
             if (s.drumsOnly) {
                 const api = win.feedBackDrums;
@@ -959,8 +1187,10 @@ export function createBandRuntime({
         // the normal Go path. Always the last effect: the session is idle by now.
         replay(s) {
             const started = begin(s.item, s.goPrefs, s.keepHides ? s.hidden : null);
-            // Refused: nothing took the hides over, so they're undone here.
+            // Refused: nothing took the hides over, so they're undone here,
+            // and nothing keeps the full screen the session before asked for.
             if (!started && s.keepHides) undoHides(s);
+            if (!started) safe(() => fullScreen.exit());
             // Karaoke's hide passes on only when the replay armed karaoke again.
             const next = started ? session : null;
             if (s.keepHides && s.vocalsKept && !(next && next.vocalsArmed && next.karaoke === s.vocalsKept)) {
@@ -1000,6 +1230,8 @@ export function createBandRuntime({
         session = s;
         dispatch({ type: 'go', filename: song.filename });
         if (state.phase === 'idle') return false;
+        // Inside the Go (or Play again) click, so the request has user activation.
+        if (s.full) safe(() => fullScreen.request());
         return (s.played || Promise.resolve()).then(() => true, (e) => {
             // The song never started: undo this session, then report it. A
             // late rejection never tears down a session that is playing.
@@ -1161,17 +1393,21 @@ export function createBandRuntime({
     const winHandlers = {
         'notedetect:hit': onGuitarJudgment, 'notedetect:miss': onGuitarJudgment, 'notedetect:onset': onOnset,
         'stems:state': onStemsState,
+        'notedetect:input-error': onInputError,
     };
 
     for (const [ev, fn] of Object.entries(handlers)) fb.on(ev, fn);
     const winEvents = typeof win.addEventListener === 'function';
     if (winEvents) for (const [ev, fn] of Object.entries(winHandlers)) win.addEventListener(ev, fn);
+    if (winEvents) win.addEventListener('keydown', onStageKey, true);
 
     return {
         dispose() {
             dispatch({ type: 'left' });
             for (const [ev, fn] of Object.entries(handlers)) fb.off(ev, fn);
             if (winEvents) for (const [ev, fn] of Object.entries(winHandlers)) safe(() => win.removeEventListener(ev, fn));
+            if (winEvents) safe(() => win.removeEventListener('keydown', onStageKey, true));
+            safe(offFullScreen);
             safe(() => toasts.clear());
         },
         isMounted: () => !!stage,
@@ -1184,5 +1420,16 @@ export function createBandRuntime({
         drumSound: () => (session && session.drumSound ? { mode: session.drumSound.mode, muted: session.soundClaim } : null),
         again: () => dispatch({ type: 'again' }),
         next: () => dispatch({ type: 'next' }),
+        // The stage's overlays for the current session (R22), or null.
+        stageUi() {
+            const s = session;
+            if (!s) return null;
+            return {
+                full: s.full,
+                fullScreen: fullScreen.isOn(),
+                sidebar: !!(s.sidebar && s.sidebar.isOpen()),
+                overlay: s.overlay ? s.overlay.kind : null,
+            };
+        },
     };
 }

@@ -51,12 +51,15 @@ const DRUM_ITEM = { filename: 'Beat.sloppak', arrangements: [{ index: 0, name: '
 
 function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 },
     karaoke = true, karaokePitch = true, mountFails = false, drumLane = true,
-    stems = ['guitar', 'drums'], caps = true, pauseStatus = 'paused' } = {}) {
+    stems = ['guitar', 'drums'], caps = true, pauseStatus = 'paused', overlayApi = true, confirmDialog = true } = {}) {
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
         karaoke: [], karaokeAt: [], playSongAt: [], hides: [], countIn: [], countInAt: [], nd: [], micHit: [],
-        caps: [], audioPause: 0 };
+        caps: [], audioPause: 0, setMasteryAt: [],
+        // Plan 7: full screen, the sidebar's links, core's overlay pause, the loop, note_detect's quiet switch.
+        fsRequest: 0, fsExit: 0, nav: [], pause: 0, resume: [], resumeAt: [], loop: [], exitSong: 0, togglePlay: 0,
+        ndQuiet: [] };
     // Shared sequence counter: orders karaoke calls against playSong and unmount.
     let seq = 0;
     const doc = makeDoc();
@@ -78,6 +81,29 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     audio.paused = false;
     audio.pause = () => { calls.audioPause++; audio.paused = true; };
     player.appendChild(audio);
+    // The HTML Fullscreen API: records, and only moves doc.fullscreenElement
+    // (fullscreenchange is fired by the tests through the doc's listeners).
+    doc.fullscreenElement = null;
+    doc.documentElement = doc.createElement('html');
+    doc.documentElement.requestFullscreen = () => { calls.fsRequest++; doc.fullscreenElement = doc.documentElement; };
+    doc.exitFullscreen = () => { calls.fsExit++; doc.fullscreenElement = null; };
+    // Core's sidebar, its nav links (each with its own recording click
+    // listener, as shell binds them) and the Settings screen.
+    const sidebar = doc.createElement('nav');
+    sidebar.id = 'v3-sidebar';
+    doc.body.appendChild(sidebar);
+    const navLinks = {};
+    for (const key of ['settings', 'songs', 'build_a_band']) {
+        const a = doc.createElement('a');
+        a.setAttribute('data-v3-nav', key);
+        a.addEventListener('click', () => calls.nav.push(key));
+        sidebar.appendChild(a);
+        navLinks[key] = a;
+    }
+    const settingsScreen = doc.createElement('div');
+    settingsScreen.id = 'settings';
+    settingsScreen.className = 'screen';
+    doc.body.appendChild(settingsScreen);
     const bandScreen = doc.createElement('div');
     bandScreen.id = 'plugin-build_a_band';
     bandScreen.className = 'screen';
@@ -95,7 +121,15 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         getDisplayTime: () => clock.t,
         // Core's transport flag (window.feedBack.isPlaying): the song plays.
         isPlaying: true,
+        // Core's A-B loop (null: unset).
+        getLoop: () => ({ loopA: loop.a, loopB: loop.b }),
     };
+    const loop = { a: null, b: null };
+    // Core's overlay pause (plan 7 R10): records only, nothing plays.
+    if (overlayApi) {
+        fb.pauseForOverlay = () => { calls.pause++; ++seq; return { wasPlaying: true, gen: 1 }; };
+        fb.resumeAfterOverlay = (token) => { calls.resume.push(token); calls.resumeAt.push(++seq); return true; };
+    }
     // Core's capability host, recording [name, request] into calls.caps. Nothing plays:
     // stems mutes are only recorded, and playback pause answers with pauseStatus.
     if (caps) {
@@ -121,7 +155,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         feedBack: fb,
         localStorage: storage,
         highway: {
-            setMastery: (f) => calls.setMastery.push(f),
+            setMastery: (f) => { calls.setMastery.push(f); calls.setMasteryAt.push(++seq); },
             // Ten single notes at the band mastery.
             getFilteredNotes: () => Array.from({ length: 10 }, (_, i) => ({ t: i, s: 0, f: 3 })),
             getFilteredChords: () => [],
@@ -132,6 +166,11 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         setMastery: () => { throw new Error('window.setMastery persists; never call it'); },
         playSong: (f, i) => { calls.playSongAt.push(++seq); calls.playSong.push([f, i]); },
         showScreen: (id) => calls.showScreen.push(id),
+        setLoopStart: () => { calls.loop.push('start'); loop.a = 1; },
+        setLoopEnd: () => { calls.loop.push('end'); loop.b = 2; },
+        clearLoop: () => { calls.loop.push('clear'); loop.a = null; loop.b = null; },
+        requestExitSong: () => { calls.exitSong++; },
+        togglePlay: () => { calls.togglePlay++; },
         setViz: (id) => { calls.setViz.push(id); storage.setItem('vizSelection', id); },
         feedBackViz_drums: () => ({ draw() {} }),
         feedBackDrums: {
@@ -147,6 +186,10 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
             isEnabled() { return this.enabled; },
             enable() { calls.nd.push(['enable']); this.enabled = true; return Promise.resolve(true); },
             disable(o) { calls.nd.push(['disable', o]); this.enabled = false; },
+            // The input-error quiet switch (plan 7 R16), recorded into calls.ndQuiet.
+            quiet: false,
+            setInputErrorsQuiet(v) { calls.ndQuiet.push(v); this.quiet = !!v; },
+            isInputErrorsQuiet() { return this.quiet; },
         },
         feedBackScorecard: { setHudHidden: (v) => { calls.hides.push(['scorecard', v]); return true; } },
         slopsmithSplitscreen: { isActive: () => ssActive, start: () => { calls.splitStart++; }, stop() { ssActive = false; } },
@@ -157,6 +200,9 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     win.addEventListener = (t, f) => winEvents.addEventListener(t, f);
     win.removeEventListener = (t, f) => winEvents.removeEventListener(t, f);
     win.dispatchEvent = (e) => winEvents.dispatchEvent(e);
+    // Core's _confirmDialog: each prompt waits until the test settles it.
+    const prompts = [];
+    if (confirmDialog) win._confirmDialog = (args) => new Promise((resolve, reject) => { prompts.push({ args, resolve, reject }); });
     // Lyrics Karaoke's v1 API, recording [name, arg] into calls.karaoke.
     if (karaoke) {
         const rec = (name, ...args) => { calls.karaoke.push([name, ...args]); calls.karaokeAt.push(++seq); };
@@ -220,7 +266,15 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         fb.emit('song:ready', { hasPhraseData });
     }
     const fireWin = (type, detail) => win.dispatchEvent(new CustomEvent(type, { detail }));
+    // A cancelable keydown on window (the runtime's and the overlays' capture listeners).
+    const keyWin = (code, key, mods = {}) => {
+        const e = new Event('keydown', { cancelable: true });
+        Object.assign(e, { code, key, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, ...mods });
+        win.dispatchEvent(e);
+        return e;
+    };
     return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong, clock, chart, od, fireWin, audio,
+        sidebar, navLinks, settingsScreen, prompts, keyWin,
         makeRuntime, setSplit: (v) => { ssActive = v; },
         // The next mount's stage: with or without a drum lane beside guitar.
         setDrumLane: (v) => { drumLane = v; } };
@@ -2814,4 +2868,357 @@ test('without overdrive, a stalled chart still ignores a paused overhit', async 
     assert.equal(soundCommand(calls, 'mute').length, 1, 'the chart moves again: the overhit mutes');
     rt.dispose();
     assert.ok(!timers.delays().includes(100), 'no stall tick left after teardown');
+});
+
+// ---- Plan 7 Task 8: full screen, the hover chrome, the sidebar and Settings ----
+
+const fullPrefs = (on = true, parts = {}) => ({ ...prefsWith(parts), fullScreenStage: on });
+const bodyHas = (doc, cls) => doc.body.classList.contains(cls);
+
+test('full screen on: Go asks once, Play again keeps it, Next song leaves it', () => {
+    const { rt, fb, calls, loadSong, player } = setup();
+    rt.startSession({ song: ITEM, prefs: fullPrefs(true) });
+    loadSong(ITEM);
+    assert.equal(calls.fsRequest, 1);
+    assert.ok(player.classList.contains('bab-full'));
+    assert.deepEqual(rt.stageUi(), { full: true, fullScreen: true, sidebar: false, overlay: null });
+    fb.emit('song:ended', {});
+    rt.again();
+    loadSong(ITEM);
+    assert.equal(calls.fsRequest, 1, 'Play again finds it already on');
+    assert.equal(calls.fsExit, 0);
+    assert.ok(player.classList.contains('bab-full'));
+    fb.emit('song:ended', {});
+    rt.next();
+    assert.equal(calls.fsExit, 1);
+    assert.ok(!player.classList.contains('bab-full'));
+    assert.equal(rt.stageUi(), null);
+    rt.dispose();
+});
+
+test("full screen off: no request until the chrome's Full screen button", () => {
+    const { rt, calls, loadSong, player } = setup();
+    rt.startSession({ song: ITEM, prefs: fullPrefs(false) });
+    loadSong(ITEM);
+    assert.equal(calls.fsRequest, 0);
+    assert.ok(!player.classList.contains('bab-full'));
+    const btn = player.querySelector('.bab-chrome-full');
+    btn.click();
+    assert.equal(calls.fsRequest, 1);
+    assert.ok(player.classList.contains('bab-full'));
+    assert.equal(rt.stageUi().full, true);
+    btn.click();
+    assert.equal(calls.fsExit, 1);
+    assert.ok(!player.classList.contains('bab-full'));
+    assert.equal(rt.stageUi().full, false);
+    rt.dispose();
+});
+
+test('leaving browser full screen turns full mode off', () => {
+    const { rt, doc, calls, loadSong, player } = setup();
+    rt.startSession({ song: ITEM, prefs: fullPrefs(true) });
+    loadSong(ITEM);
+    doc.fullscreenElement = null;
+    doc.fire('fullscreenchange');
+    assert.equal(rt.stageUi().full, false);
+    assert.equal(rt.stageUi().fullScreen, false);
+    assert.ok(!player.classList.contains('bab-full'));
+    assert.equal(calls.fsExit, 0, 'nothing left to exit');
+    rt.dispose();
+    assert.equal(doc.listenerCount(), 0, 'dispose removes the fullscreenchange listener');
+});
+
+test('M opens the sidebar; Escape closes it and stays in the song', () => {
+    const { rt, doc, win, calls, loadSong, keyWin } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    const m = keyWin('KeyM', 'm');
+    assert.ok(m.defaultPrevented);
+    assert.ok(bodyHas(doc, 'bab-sidebar-open'));
+    assert.equal(rt.stageUi().sidebar, true);
+    const esc = keyWin('Escape', 'Escape');
+    assert.ok(esc.defaultPrevented);
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    assert.equal(rt.phase(), 'playing');
+    assert.deepEqual(calls.showScreen, []);
+    // With the sidebar shut, Escape is core's again (leave the song).
+    assert.equal(keyWin('Escape', 'Escape').defaultPrevented, false);
+    // A modifier, or typing, leaves M alone.
+    assert.equal(keyWin('KeyM', 'm', { ctrlKey: true }).defaultPrevented, false);
+    const typing = new Event('keydown', { cancelable: true });
+    Object.assign(typing, { code: 'KeyM', key: 'm' });
+    Object.defineProperty(typing, 'target', { value: { tagName: 'INPUT' } });
+    win.dispatchEvent(typing);
+    assert.equal(typing.defaultPrevented, false);
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    rt.dispose();
+});
+
+test('the Menu button opens the sidebar and never toggles it shut', () => {
+    const { rt, doc, loadSong, keyWin, player } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    const menu = player.querySelector('.bab-chrome-menu');
+    menu.click();
+    assert.ok(bodyHas(doc, 'bab-sidebar-open'));
+    menu.click();
+    assert.ok(bodyHas(doc, 'bab-sidebar-open'), 'a second click keeps it open');
+    keyWin('KeyM', 'm');
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'M toggles');
+    rt.dispose();
+});
+
+test('Settings from the sidebar pauses, shows over the stage and resumes with the same token', () => {
+    const { rt, doc, win, calls, loadSong, keyWin, sidebar, navLinks, settingsScreen } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: { difficulty: 'medium' } }) });
+    loadSong(ITEM);
+    keyWin('KeyM', 'm');
+    const click = sidebar.fire('click', { target: navLinks.settings });
+    assert.ok(click.defaultPrevented);
+    assert.equal(calls.pause, 1);
+    assert.ok(bodyHas(doc, 'bab-settings-over'));
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'the sidebar closed first');
+    assert.deepEqual(calls.nav, [], 'the link itself is not followed');
+    assert.equal(settingsScreen.getAttribute('aria-modal'), 'true');
+    assert.equal(rt.stageUi().overlay, 'settings');
+    assert.equal(rt.phase(), 'playing');
+    // M does nothing under Settings.
+    keyWin('KeyM', 'm');
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    win.highway.setMastery(0.9); // core's loadSettings applies the solo mastery
+    const esc = keyWin('Escape', 'Escape');
+    assert.ok(esc.defaultPrevented);
+    assert.ok(!bodyHas(doc, 'bab-settings-over'));
+    assert.equal(calls.setMastery.at(-1), 0.5);
+    assert.deepEqual(calls.resume, [{ wasPlaying: true, gen: 1 }]);
+    assert.ok(calls.resumeAt[0] > calls.setMasteryAt.at(-1), 'the band mastery is back before the resume');
+    assert.equal(rt.stageUi().overlay, null);
+    assert.equal(rt.phase(), 'playing');
+    // resumeAfterOverlay answered true (a scheduled resume): Settings opens again normally.
+    sidebar.fire('click', { target: navLinks.settings });
+    assert.equal(calls.pause, 2);
+    keyWin('Escape', 'Escape');
+    assert.equal(calls.resume.length, 2);
+    rt.dispose();
+});
+
+test('another item asks first: Stay resumes, Leave follows the link', async () => {
+    const { rt, calls, loadSong, sidebar, navLinks, prompts } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    sidebar.fire('click', { target: navLinks.songs });
+    assert.equal(calls.pause, 1);
+    assert.equal(prompts.length, 1);
+    assert.deepEqual(prompts[0].args, { title: 'Leave the song?', body: 'This ends the band song.', confirmText: 'Leave', cancelText: 'Stay' });
+    assert.equal(rt.stageUi().overlay, 'confirm');
+    prompts[0].resolve(false);
+    await flush();
+    assert.equal(calls.resume.length, 1);
+    assert.deepEqual(calls.nav, []);
+    assert.equal(rt.stageUi().overlay, null);
+    sidebar.fire('click', { target: navLinks.songs });
+    prompts[1].resolve(true);
+    await flush();
+    assert.deepEqual(calls.nav, ['songs']);
+    assert.equal(calls.resume.length, 1, 'no second resume');
+    sidebar.fire('click', { target: navLinks.build_a_band });
+    assert.equal(prompts.length, 3, 'the Build-a-Band entry asks too');
+    prompts[2].reject(new Error('gone'));
+    await flush();
+    assert.equal(calls.resume.length, 2, 'a rejected prompt resumes');
+    rt.dispose();
+});
+
+test('no confirm dialog in core: the item is followed directly', () => {
+    const { rt, calls, loadSong, sidebar, navLinks } = setup({ confirmDialog: false });
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    sidebar.fire('click', { target: navLinks.songs });
+    assert.deepEqual(calls.nav, ['songs']);
+    rt.dispose();
+});
+
+test('every exit closes the sidebar, Settings and full screen', async () => {
+    {
+        const { rt, fb, doc, calls, loadSong, keyWin, sidebar, navLinks, settingsScreen } = setup();
+        rt.startSession({ song: ITEM, prefs: fullPrefs(true) });
+        loadSong(ITEM);
+        keyWin('KeyM', 'm');
+        sidebar.fire('click', { target: navLinks.settings });
+        keyWin('KeyM', 'm'); // ignored under Settings
+        fb.emit('song:stop', {});
+        assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+        assert.ok(!bodyHas(doc, 'bab-settings-over'));
+        assert.equal(settingsScreen.getAttribute('role'), null);
+        assert.deepEqual(calls.resume, []);
+        assert.equal(calls.fsExit, 1);
+        assert.equal(rt.stageUi(), null);
+        rt.dispose();
+    }
+    {
+        const { rt, fb, calls, loadSong, sidebar, navLinks, prompts } = setup();
+        rt.startSession({ song: ITEM, prefs: fullPrefs(true) });
+        loadSong(ITEM);
+        sidebar.fire('click', { target: navLinks.songs });
+        fb.emit('song:stop', {});
+        assert.equal(calls.fsExit, 1);
+        prompts[0].resolve(false);
+        await flush();
+        assert.deepEqual(calls.resume, [], 'a prompt answered after the end resumes nothing');
+        assert.deepEqual(calls.nav, []);
+        rt.dispose();
+    }
+});
+
+test('note_detect stays quiet in a band song and the band says why', () => {
+    const { rt, fb, calls, loadSong, fireWin, player } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    assert.deepEqual(calls.ndQuiet, [true]);
+    const d = { message: 'denied', isDefault: true };
+    fireWin('notedetect:input-error', d);
+    fireWin('notedetect:input-error', d);
+    assert.deepEqual(toastTexts(player), ["Guitar input couldn't start"]);
+    fireWin('notedetect:input-error', { message: 'x', isDefault: false });
+    assert.equal(toastTexts(player).length, 1);
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.ndQuiet, [true, false], 'the previous value comes back');
+    rt.dispose();
+});
+
+test('drums alone leaves note_detect alone', () => {
+    const { rt, calls, loadSong, fireWin, player } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith({ guitar: { on: false } }) });
+    loadSong(DRUM_ITEM);
+    fireWin('notedetect:input-error', { message: 'x', isDefault: true });
+    assert.deepEqual(calls.ndQuiet, []);
+    assert.deepEqual(toastTexts(player), []);
+    rt.dispose();
+});
+
+test('the loop button cycles start, end and clear', () => {
+    const { rt, calls, loadSong, player } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    const btn = player.querySelector('.bab-chrome-loop');
+    assert.equal(btn.textContent, 'Loop A');
+    btn.click();
+    assert.equal(btn.textContent, 'Loop B');
+    btn.click();
+    assert.equal(btn.textContent, 'Clear loop');
+    btn.click();
+    assert.equal(btn.textContent, 'Loop A');
+    assert.deepEqual(calls.loop, ['start', 'end', 'clear']);
+    rt.dispose();
+});
+
+test('End asks core to leave the song', () => {
+    const { rt, calls, loadSong, player } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    player.querySelector('.bab-chrome-end').click();
+    assert.equal(calls.exitSong, 1);
+    rt.dispose();
+});
+
+test("without core's overlay API the band pauses and resumes with togglePlay", () => {
+    const { rt, fb, calls, loadSong, keyWin, sidebar, navLinks } = setup({ overlayApi: false });
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    fb.isPlaying = true;
+    sidebar.fire('click', { target: navLinks.settings });
+    assert.equal(calls.togglePlay, 1);
+    fb.isPlaying = false;
+    keyWin('Escape', 'Escape');
+    assert.equal(calls.togglePlay, 2);
+    // Paused before Settings opened: nothing to resume.
+    sidebar.fire('click', { target: navLinks.settings });
+    keyWin('Escape', 'Escape');
+    assert.equal(calls.togglePlay, 2);
+    rt.dispose();
+});
+
+test('the sidebar, M and the chrome exist only while the song plays', () => {
+    const { rt, fb, doc, calls, loadSong, keyWin, player, sidebar, navLinks } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    fb.emit('song:ended', {});
+    keyWin('KeyM', 'm');
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    player.querySelector('.bab-chrome-menu').click();
+    player.querySelector('.bab-edge').fire('pointerenter');
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'the chrome opens nothing under the results');
+    sidebar.fire('click', { target: navLinks.settings });
+    assert.ok(!bodyHas(doc, 'bab-settings-over'));
+    assert.equal(calls.pause, 0);
+    rt.next();
+    assert.equal(player.querySelector('.bab-chrome'), null);
+    assert.equal(player.querySelector('.bab-edge'), null);
+    rt.dispose();
+});
+
+test('a song ending with the sidebar open closes it for the results', () => {
+    const { rt, fb, doc, loadSong, keyWin } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    keyWin('KeyM', 'm');
+    fb.emit('song:ended', {});
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    rt.dispose();
+});
+
+test("solo play keeps core's sidebar: the takeover lives only inside a band session", () => {
+    const { rt, fb, loadSong, sidebar, navLinks, calls } = setup();
+    assert.equal(sidebar.listenerCount(), 0, 'no takeover before a band song');
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    assert.equal(sidebar.listenerCount(), 1);
+    fb.emit('song:ended', {});
+    rt.again();
+    loadSong(ITEM);
+    assert.equal(sidebar.listenerCount(), 1, 'one sidebar per session');
+    fb.emit('song:stop', {});
+    assert.equal(sidebar.listenerCount(), 0, 'teardown destroys it');
+    const click = sidebar.fire('click', { target: navLinks.songs });
+    assert.equal(click.defaultPrevented, false);
+    assert.deepEqual(calls.nav, []);
+    rt.dispose();
+});
+
+test('every stage unmount takes the chrome with it (splitscreen remount)', () => {
+    const env = setup();
+    const { rt, fb, win, loadSong, player, timers } = env;
+    rt.startSession({ song: ITEM, prefs: fullPrefs(true) });
+    loadSong(ITEM);
+    win.slopsmithSplitscreen.stop = () => {}; // splitscreen takes its time going down
+    env.setSplit(true);
+    fb.emit('splitscreen:panels-changed', {});
+    assert.equal(player.querySelectorAll('.bab-chrome').length, 0);
+    assert.ok(!player.classList.contains('bab-full'), 'no full-mode CSS without a stage');
+    env.setSplit(false);
+    timers.fire(50);
+    assert.equal(player.querySelectorAll('.bab-chrome').length, 1, 'the remount brings it back');
+    assert.ok(player.classList.contains('bab-full'));
+    fb.emit('song:stop', {});
+    assert.equal(player.querySelectorAll('.bab-chrome').length, 0);
+    assert.ok(!player.classList.contains('bab-full'));
+    rt.dispose();
+});
+
+test('a Play again whose song fails to start leaves full screen', (t) => {
+    t.mock.method(console, 'warn', () => {});
+    const { rt, fb, calls, loadSong, win } = setup();
+    rt.startSession({ song: ITEM, prefs: fullPrefs(true) });
+    loadSong(ITEM);
+    fb.emit('song:ended', {});
+    const playSong = win.playSong;
+    // The replayed song fails to start: the replayed session goes back to idle.
+    win.playSong = () => { throw new Error('nope'); };
+    rt.again();
+    win.playSong = playSong;
+    return Promise.resolve().then(flush).then(() => {
+        assert.equal(rt.phase(), 'idle');
+        assert.equal(calls.fsExit, 1);
+        rt.dispose();
+    });
 });
