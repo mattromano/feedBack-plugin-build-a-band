@@ -89,6 +89,7 @@ export function makeEl(tag, doc) {
                 if (typeof c === 'string') { const t = makeEl('#text', doc); t.textContent = c; this.appendChild(t); } else this.appendChild(c);
             }
         },
+        prepend(c) { if (c.parentNode) c.remove(); c.parentNode = this; this.children.unshift(c); },
         replaceChildren(...cs) { for (const c of [...this.children]) c.remove(); text = ''; this.append(...cs); },
         remove() {
             if (!this.parentNode) return;

@@ -624,3 +624,46 @@ body.bab-band-song #count-in-overlay { display: none !important; }
     #player .bab-cards { grid-template-columns: minmax(0, 1fr); }
     #player .bab-results-score { font-size: 34px; }
 }
+
+/* ===== Plan 7 Task 7: the sidebar over the stage and Settings over the paused song
+   (R7, R9). Above #player (100), below core's confirm dialog (z 250). ===== */
+body.bab-sidebar-open #v3-sidebar {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 16rem;
+    z-index: 150;
+    box-shadow: 8px 0 32px rgba(0,0,0,.6);
+    animation: bab-sidebar-in .18s ease-out;
+}
+@keyframes bab-sidebar-in {
+    from { transform: translateX(-100%); }
+    to { transform: none; }
+}
+body.bab-settings-over #settings {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 160;
+    overflow-y: auto;
+    background: #0f172a;
+}
+body.bab-settings-over #settings .fb-settings-back { display: none; }
+#settings .bab-settings-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 12px 26px;
+    font: 600 15px/1.2 'Barlow', system-ui, sans-serif;
+    color: #ecebf2;
+    cursor: pointer;
+}
+#settings .bab-settings-back:hover { background: #2c2c34; }
+#settings .bab-settings-back:focus-visible { outline: 2px solid #4aa3ff; outline-offset: 3px; }
+/* ===== end Plan 7 Task 7 ===== */
