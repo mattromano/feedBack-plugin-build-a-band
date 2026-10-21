@@ -1,0 +1,63 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals } from '../src/part-events.js';
+
+test("guitar: only the default detector's counted judgments score", () => {
+    const d = { isDefault: true, counted: true, hit: true, points: 100, multiplier: 2, streak: 12 };
+    assert.deepEqual(guitarEntry(d, 5), { part: 'guitar', t: 5, kind: 'hit', points: 100, multiplier: 2, streak: 12 });
+    assert.equal(guitarEntry({ ...d, isDefault: false }, 5), null);
+    assert.equal(guitarEntry({ ...d, counted: false }, 5), null);
+    assert.equal(guitarEntry(null, 5), null);
+});
+
+test('guitar: a miss scores nothing', () => {
+    const m = guitarEntry({ isDefault: true, counted: true, hit: false, multiplier: 1, streak: 0 }, 6);
+    assert.equal(m.kind, 'miss');
+    assert.equal(m.points, 0);
+});
+
+test('guitar: non-finite fields fall back', () => {
+    assert.deepEqual(guitarEntry({ isDefault: true, counted: true, hit: true, points: 'x' }, 1),
+        { part: 'guitar', t: 1, kind: 'hit', points: 0, multiplier: 1, streak: 0 });
+});
+
+test("drums: only the band's canvas, only judgments", () => {
+    const band = {}, other = {};
+    const hit = { canvas: band, points: 50, multiplier: 2, combo: 14, stars: 1.5, spActive: false };
+    assert.deepEqual(drumsEntry('hit', hit, 3, band),
+        { part: 'drums', t: 3, kind: 'hit', points: 50, multiplier: 2, streak: 14, stars: 1.5 });
+    assert.equal(drumsEntry('hit', { ...hit, canvas: other }, 3, band), null);
+    assert.equal(drumsEntry('hit', hit, 3, null), null);
+    assert.equal(drumsEntry('hit', null, 3, band), null);
+    assert.equal(drumsEntry('sp-ready', hit, 3, band), null);
+    const over = drumsEntry('overhit', { ...hit, points: 50 }, 3, band);
+    assert.equal(over.kind, 'overhit');
+    assert.equal(over.points, 0);
+    const miss = drumsEntry('miss', { canvas: band, combo: 0 }, 3, band);
+    assert.deepEqual(miss, { part: 'drums', t: 3, kind: 'miss', points: 0, multiplier: 1, streak: 0, stars: null });
+});
+
+test("drums: star power doesn't lift the band multiplier", () => {
+    const band = {};
+    assert.equal(drumsEntry('hit', { canvas: band, multiplier: 8, spActive: true }, 0, band).multiplier, 4);
+});
+
+test('vocals: totals are authoritative; pass is a running streak', () => {
+    const d = { rating: 'Strong', accuracy: 0.8, points: 1600, multiplier: 3, streak: 2, stars: 2.4 };
+    assert.deepEqual(vocalsEntry(d, 9), {
+        part: 'vocals', t: 9, kind: 'phrase', points: 1600, multiplier: 3, streak: 2,
+        stars: 2.4, accuracy: 0.8, rating: 'Strong', passed: true,
+    });
+    assert.equal(vocalsEntry({ ...d, streak: 0 }, 9).passed, false);
+    assert.equal(vocalsEntry({ ...d, rating: 7 }, 9).rating, null);
+    assert.equal(vocalsEntry({ rating: 'Strong' }, 9).accuracy, 0);
+    assert.equal(vocalsEntry({ rating: 'Strong' }, 9).stars, null);
+    assert.equal(vocalsEntry(null, 9), null);
+    assert.equal(vocalsEntry('phrase', 9), null);
+});
+
+test('vocalsTotals reads a reset', () => {
+    assert.equal(vocalsTotals(null), null);
+    assert.deepEqual(vocalsTotals({ multiplier: 1, streak: 0, stars: 0 }), { multiplier: 1, streak: 0, stars: 0 });
+    assert.deepEqual(vocalsTotals({ score: 10 }), { multiplier: 1, streak: 0, stars: null });
+});
