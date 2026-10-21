@@ -238,4 +238,17 @@ No new code. Proves the chain end to end in the installed app, **silently**: nev
 
 ## Review
 
-(Filled in after Task 8.)
+Built 2026-10-21, one task at a time, with a review per task and a final whole-branch review. All reviews ended clean.
+
+- **Branches (pushed to the mattromano forks, no PRs):**
+  - feedpak-spec `fep/five-fret-charts` (2759e8f, 008566e), not merged into `custom`.
+  - core `feature/five-fret-charts`: Tasks 2–7 plus the final fixes (1217c02..d4df3f5), then a merge of `feature/build-a-band-stage` (b6a5dd5) so installing it doesn't roll back Build-a-Band's newer core commits.
+- **Tests:** core 3096 passed, 6 skipped (baseline 3003); spec fork 82 passed; core spec gate against the fork: OK.
+- **Task 8, done silently:**
+  - Test pack: Paramore "Misery Business" from the Chorus cache, converted as `paramore-misery_business-5fret_test.sloppak` (guitar 797 notes, bass 752, plus drums). It validates against the fork spec and was copied into `~/Desktop/rocksmith/dlc`.
+  - Install: core b6a5dd5 synced into the installed app (only the 8 changed `lib` files; plugins untouched). The app was launched with `launch-debug.sh` and quit afterwards; it wasn't running before.
+  - Library: after a rescan, `five_fret=bass` returns only the test song, tagged `guitar:chart` and `bass:chart`; `five_fret=guitar:auto` returns nothing.
+  - Highway WebSocket: song_info lists both parts. `?five_fret_part=five_fret_bass` sends a `five_fret` frame with total 752 (matching the file) and the chart's own Easy/Medium/Hard (256/450/615, none generated). Drums still stream.
+  - A normal song (`sloppak/haleimis.sloppak`) still loads Lead/Rhythm/Bass/Drums with `five_fret_parts: []`.
+  - The player stayed paused throughout; nothing played.
+- **Changes from the plan:** the importer follows YARG.Core where the plan's numbers were wrong (HOPO thresholds, sustain cutoff, marker ranges, Phase Shift sysex). JSON times are 3 dp. Notes before 0 s (negative delay) are dropped. The spec now says `h` is the resolved HOPO state and `type: five_fret` is required.
