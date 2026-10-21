@@ -1094,7 +1094,8 @@ export function createBandRuntime({
         // The results over the stage (R16, R17), with this session's numbers.
         // A session with no ledger (the stage never mounted) still gets them,
         // empty; if they can't show at all, Next song runs so core's held
-        // exit is never stuck.
+        // exit is never stuck (autoNext: nobody asked for the next song, so
+        // the band screen shows without opening the library pick).
         showResults(s) {
             const player = doc.getElementById('player');
             if (s.results) return;
@@ -1115,7 +1116,7 @@ export function createBandRuntime({
                 onAgain: () => dispatch({ type: 'again' }),
                 onNext: () => dispatch({ type: 'next' }),
             })) || null : null;
-            if (!s.results) dispatch({ type: 'next' });
+            if (!s.results) { s.autoNext = true; dispatch({ type: 'next' }); }
         },
         hideResults(s) {
             if (!s.results) return;
@@ -1203,12 +1204,12 @@ export function createBandRuntime({
             release = null;
             if (typeof r === 'function') safe(r);
         },
-        showBandScreen() {
+        showBandScreen(s) {
             const el = doc.getElementById(BAND_SCREEN);
             if (!(el && el.classList.contains('active')) && typeof win.showScreen === 'function') {
                 safe(() => win.showScreen(BAND_SCREEN));
             }
-            safe(() => onShowBandScreen && onShowBandScreen());
+            if (!(s && s.autoNext)) safe(() => onShowBandScreen && onShowBandScreen());
         },
         // Play again: teardown left the plugins' displays hidden, so the
         // replayed session takes them over (no flash of their own HUDs).

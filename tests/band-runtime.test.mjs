@@ -1549,6 +1549,19 @@ test('results that cannot show fall through to Next song, so the held exit is re
     rt.dispose();
 });
 
+test("results that cannot show return to the band screen without opening the pick", () => {
+    let n = 0;
+    const { rt, fb, calls, loadSong, player } = setup({ onShowBandScreen: () => { n++; } });
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    player.remove();
+    fb.emit('song:ended', {});
+    assert.equal(rt.phase(), 'idle');
+    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    assert.equal(n, 0, 'no user asked for Next song, so the library pick stays shut');
+    rt.dispose();
+});
+
 // ── Parts that can't play leave the band (final review I1) ──
 
 test('a drum lane that failed to start leaves the band: ×N from the other parts, no drums HUD or card', () => {
