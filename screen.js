@@ -4,6 +4,7 @@
 import { loadPrefs, savePrefs } from './src/prefs.js';
 import { mountStage } from './src/stage.js';
 import { createBandRuntime } from './src/band-runtime.js';
+import { createBandScreen } from './src/band-screen.js';
 
 export { loadPrefs, savePrefs };
 
@@ -17,6 +18,20 @@ function init() {
         try { prev.dispose(); } catch (_) { /* ignore */ }
     }
     window.__buildABandRuntime = createBandRuntime({ win: window, doc: document, mountStage, loadPrefs });
+
+    const prevScreen = window.__buildABandScreen;
+    if (prevScreen && typeof prevScreen.dispose === 'function') {
+        try { prevScreen.dispose(); } catch (_) { /* ignore */ }
+    }
+    window.__buildABandScreen = null;
+    // screen.html is inserted before this module runs, so the root exists now.
+    const root = document.getElementById('build-a-band-root');
+    if (root) {
+        window.__buildABandScreen = createBandScreen({
+            root, win: window, doc: document, loadPrefs, savePrefs,
+            onGo: () => {}, // Task 11 wires Go to the band session.
+        });
+    }
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') init();

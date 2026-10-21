@@ -1,3 +1,59 @@
-<div id="build-a-band-root" class="build-a-band">
-  <p>Band screen arrives in plan 2.</p>
+<div id="build-a-band-root" class="bab-screen">
+  <div class="bab-band">
+    <div class="bab-songhead">
+      <div class="bab-art"></div>
+      <div class="bab-songtext">
+        <h1 class="bab-title">Pick a song</h1>
+        <div class="bab-artist"></div>
+      </div>
+      <div class="bab-chips"></div>
+    </div>
+
+    <div class="bab-picker"></div>
+
+    <div class="bab-cols">
+      <div class="bab-col" data-part="guitar">
+        <div class="bab-top"><span class="bab-ico">🎸</span><h2 class="bab-part-name">Guitar</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Guitar on or off"></button></div>
+        <div class="bab-field"><span class="bab-label">Part</span>
+          <div class="bab-seg" data-field="arrangement"><button type="button" data-value="Lead">Lead</button><button type="button" data-value="Rhythm">Rhythm</button><button type="button" data-value="Bass">Bass</button></div></div>
+        <div class="bab-input"></div>
+        <div class="bab-field"><span class="bab-label">Difficulty</span>
+          <div class="bab-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
+        <div class="bab-signal"></div>
+        <div class="bab-note"></div>
+      </div>
+
+      <div class="bab-col" data-part="drums">
+        <div class="bab-top"><span class="bab-ico">🥁</span><h2 class="bab-part-name">Drums</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Drums on or off"></button></div>
+        <div class="bab-input"></div>
+        <div class="bab-field"><span class="bab-label">Difficulty</span>
+          <div class="bab-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
+        <div class="bab-field"><span class="bab-label">Drum sound</span>
+          <div class="bab-seg" data-field="soundMode"><button type="button" data-value="song">Song drums</button><button type="button" data-value="rockband">Rock Band</button><button type="button" data-value="kit">My kit only</button></div></div>
+        <div class="bab-signal"></div>
+        <div class="bab-note"></div>
+      </div>
+
+      <div class="bab-col" data-part="vocals">
+        <div class="bab-top"><span class="bab-ico">🎤</span><h2 class="bab-part-name">Vocals</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Vocals on or off"></button></div>
+        <div class="bab-input"></div>
+        <div class="bab-field"><span class="bab-label">Difficulty</span>
+          <div class="bab-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
+        <div class="bab-field"><span class="bab-label">Hear myself</span>
+          <div class="bab-seg" data-field="hearMyself"><button type="button" data-value="on">On</button><button type="button" data-value="off">Off</button></div></div>
+        <div class="bab-signal"></div>
+        <div class="bab-note"></div>
+      </div>
+
+      <button type="button" class="bab-addslot" disabled><span class="bab-ico">+</span>Add a part</button>
+    </div>
+
+    <div class="bab-gobar">
+      <div class="bab-field bab-failing"><span class="bab-label">Failing</span>
+        <div class="bab-seg" data-field="failMode"><button type="button" data-value="nofail">No fail</button><button type="button" data-value="fail">Fail on</button></div></div>
+      <label class="bab-fsbox"><input type="checkbox" class="bab-fullscreen" checked> Full screen stage</label>
+      <span class="bab-hint">Pick a song</span>
+      <button type="button" class="bab-go" disabled>GO</button>
+    </div>
+  </div>
 </div>

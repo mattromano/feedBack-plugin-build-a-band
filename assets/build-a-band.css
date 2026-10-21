@@ -1,4 +1,111 @@
-.build-a-band { padding: 2rem; color: inherit; }
+@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&display=swap');
+
+/* ── Band screen (#build-a-band-root.bab-screen) ───────────────────────────
+   Plugin-scoped: every rule sits under .bab-screen. Part colour comes from
+   --bab-c, set per column from the part registry. */
+.bab-screen {
+    --bab-bg: #0b0b10;
+    --bab-panel: #15151d;
+    --bab-line: #2a2a36;
+    --bab-text: #ecebf2;
+    --bab-dim: #8d8ca0;
+    --bab-ok: #41d17a;
+    --bab-field: #0f0f15;
+    --bab-head: 'Unbounded', system-ui, sans-serif;
+    min-height: 100%;
+    background: var(--bab-bg);
+    color: var(--bab-text);
+    font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+.bab-screen *, .bab-screen *::before, .bab-screen *::after { box-sizing: border-box; }
+.bab-screen button { font: inherit; color: inherit; }
+.bab-screen .bab-band { max-width: 1100px; margin: 0 auto; padding: 26px 20px; }
+
+/* Song head */
+.bab-screen .bab-songhead { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.bab-screen .bab-art {
+    flex: none; width: 64px; height: 64px; border-radius: 8px;
+    background: linear-gradient(135deg, #444, #222);
+}
+.bab-screen .bab-songtext { min-width: 0; }
+.bab-screen .bab-title {
+    margin: 0; font-family: var(--bab-head); font-weight: 700; font-size: 26px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bab-screen .bab-artist { color: var(--bab-dim); }
+.bab-screen .bab-chips { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.bab-screen .bab-chip {
+    font-size: 12px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--bab-line); color: var(--bab-dim); white-space: nowrap;
+}
+.bab-screen .bab-chip.bab-good { color: var(--bab-ok); border-color: #2c6b47; }
+.bab-screen .bab-chip.bab-good::before { content: '\25CF\00A0'; }
+
+.bab-screen .bab-picker { margin-bottom: 22px; }
+
+/* Part columns */
+.bab-screen .bab-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 120px; gap: 14px; }
+.bab-screen .bab-col {
+    --bab-c: #888;
+    display: flex; flex-direction: column; gap: 12px; padding: 18px;
+    background: var(--bab-panel); border: 1px solid var(--bab-line);
+    border-top: 4px solid var(--bab-c); border-radius: 14px;
+    transition: opacity 0.2s, filter 0.2s;
+}
+.bab-screen .bab-col.bab-off { opacity: 0.35; }
+.bab-screen .bab-col.bab-unavailable { opacity: 0.35; filter: grayscale(1); }
+.bab-screen .bab-top { display: flex; align-items: center; gap: 10px; }
+.bab-screen .bab-ico { font-size: 34px; line-height: 1; }
+.bab-screen .bab-part-name { margin: 0; flex: 1; font-family: var(--bab-head); font-weight: 700; font-size: 20px; }
+.bab-screen .bab-toggle {
+    position: relative; flex: none; width: 42px; height: 24px; padding: 0;
+    border: 0; border-radius: 12px; background: var(--bab-c); cursor: pointer;
+}
+.bab-screen .bab-toggle::after {
+    content: ''; position: absolute; top: 3px; right: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; transition: right 0.2s;
+}
+.bab-screen .bab-toggle[aria-pressed="false"] { background: #444; }
+.bab-screen .bab-toggle[aria-pressed="false"]::after { right: 21px; }
+.bab-screen .bab-label {
+    display: block; margin-bottom: 4px; font-size: 11px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--bab-dim);
+}
+.bab-screen .bab-seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.bab-screen .bab-seg button {
+    flex: 1; padding: 7px 4px; font-size: 12px; text-align: center; cursor: pointer;
+    background: var(--bab-field); border: 1px solid var(--bab-line); border-radius: 7px;
+}
+.bab-screen .bab-seg button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--bab-c) 25%, var(--bab-field));
+    border-color: var(--bab-c); color: #fff;
+}
+.bab-screen .bab-seg button:disabled { opacity: 0.3; cursor: not-allowed; }
+.bab-screen .bab-note { min-height: 1.2em; font-size: 11px; color: var(--bab-dim); }
+.bab-screen .bab-addslot {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    padding: 10px; font-size: 12px; text-align: center; color: var(--bab-dim);
+    background: transparent; border: 2px dashed var(--bab-line); border-radius: 14px; cursor: not-allowed;
+}
+.bab-screen .bab-addslot .bab-ico { font-size: 28px; opacity: 0.5; }
+
+/* Go bar */
+.bab-screen .bab-gobar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 22px; }
+.bab-screen .bab-failing { --bab-c: #4aa3ff; min-width: 230px; }
+.bab-screen .bab-fsbox { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.bab-screen .bab-hint { color: var(--bab-dim); font-size: 12px; }
+.bab-screen .bab-go {
+    margin-left: auto; padding: 14px 54px; border: 0; border-radius: 12px; cursor: pointer;
+    font-family: var(--bab-head); font-weight: 800; font-size: 20px; letter-spacing: 0.08em; color: #fff;
+    background: linear-gradient(180deg, #4aa3ff, #2a6fd6); box-shadow: 0 6px 24px #2a6fd655;
+}
+.bab-screen .bab-go:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+
+@media (max-width: 860px) {
+    .bab-screen .bab-cols { grid-template-columns: minmax(0, 1fr); }
+    .bab-screen .bab-songhead { flex-wrap: wrap; }
+    .bab-screen .bab-chips { margin-left: 0; justify-content: flex-start; }
+}
 
 /* ── Stage (inside core #player while band mode is on) ─────────────────────
    .bab-lanes overlays #player down to the footer (bottom set from JS). The
