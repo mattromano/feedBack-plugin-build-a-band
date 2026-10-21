@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createBandHud } from '../src/hud.js';
+import { readFileSync } from 'node:fs';
 import { makeDoc, makeEl } from './fake-dom.mjs';
 
 const PREFS = {
@@ -180,6 +181,39 @@ test('parts without a host element are skipped', () => {
     hud.callout('drums', 'x');
     hud.setOverdrive('vocals', 1, true);
     hud.destroy();
+});
+
+test('the crowd marker starts at R6\'s 0.66 before any update', () => {
+    const { hud, partHud } = setup();
+    const marker = partHud('drums').querySelector('.bab-crowd').querySelector('i');
+    assert.equal(marker.style.bottom, '66%');
+    assert.ok(marker.classList.contains('bab-crowd-green'));
+    hud.destroy();
+});
+
+test('a silent update writes values but pops no callout and no miss flash', () => {
+    const { player, hud, partHud } = setup();
+    const co = partHud('guitar').querySelector('.bab-callout');
+    const glow = partHud('drums').querySelector('.bab-glow');
+    hud.update(snap({}, { guitar: { streak: 49 }, drums: { streak: 12 } }));
+    hud.update(snap({ score: 900 }, { guitar: { streak: 50 }, drums: { streak: 0 } }), { silent: true });
+    assert.equal(player.querySelector('.bab-hud-score').textContent, '900');
+    assert.equal(glow.style.props['--bab-glow'], '0.15');
+    assert.equal(co.textContent, '');
+    assert.equal(co.classList.contains('bab-show'), false);
+    assert.equal(glow.classList.contains('bab-glow-miss'), false);
+    // The next live update compares against the silent snapshot.
+    hud.update(snap({}, { guitar: { streak: 51 }, drums: { streak: 0 } }));
+    assert.equal(co.textContent, '');
+    assert.equal(glow.classList.contains('bab-glow-miss'), false);
+    hud.destroy();
+});
+
+test('CSS: the bar sits at z-index 20 and core\'s section map is hidden on the stage', () => {
+    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
+    assert.match(css, /#player\.bab-stage #section-map \{ display: none; \}/);
+    const bar = css.match(/#player \.bab-hud \{[^}]*\}/);
+    assert.ok(bar && /z-index: 20;/.test(bar[0]), 'bar z-index 20');
 });
 
 test('destroy removes everything', () => {

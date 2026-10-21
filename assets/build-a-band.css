@@ -188,6 +188,9 @@
 /* The band HUD bar replaces core's player HUD row (song info, time, live
    performance) on the stage (R9). */
 #player.bab-stage #player-hud { display: none; }
+/* Core's clickable section map (top of #player) would sit, invisible but
+   clickable, under the band HUD bar: hidden on the stage too. */
+#player.bab-stage #section-map { display: none; }
 /* Vocals alone: no lane holds the main highway. setVisible(false) stops its
    drawing; this hides the last frame left on the canvas. */
 #player.bab-stage.bab-main-hidden #highway { visibility: hidden; }
@@ -325,7 +328,7 @@ body.bab-band-song #count-in-overlay { display: none !important; }
    strip, coloured by --bab-c. Unbounded for numbers and callouts, Barlow for
    tags. Nothing here takes pointer input. */
 #player .bab-hud {
-    position: absolute; left: 0; right: 0; top: 0; height: 48px; z-index: 25;
+    position: absolute; left: 0; right: 0; top: 0; height: 48px; z-index: 20;
     box-sizing: border-box; display: flex; align-items: center; gap: 22px; padding: 0 18px;
     background: linear-gradient(180deg, #14141c, #0b0b10); border-bottom: 1px solid #2a2a36;
     color: #ecebf2; pointer-events: none; overflow: hidden; white-space: nowrap;
@@ -393,10 +396,15 @@ body.bab-band-song #count-in-overlay { display: none !important; }
     position: absolute; inset: 0; opacity: var(--bab-glow, 0.15); transition: opacity 0.3s;
     box-shadow: inset 0 0 0 3px var(--bab-c), inset 0 0 40px color-mix(in srgb, var(--bab-c) 30%, transparent);
 }
-#player .bab-glow.bab-glow-miss { animation: bab-glow-miss 400ms ease-out; }
-@keyframes bab-glow-miss {
-    from { opacity: 1; box-shadow: inset 0 0 0 4px #ff4d4d, inset 0 0 60px rgba(255, 77, 77, 0.55); }
+/* Miss flash, opacity only: the glow jumps to full and a red layer fades out. */
+#player .bab-glow::after {
+    content: ''; position: absolute; inset: 0; opacity: 0;
+    box-shadow: inset 0 0 0 4px #ff4d4d, inset 0 0 60px rgba(255, 77, 77, 0.55);
 }
+#player .bab-glow.bab-glow-miss { animation: bab-glow-full 400ms ease-out; }
+#player .bab-glow.bab-glow-miss::after { animation: bab-glow-miss 400ms ease-out; }
+@keyframes bab-glow-full { from { opacity: 1; } }
+@keyframes bab-glow-miss { from { opacity: 1; } to { opacity: 0; } }
 #player .bab-callout {
     position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(0.8); opacity: 0;
     white-space: nowrap; color: #fff; letter-spacing: 0.04em;
@@ -418,6 +426,6 @@ body.bab-band-song #count-in-overlay { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
     #player .bab-callout { transform: translate(-50%, -50%); }
     #player .bab-callout.bab-show { animation: bab-fade 1.6s ease-out; }
-    #player .bab-glow.bab-glow-miss { animation: none; }
+    #player .bab-glow.bab-glow-miss, #player .bab-glow.bab-glow-miss::after { animation: none; }
 }
 @keyframes bab-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }

@@ -5,6 +5,7 @@
 // writes a value to the DOM only when it changed. No DOM queries after build.
 import { icon } from './icons.js';
 import { getPart } from './parts.js';
+import { CROWD } from './band-score.js';
 import { starDisplay } from './stars.js';
 import {
     formatScore, difficultyLabel, crowdZone, glowLevel, GLOW_MIN, streakCallout, bandMultiplierText,
@@ -98,6 +99,9 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
         mult.textContent = '×1';
         const crowd = el('div', 'bab-crowd', root);
         const marker = el('i', '', crowd);
+        // R6's starting crowd, so the marker doesn't sit at the floor and slide on the first update.
+        marker.style.bottom = pct(CROWD.start);
+        marker.classList.add('bab-crowd-' + crowdZone(CROWD.start));
         const callout = el('div', 'bab-callout', root);
         callout.setAttribute('role', 'status');
         host.appendChild(root);
@@ -107,8 +111,11 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
     let prev = null;
     let alive = true;
 
-    function update(snapshot) {
+    // opts.silent: write the values but fire no callouts and no miss flash (replays
+    // and seek-driven updates, Task 12).
+    function update(snapshot, opts) {
         if (!alive || !snapshot) return;
+        const silent = !!(opts && opts.silent);
         text(scoreEl, formatScore(snapshot.score));
         const { full, partial, gold } = starDisplay(snapshot.stars);
         fills.forEach((fill, i) => {
@@ -133,7 +140,7 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
             const streak = Number.isFinite(p.streak) ? p.streak : 0;
             put(h.glow, 'level', glowLevel(streak), (v) => { h.glow.style.setProperty('--bab-glow', String(v)); });
             const before = prev && prev[part];
-            if (!before) continue;
+            if (!before || silent) continue;
             const was = Number.isFinite(before.streak) ? before.streak : 0;
             if (was > 0 && streak === 0) restart(h.glow, 'bab-glow-miss');
             const line = streakCallout(part, was, streak);
