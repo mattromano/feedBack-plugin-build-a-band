@@ -1180,3 +1180,10 @@ test('the art is hidden until there is a song', () => {
     assert.equal(t.root.querySelector('.bab-art-img').hidden, true);
     t.bs.dispose();
 });
+
+test('the Confirm key listener runs in the capture phase, ahead of core gamepad-nav', async () => {
+    const { readFileSync } = await import('node:fs');
+    const src = readFileSync(new URL('../src/band-screen.js', import.meta.url), 'utf8');
+    assert.match(src, /listen\(doc, 'keydown', \(e\) => \{\s*if \(!visible \|\| !isActive\(\) \|\| view !== 'confirm'\) return;[\s\S]*?\}, true\);/);
+    assert.match(src, /const listen = \(target, type, fn, capture = false\) => \{/);
+});

@@ -74,9 +74,9 @@ export function createBandScreen({
     const $ = (sel, el = root) => el.querySelector(sel);
     const $$ = (sel, el = root) => [...el.querySelectorAll(sel)];
     const cleanups = [];
-    const listen = (target, type, fn) => {
-        target.addEventListener(type, fn);
-        cleanups.push(() => target.removeEventListener(type, fn));
+    const listen = (target, type, fn, capture = false) => {
+        target.addEventListener(type, fn, capture);
+        cleanups.push(() => target.removeEventListener(type, fn, capture));
     };
 
     let prefs = loadPrefs();
@@ -624,6 +624,7 @@ export function createBandScreen({
     }
 
     // On Confirm, Space starts the song and Esc goes back to the library pick.
+    // Capture phase so preventDefault reaches core's gamepad-nav (it skips handled keys).
     listen(doc, 'keydown', (e) => {
         if (!visible || !isActive() || view !== 'confirm') return;
         if (e.key === 'Escape') {
@@ -634,7 +635,7 @@ export function createBandScreen({
         }
         if (!isGoKey(e, doc.activeElement)) return;
         if (go() && e.preventDefault) e.preventDefault();
-    });
+    }, true); // capture: before core gamepad-nav's document listener, which would send B home
 
     // Core flips .active right after screen:changing but sends screen:changed
     // only after some awaits, so leaving hides the screen on :changing.
