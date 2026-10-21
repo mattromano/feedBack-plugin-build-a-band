@@ -2712,3 +2712,79 @@ test('Rock Band stacked with fail mode: each claim follows its own rule', async 
     assert.equal(soundCaps(calls).length, sound, 'nothing more for the sound claim');
     rt.dispose();
 });
+
+// ── Final review fixes (plan 6) ──
+
+// Fix 2 (T4 M1): a fail-mode rescue while Rock Band holds the drums.
+const RB_RESCUE_ITEM = { ...FULL_ITEM, stem_ids: ['guitar', 'drums', 'vocals'] };
+const rbRescuePrefs = () => failPrefs({ vocals: SINGER, drums: { soundMode: 'rockband' } });
+
+test('Rock Band: a rescue with the drums out restores the fail claim only', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, calls } = env;
+    rt.startSession({ song: RB_RESCUE_ITEM, prefs: rbRescuePrefs() });
+    loadSong(RB_RESCUE_ITEM);
+    await flush();
+    dropDrums(env);
+    assert.equal(rt.snapshot().parts.drums.failed, true);
+    await flush();
+    env.clock.t = 16;
+    fb.emit('karaoke:od-activate', { fill: 0.5, t: 16 });
+    assert.equal(rt.snapshot().parts.drums.failed, false, 'rescued');
+    await flush();
+    assert.deepEqual(stemsCommand(calls, 'restore').filter(isFailDrums).map((r) => r.args), [{ claimId: FAIL_DRUMS }]);
+    assert.equal(capCalls(calls, 'release', isFailDrums).length, 1);
+    assert.deepEqual(soundCommand(calls, 'restore'), [], 'Rock Band keeps the drums out until a hit');
+    assert.deepEqual(rt.drumSound(), { mode: 'rockband', muted: true });
+    rt.dispose();
+});
+
+test('Rock Band: a rescue with the drums back in sends only the fail restore', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls } = env;
+    rt.startSession({ song: RB_RESCUE_ITEM, prefs: rbRescuePrefs() });
+    loadSong(RB_RESCUE_ITEM);
+    await flush();
+    dropDrums(env);
+    fb.emit('drums:hit', hit(mounts[0].drumCanvas));
+    await flush();
+    assert.equal(soundCommand(calls, 'restore').length, 1);
+    assert.equal(capCalls(calls, 'release', isSound).length, 1);
+    const sound = soundCaps(calls).length;
+    env.clock.t = 16;
+    fb.emit('karaoke:od-activate', { fill: 0.5, t: 16 });
+    await flush();
+    assert.equal(stemsCommand(calls, 'restore').filter(isFailDrums).length, 1);
+    assert.equal(capCalls(calls, 'release', isFailDrums).length, 1);
+    assert.equal(soundCaps(calls).length, sound, 'nothing for the sound claim');
+    assert.deepEqual(rt.drumSound(), { mode: 'rockband', muted: false });
+    rt.dispose();
+});
+
+// Fix 3 (T4 M3): the Rock Band band-failed ending.
+test('Rock Band: the band-failed ending keeps the drums out until teardown', async () => {
+    const env = setup();
+    const { rt, loadSong, calls } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: failPrefs({ drums: { soundMode: 'rockband' } }) });
+    loadSong(STEM_ITEM);
+    dropGuitar(env);
+    dropDrums(env, 15);
+    assert.equal(rt.phase(), 'ending', 'band failed');
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute'], 'the band-failing miss muted; the results keep it');
+    env.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' });
+    await flush();
+    assert.deepEqual(soundKinds(calls).slice(-2), ['dispatch:restore', 'release']);
+    assert.equal(soundKinds(calls).length, 4);
+    for (const part of ['guitar', 'drums']) {
+        const isFail = (r) => !!r && (r.claimId === `build_a_band:fail:${part}`
+            || !!(r.args && r.args.claimId === `build_a_band:fail:${part}`));
+        assert.equal(stemsCommand(calls, 'restore').filter(isFail).length, 1, `${part} fail restore`);
+        assert.equal(capCalls(calls, 'release', isFail).length, 1, `${part} fail release`);
+    }
+    assert.equal(rt.drumSound(), null);
+    const total = calls.caps.length;
+    rt.dispose();
+    await flush();
+    assert.equal(calls.caps.length, total, 'dispose sends nothing more');
+});
