@@ -3336,3 +3336,19 @@ test('the song ending under the leave prompt closes it before the results and re
     assert.deepEqual(calls.nav, []);
     rt.dispose();
 });
+
+test('a held M opens the sidebar once', () => {
+    const { rt, doc, loadSong, keyWin } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    keyWin('KeyM', 'm');
+    assert.ok(bodyHas(doc, 'bab-sidebar-open'));
+    for (let i = 0; i < 2; i++) {
+        const e = keyWin('KeyM', 'm', { repeat: true });
+        assert.ok(e.defaultPrevented, 'a repeat is still consumed');
+        assert.ok(bodyHas(doc, 'bab-sidebar-open'), 'a repeat does not toggle');
+    }
+    keyWin('KeyM', 'm', { repeat: false });
+    assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'a fresh press closes it');
+    rt.dispose();
+});

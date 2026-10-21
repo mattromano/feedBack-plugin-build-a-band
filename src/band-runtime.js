@@ -783,6 +783,8 @@ export function createBandRuntime({
         // Another dialog (core's exit confirm) keeps its keys.
         if (otherModalOpen(doc, win, doc.getElementById('v3-sidebar'))) return;
         e.preventDefault();
+        // A held M is consumed but toggles once, so the sidebar doesn't flicker.
+        if (isM && e.repeat) return;
         if (isM) { s.sidebar.toggle('key'); return; }
         e.stopPropagation();
         s.sidebar.close();
