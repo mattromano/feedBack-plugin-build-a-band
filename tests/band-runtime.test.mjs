@@ -2322,32 +2322,47 @@ test('onsets while paused never deploy', () => {
     rt.dispose();
 });
 
-test("without core's isPlaying, onsets deploy only while chart time advances", () => {
-    const env = odSetup();
-    const { rt, fb, loadSong, fireWin, at, chart, clock } = env;
-    delete fb.isPlaying;
-    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
-    loadSong(ITEM);
+// Residual (re-review): in browser-audio mode feedBack.isPlaying can stay true
+// across an ordinary pause, so a highway clock that stood still between the
+// last two OD ticks also counts as paused.
+function readyGuitar(env) {
+    const { fireWin, at, timers } = env;
     for (let i = 0; i < 9; i++) {
         at(i);
         fireWin('notedetect:hit', guitarHit({ noteTime: i, points: 100 }));
     }
     at(6);
-    env.timers.fire(100);
+    timers.fire(100);
     at(10);
-    env.timers.fire(100);
-    assert.equal(rt.overdrive().guitar.ready, true);
-    // Paused at chart time 10: the highway clock stands still.
-    for (const t of [10.5, 11, 11.5]) {
-        clock.t = t;
-        fireWin('notedetect:onset', { t, midi: null, confidence: null, level: 0.3, source: 'level', isDefault: true });
-    }
-    assert.equal(chart.t, 10);
+    timers.fire(100);
+    assert.equal(env.rt.overdrive().guitar.ready, true);
+}
+const onsetAt = (env, t) => env.fireWin('notedetect:onset', { t, midi: null, confidence: null, level: 0.3, source: 'level', isDefault: true });
+
+test('with isPlaying stuck true and the chart clock frozen across two ticks, onsets never deploy', () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, clock, timers } = env;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    loadSong(ITEM);
+    readyGuitar(env);
+    assert.equal(fb.isPlaying, true, 'core never flipped it');
+    timers.fire(100);   // chart time still 10: paused
+    for (const t of [10.5, 11, 11.5]) { clock.t = t; onsetAt(env, t); }
     assert.equal(rt.snapshot().parts.guitar.deploys, 0);
-    for (const t of [12, 12.5, 13]) {
-        at(t);
-        fireWin('notedetect:onset', { t, midi: null, confidence: null, level: 0.3, source: 'level', isDefault: true });
-    }
+    assert.equal(rt.overdrive().guitar.active, false, 'the bar is not spent');
+    rt.dispose();
+});
+
+test('with isPlaying true and the chart clock advancing, onsets still deploy', () => {
+    const env = odSetup();
+    const { rt, loadSong, at, timers } = env;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    loadSong(ITEM);
+    readyGuitar(env);
+    at(10.2);
+    timers.fire(100);
+    for (const t of [10.5, 11, 11.5]) { at(t); onsetAt(env, t); }
     assert.equal(rt.snapshot().parts.guitar.deploys, 1);
+    assert.equal(rt.overdrive().guitar.active, true);
     rt.dispose();
 });

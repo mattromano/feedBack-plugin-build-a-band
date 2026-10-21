@@ -186,8 +186,10 @@ export function createBandRuntime({
             // Overdrive (plan 5): the per-song session and its tick.
             od: null,
             odTimer: null,
-            // Chart time at the last OD tick or onset check (the paused fallback).
+            // Chart time at the last OD tick, and whether it stood still since the
+            // tick before (the paused fallback).
             lastChartT: null,
+            chartStalled: false,
             // Drums stars over the full chart (M6, R20): the largest thresholds seen.
             drumsThresholds: null,
             // Fail mode (plan 5 R12, R13): the parts shown dropped out, the parts
@@ -488,6 +490,8 @@ export function createBandRuntime({
         if (session !== s || state.phase !== 'playing' || !s.od) return;
         const t = displayTime(s);
         const chartT = chartNow();
+        // Paused fallback: the chart clock stood still between the last two ticks.
+        s.chartStalled = Number.isFinite(chartT) && Number.isFinite(s.lastChartT) && !(chartT > s.lastChartT);
         if (Number.isFinite(chartT)) s.lastChartT = chartT;
         const od = s.od;
         safe(() => od.tick(Number.isFinite(chartT) ? chartT : t, t));
@@ -1049,17 +1053,12 @@ export function createBandRuntime({
         record(s, { ...entry, factor: od ? od.factorFor('guitar', entry.t) : 1 });
         if (od && !failed) safe(() => od.guitarJudgment(entry.noteTime, entry.kind === 'hit', entry.t));
     }
-    // Whether the song is paused (fix 6). Core's own transport flag,
-    // window.feedBack.isPlaying, when it's a boolean: core's transport sets it in
-    // both the browser (<audio>) and the desktop native engine paths. Otherwise
-    // the chart clock: paused when highway.getTime() hasn't advanced since the
-    // previous check (an onset or an OD tick).
+    // Whether the song is paused (fix 6): core's transport flag says so
+    // (window.feedBack.isPlaying === false), or the chart clock stood still
+    // between the last two OD ticks. The flag alone isn't enough: an ordinary
+    // browser-audio pause can leave it true (core transport.js togglePlay).
     function songPaused(s) {
-        const chartT = chartNow();
-        const stalled = Number.isFinite(chartT) && Number.isFinite(s.lastChartT) && !(chartT > s.lastChartT);
-        if (Number.isFinite(chartT)) s.lastChartT = chartT;
-        if (typeof fb.isPlaying === 'boolean') return !fb.isPlaying;
-        return stalled;
+        return fb.isPlaying === false || s.chartStalled;
     }
 
     function chartNow() {
