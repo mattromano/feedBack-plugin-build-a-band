@@ -13,8 +13,7 @@ export function buildLibraryQuery({ q = '', filters = DEFAULT_FILTERS, parts = {
     params.set('size', String(size));
     if (filters.guitar || (playable && parts.guitar && parts.guitar.on)) params.set('arrangements_has', 'Lead,Rhythm,Bass');
     if (filters.drums || (playable && parts.drums && parts.drums.on)) params.set('has_drums', '1');
-    // Playable leaves vocals out until the vocals lane ships (plan 3).
-    if (filters.vocals) params.set('has_lyrics', 'pitch');
+    if (filters.vocals || (playable && parts.vocals && parts.vocals.on)) params.set('has_lyrics', 'pitch');
     if (filters.drumStem) params.set('stems_has', 'drums');
     return params.toString();
 }

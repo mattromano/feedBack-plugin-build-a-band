@@ -10,6 +10,10 @@ export function drumsDifficultyId(diff) {
     return DIFFICULTIES.includes(diff) ? diff : 'medium';
 }
 
+export function vocalsDifficultyId(diff) {
+    return DIFFICULTIES.includes(diff) ? diff : 'medium';
+}
+
 export function masteryFromPct(pct) {
     if (typeof pct !== 'number' || !Number.isFinite(pct)) return null;
     return Math.max(0, Math.min(100, pct)) / 100;

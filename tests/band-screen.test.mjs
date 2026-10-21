@@ -67,7 +67,7 @@ test('skeleton: columns coloured from the registry, Go disabled until a song is 
 });
 
 test('setSong stores lastSong + recentSongs, renders chips and greys what the song lacks', () => {
-    const { root, col, btn, bs, prefs } = setup();
+    const { root, col, btn, bs, prefs } = setup({ winExtra: { lyricsKaraoke: karaokeFake() } });
     bs.setSong(holiday);
     assert.equal(bs.getSong(), holiday);
     assert.equal(prefs().lastSong.filename, holiday.filename);
@@ -566,5 +566,36 @@ test('the drums light stays off after Go: device picks and in-flight list loads'
     await flush();
     assert.equal(d.calls.open.length, 0, 'a device pick does not reopen it either');
     assert.equal(d.listeners.size, 0);
+    bs.dispose();
+});
+
+const karaokeFake = () => ({
+    apiVersion: 1, mountStrip() {}, setKaraokeMode() {}, startMic() {}, stopMic() {}, setDifficulty() {}, setHearMyself() {},
+});
+const vocalsOnly = {
+    parts: { guitar: { on: false }, drums: { on: false }, vocals: { on: true } },
+};
+
+test('without window.lyricsKaraoke the vocals column says to turn the plugin on', () => {
+    const { col, bs } = setup();
+    assert.equal(col('vocals').querySelector('.bab-note').textContent, 'Turn on the Lyrics Karaoke plugin to sing');
+    assert.ok(col('vocals').classList.contains('bab-unavailable'));
+    bs.dispose();
+});
+
+test('with only vocals on and a pitched song, Go is enabled', () => {
+    const { root, bs, gos } = setup({ stored: vocalsOnly, winExtra: { lyricsKaraoke: karaokeFake() } });
+    bs.setSong({ ...holiday, has_vocal_pitch: true });
+    assert.equal(root.querySelector('.bab-go').disabled, false);
+    root.querySelector('.bab-go').click();
+    assert.equal(gos.length, 1);
+    bs.dispose();
+});
+
+test('without karaoke, only vocals on leaves Go disabled', () => {
+    const { root, bs } = setup({ stored: vocalsOnly });
+    bs.setSong({ ...holiday, has_vocal_pitch: true });
+    assert.equal(root.querySelector('.bab-go').disabled, true);
+    assert.equal(root.querySelector('.bab-hint').textContent, 'Turn on a part');
     bs.dispose();
 });

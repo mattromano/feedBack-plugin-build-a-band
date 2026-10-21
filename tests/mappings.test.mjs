@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { masteryFor, drumsDifficultyId, masteryFromPct, guitarArrIndex } from '../src/mappings.js';
+import { masteryFor, drumsDifficultyId, vocalsDifficultyId, masteryFromPct, guitarArrIndex } from '../src/mappings.js';
 
 test('masteryFor maps the four levels', () => {
     assert.equal(masteryFor('easy'), 0.25);
@@ -27,4 +27,10 @@ test('guitarArrIndex', () => {
     assert.equal(guitarArrIndex([{ name: 'Lead' }, { name: 'Rhythm' }], 'rhythm'), 1);
     assert.equal(guitarArrIndex([{ index: 0, name: 'Combo', smart_name: 'Lead' }], 'Lead'), 0);
     assert.equal(guitarArrIndex([{ name: 'Lead' }], 'Bass'), undefined);
+});
+
+test('vocalsDifficultyId passes the four levels and defaults to medium', () => {
+    assert.equal(vocalsDifficultyId('expert'), 'expert');
+    assert.equal(vocalsDifficultyId('beginner'), 'medium');
+    assert.equal(vocalsDifficultyId(undefined), 'medium');
 });

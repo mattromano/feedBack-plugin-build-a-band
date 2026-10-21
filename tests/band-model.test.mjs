@@ -27,7 +27,7 @@ test('full band song', () => {
     assert.equal(m.columns.drums.unavailable, false);
     assert.equal(m.columns.vocals.unavailable, false);
     assert.equal(m.columns.drums.soundModesDisabled, false);
-    assert.equal(m.columns.vocals.note, 'Vocals lane arrives with the next update');
+    assert.equal(m.columns.vocals.note, '');
     assert.equal(m.columns.guitar.note, '');
     assert.equal(m.columns.drums.note, '');
 });
@@ -52,9 +52,9 @@ test('song without a drum chart greys drums; guitar alone still enables Go', () 
     assert.equal(m.columns.drums.unavailable, true);
     assert.equal(m.columns.drums.note, 'No drum chart for this song');
     assert.equal(m.goEnabled, true);
-    const off = bandScreenModel({ prefs: withParts({ guitar: { on: false } }), item: { ...fullBand, has_drum_tab: false } });
+    const off = bandScreenModel({ prefs: withParts({ guitar: { on: false }, vocals: { on: false } }), item: { ...fullBand, has_drum_tab: false } });
     assert.equal(off.goEnabled, false);
-    assert.equal(off.goHint, 'Turn on guitar or drums');
+    assert.equal(off.goHint, 'Turn on a part');
 });
 
 test('guitar is checked against any of Lead/Rhythm/Bass, not only the chosen one', () => {
@@ -66,10 +66,32 @@ test('guitar is checked against any of Lead/Rhythm/Bass, not only the chosen one
     assert.equal(none.columns.guitar.note, 'No guitar part in this song');
 });
 
-test('only vocals on: go disabled with "Turn on guitar or drums"', () => {
+test('only vocals on: Go is enabled for a song with vocal pitch', () => {
     const m = bandScreenModel({ prefs: withParts({ guitar: { on: false }, drums: { on: false } }), item: fullBand });
+    assert.equal(m.goEnabled, true);
+});
+
+test('nothing on: Go disabled with "Turn on a part"', () => {
+    const none = withParts({ guitar: { on: false }, drums: { on: false }, vocals: { on: false } });
+    const m = bandScreenModel({ prefs: none, item: fullBand });
     assert.equal(m.goEnabled, false);
-    assert.equal(m.goHint, 'Turn on guitar or drums');
+    assert.equal(m.goHint, 'Turn on a part');
+});
+
+test('karaoke not loaded greys vocals with its note, even with no song', () => {
+    const m = bandScreenModel({ prefs, item: null, vocalsSupported: false });
+    assert.deepEqual({ unavailable: m.columns.vocals.unavailable, note: m.columns.vocals.note },
+        { unavailable: true, note: 'Turn on the Lyrics Karaoke plugin to sing' });
+    const withSong = bandScreenModel({ prefs, item: fullBand, vocalsSupported: false });
+    assert.equal(withSong.columns.vocals.unavailable, true);
+    assert.equal(withSong.columns.vocals.note, 'Turn on the Lyrics Karaoke plugin to sing');
+});
+
+test('karaoke not loaded and only vocals on: Go disabled', () => {
+    const only = withParts({ guitar: { on: false }, drums: { on: false } });
+    const m = bandScreenModel({ prefs: only, item: fullBand, vocalsSupported: false });
+    assert.equal(m.goEnabled, false);
+    assert.equal(m.goHint, 'Turn on a part');
 });
 
 test('isGoKey', () => {

@@ -11,6 +11,7 @@ import {
 } from './devices.js';
 import { createLevelMeter } from './level-meter.js';
 import { openPadLight } from './pad-light.js';
+import { karaokeApi } from './vocals.js';
 
 const SCREEN_ID = 'plugin-build_a_band';
 const SOUND_MODES_NEEDING_STEM = ['rockband', 'kit'];
@@ -99,7 +100,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
 
     function render() {
         if (disposed) return;
-        const model = bandScreenModel({ prefs, item: song });
+        const model = bandScreenModel({ prefs, item: song, vocalsSupported: !!karaokeApi(win) });
         renderSong();
         for (const part of PART_TYPES) {
             const col = $(`.bab-col[data-part="${part.id}"]`);
@@ -125,7 +126,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     // onGo may throw, return false, or return a promise that rejects or
     // resolves false: any of those releases the latch so Go works again.
     function go() {
-        if (disposed || launched || !bandScreenModel({ prefs, item: song }).goEnabled) return false;
+        if (disposed || launched || !bandScreenModel({ prefs, item: song, vocalsSupported: !!karaokeApi(win) }).goEnabled) return false;
         launched = true;
         const attempt = ++goAttempt;
         stopLight('drums');
@@ -170,7 +171,8 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
 
     const picker = mountSongPicker({
         host: $('.bab-picker'), doc, fetchJson: getJson,
-        getParts: () => prefs.parts,
+        getParts: () => (karaokeApi(win) ? prefs.parts
+            : { ...prefs.parts, vocals: { ...prefs.parts.vocals, on: false } }),
         getRecent: () => prefs.recentSongs,
         onPick: setSong,
     });

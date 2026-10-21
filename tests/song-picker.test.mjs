@@ -118,7 +118,7 @@ test('refresh re-runs with the current parts', async () => {
     picker.refresh();
     timers.run();
     await flush();
-    assert.equal(urls[1], '/api/library?q=holiday&size=30&has_drums=1', 'vocals on adds no pitch filter');
+    assert.equal(urls[1], '/api/library?q=holiday&size=30&has_drums=1&has_lyrics=pitch', 'vocals on adds the pitch filter');
     picker.dispose();
 });
 
