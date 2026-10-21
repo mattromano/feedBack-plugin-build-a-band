@@ -9,6 +9,26 @@ Early skeleton: the band screen is a placeholder until plan 2.
   (band chips, click to select, **Use this song**) → Confirm (parts, difficulty, devices,
   drum sound) → GO. Next song goes back to the library.
 
+## Playing on a controller
+
+- **Joining.** With the 5-Fret plugin installed, press **Start** on an Xbox controller or a
+  plastic guitar on the band screen. It gets a column on Band setup and a row on Confirm,
+  next to the guitar, drums and vocals. Its frets light up as you press them.
+- **Set up first.** A controller the 5-Fret plugin doesn't know yet (no standard mapping,
+  no saved binding) can't join. The join slot lists it with a **Set up** link to the 5-Fret
+  controls screen, and Back there returns to the band screen. **Controls** on a column
+  opens the same screen.
+- **On Confirm** pick the part (Lead, Rhythm or Bass; parts the song lacks are greyed, each
+  is tagged *real* or *auto*, and "also:" names the other controllers on it), the
+  difficulty, Lefty, and Part audio: **Rock Band** drops your part's stem on a miss,
+  **Always play** keeps it. Part audio is greyed when the song has no stem for the part.
+- **Start on a joined controller** is the screen's main button: Choose a song on Band
+  setup, GO on Confirm. Frets never press GO. **Leave** on the column, or holding Back for
+  1 s, takes the controller out. Joined controllers stay joined across songs; one that is
+  unplugged shows "Not connected" and sits out.
+- **Missing pieces.** Without the 5-Fret plugin the join slot says to install it; on an
+  older feedBack it says to update.
+
 ## On the stage: full screen, the hover chrome, the sidebar and Settings
 
 - **Full screen.** With "Full screen stage" on (the band screen), Go and Play again take the

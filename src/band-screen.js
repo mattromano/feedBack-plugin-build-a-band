@@ -12,6 +12,9 @@ import { createLevelMeter } from './level-meter.js';
 import { openPadLight } from './pad-light.js';
 import { karaokeApi } from './vocals.js';
 import { icon } from './icons.js';
+import { createJoinManager } from './join.js';
+import { createControllerColumns } from './controller-columns.js';
+import { CONTROLLER_KINDS, kindFor, joinController, leaveController, updateController } from './controller-model.js';
 
 const SCREEN_ID = 'plugin-build_a_band';
 const SOUND_MODES_NEEDING_STEM = ['rockband', 'kit'];
@@ -39,6 +42,11 @@ const PICK_CONFIRM = 'Use this song';
 const PICK_BACK = 'Back to the band';
 const NO_DEVICE = 'none picked';
 const DEVICE_NOT_FOUND = 'Saved device (not found)';
+// The join slot (controller players).
+const JOIN_HINT = 'Press Start on a controller to join';
+const NO_FIVE_FRET = 'Install the 5-Fret plugin to play on a controller';
+const NO_WATCH = 'Update feedBack to join with a controller';
+const LIGHTS_OFF = Object.freeze({ green: false, red: false, yellow: false, blue: false, orange: false });
 const TEXT_TAGS = ['INPUT', 'TEXTAREA', 'SELECT'];
 const isTyping = (a) => !!a && (TEXT_TAGS.includes(String(a.tagName || '').toUpperCase()) || !!a.isContentEditable);
 const meterPct = (db) => `${Math.min(1, Math.max(0, (db + METER_FLOOR_DB) / METER_FLOOR_DB)) * 100}%`;
@@ -102,6 +110,38 @@ export function createBandScreen({
         return !!(el && el.classList.contains('active'));
     };
     let visible = isActive();
+    // Controller players. Plugin globals are read at call time: a late or missing
+    // 5-Fret plugin (or an older core) only degrades the join slot.
+    const fiveFretApi = () => (win && win.feedBackFiveFret) || null;
+    const gamepadInput = () => (win && win.feedBack && win.feedBack.gamepadInput) || null;
+    const showAuto = () => {
+        try { return fiveFretApi()?.showAutoCharts?.() === true; } catch (_) { return false; }
+    };
+    let joinManager = null; // created on each show, stopped on hide
+    let columns = null;
+    let joinSlotSig = null;
+    const controllerKeys = () => (Array.isArray(prefs.controllers) ? prefs.controllers : []).map((c) => c.key);
+
+    // { available, reason (a note, or null), connected, needsSetup } for the model and the join slot.
+    function controllerStatus() {
+        const gi = gamepadInput();
+        let reason = null;
+        if (!fiveFretApi()) reason = NO_FIVE_FRET;
+        else if (!gi || typeof gi.watch !== 'function') reason = NO_WATCH;
+        const s = joinManager ? joinManager.status() : null;
+        return {
+            available: reason === null, reason,
+            connected: (s && s.connected) || new Set(),
+            needsSetup: (reason === null && s && s.needsSetup) || [],
+        };
+    }
+
+    function model(status = controllerStatus()) {
+        return bandScreenModel({
+            prefs, item: song, vocalsSupported: !!karaokeApi(win), noteDetectLoaded: !!win.noteDetect, pickAvailable,
+            fiveFretLoaded: !!fiveFretApi(), controllerStatus: status, showAuto: showAuto(),
+        });
+    }
 
     function save(patch) {
         prefs = savePrefs(patch);
@@ -122,7 +162,7 @@ export function createBandScreen({
         const chips = $('.bab-chips');
         chips.replaceChildren();
         if (!song) return;
-        for (const c of songChips(song)) {
+        for (const c of songChips(song, { showAuto: showAuto() })) {
             const span = doc.createElement('span');
             span.className = c.good ? 'bab-chip bab-good' : 'bab-chip';
             span.textContent = c.label;
@@ -167,13 +207,12 @@ export function createBandScreen({
 
     function render() {
         if (disposed) return;
-        const model = bandScreenModel({
-            prefs, item: song, vocalsSupported: !!karaokeApi(win), noteDetectLoaded: !!win.noteDetect, pickAvailable,
-        });
+        const status = controllerStatus();
+        const m = model(status);
         root.setAttribute('data-view', view);
         renderSong();
         for (const part of PART_TYPES) {
-            const c = model.columns[part.id];
+            const c = m.columns[part.id];
             const pp = prefs.parts[part.id];
             if (!c || !pp) continue;
             // The Setup column and the Confirm row of the same part.
@@ -192,17 +231,80 @@ export function createBandScreen({
             }
             renderDeviceLine(part.id);
         }
+        if (columns) columns.render(m.controllers);
+        renderJoinSlot(status);
         renderMicHit();
         renderSeg($('.bab-seg[data-field="failMode"]'), prefs.failMode);
         $('input.bab-fullscreen').checked = !!prefs.fullScreenStage;
-        $('.bab-choose').disabled = !model.pickEnabled;
-        $('.bab-change').disabled = !model.pickEnabled;
-        $('.bab-setup-hint').textContent = model.setupHint;
+        $('.bab-choose').disabled = !m.pickEnabled;
+        $('.bab-change').disabled = !m.pickEnabled;
+        $('.bab-setup-hint').textContent = m.setupHint;
         const cont = $('.bab-continue');
         cont.hidden = !(lastResolved && song);
         cont.textContent = song ? `Continue with ${song.title || song.filename}` : '';
-        $('.bab-hint').textContent = goError || model.goHint;
-        $('.bab-go').disabled = !model.goEnabled;
+        $('.bab-hint').textContent = goError || m.goHint;
+        $('.bab-go').disabled = !m.goEnabled;
+    }
+
+    // "Press Start on a controller to join", or why it can't, plus a Set up link per
+    // controller that needs one. Rebuilt only when what it says changes.
+    function renderJoinSlot(status) {
+        const slot = $('.bab-joinslot');
+        if (!slot) return;
+        const text = status.reason || JOIN_HINT;
+        const sig = JSON.stringify([text, status.needsSetup.map((n) => [n.controllerKey, n.name])]);
+        if (sig === joinSlotSig) return;
+        joinSlotSig = sig;
+        const ico = doc.createElement('span');
+        ico.className = 'bab-ico';
+        ico.innerHTML = icon('gamepad-2', { size: 26 });
+        const hint = doc.createElement('span');
+        hint.className = 'bab-join-text';
+        hint.textContent = text;
+        slot.replaceChildren(ico, hint);
+        for (const n of status.needsSetup) {
+            const b = doc.createElement('button');
+            b.type = 'button';
+            b.className = 'bab-setup-link';
+            b.textContent = `Set up ${n.name || n.controllerKey}`;
+            b.addEventListener('click', () => openControllerSetup(n.controllerKey));
+            slot.appendChild(b);
+        }
+    }
+
+    // Controls / Set up: the controller kind's own setup screen, which returns here.
+    function openControllerSetup(key) {
+        const kind = CONTROLLER_KINDS[kindFor(prefs, key)];
+        try { if (kind && typeof kind.setupHref === 'function') kind.setupHref(); } catch (_) { /* plugin gone */ }
+    }
+
+    // Start on a joined controller is the screen's primary button.
+    function primary() {
+        if (view === 'confirm') go();
+        else openLibrary();
+    }
+
+    // The join manager runs while the screen is shown (both views). It claims the joined,
+    // connected controllers; hiding releases them for the library, the 5-Fret controls
+    // screen and the stage. Each show starts afresh, so the Set up list is current.
+    function startJoin() {
+        stopJoin();
+        joinManager = createJoinManager({
+            gamepadInput: gamepadInput(), kinds: CONTROLLER_KINDS, kindFor: (key) => kindFor(prefs, key),
+            setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h),
+            onJoin: (j) => save({ controllers: joinController(prefs.controllers, j) }),
+            onLeave: (key) => save({ controllers: leaveController(prefs.controllers, key) }),
+            onPrimary: () => primary(),
+            onLight: (key, lit) => { if (columns) columns.light(key, lit); },
+            onChange: () => render(),
+        });
+        joinManager.start(controllerKeys());
+    }
+
+    function stopJoin() {
+        if (!joinManager) return;
+        joinManager.stop();
+        if (columns) for (const key of controllerKeys()) columns.light(key, LIGHTS_OFF);
     }
 
     function setView(v) {
@@ -214,7 +316,7 @@ export function createBandScreen({
     // resolves false: any of those releases the latch so Go works again.
     function go() {
         if (view !== 'confirm') return false; // Setup has no Go (Choose a song first)
-        if (disposed || launched || !bandScreenModel({ prefs, item: song, vocalsSupported: !!karaokeApi(win) }).goEnabled) return false;
+        if (disposed || launched || !model().goEnabled) return false;
         launched = true;
         const attempt = ++goAttempt;
         stopLight('drums');
@@ -299,7 +401,8 @@ export function createBandScreen({
     function openLibrary() {
         if (!pickAvailable || disposed) return false;
         const vocalsSupported = !!karaokeApi(win);
-        if (!bandScreenModel({ prefs, item: song, vocalsSupported, pickAvailable }).pickEnabled) return false;
+        const m = model();
+        if (!m.pickEnabled) return false;
         const gen = ++pickGen;
         // "Playable by band" leaves vocals out when Lyrics Karaoke isn't loaded.
         const parts = vocalsSupported ? prefs.parts
@@ -310,7 +413,8 @@ export function createBandScreen({
         try {
             pending = library.pick({
                 title: PICK_TITLE,
-                filters: pickFilters({ parts, on: prefs.pickFilters }),
+                // The model's controller rows: they know which controllers are connected.
+                filters: pickFilters({ parts, on: prefs.pickFilters, controllers: m.controllers, showAuto: showAuto() }),
                 // The whole current row: core hands it back as the item when it is re-used.
                 selected: song || null,
                 returnTo: SCREEN_ID,
@@ -540,7 +644,10 @@ export function createBandScreen({
             pendingPick = false;
             if (isActive() && openLibrary()) return;
         }
-        if (shown()) loadDevices(showGen);
+        if (shown()) {
+            loadDevices(showGen);
+            startJoin();
+        }
     }
 
     function hide() {
@@ -552,6 +659,7 @@ export function createBandScreen({
         if (!isActive()) pendingPick = false;
         showGen++;
         stopLights();
+        stopJoin();
     }
 
     function pickDevice(id, value) {
@@ -657,6 +765,16 @@ export function createBandScreen({
         });
     }
 
+    columns = createControllerColumns({
+        doc, setupHost: $('.bab-ctlcols'), confirmHost: $('.bab-ctlparts'),
+        onChange: (key, patch) => save({ controllers: updateController(prefs.controllers, key, patch) }),
+        onLeave: (key) => {
+            save({ controllers: leaveController(prefs.controllers, key) });
+            if (joinManager) joinManager.setJoined(controllerKeys());
+        },
+        onControls: (key) => openControllerSetup(key),
+    });
+
     render();
     if (visible) show();
 
@@ -673,6 +791,8 @@ export function createBandScreen({
             disposed = true;
             showGen++;
             stopLights();
+            stopJoin();
+            columns.destroy();
             for (const fn of cleanups.splice(0)) {
                 try { fn(); } catch (_) { /* ignore */ }
             }
