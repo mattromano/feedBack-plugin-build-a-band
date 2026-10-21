@@ -380,6 +380,25 @@ body.bab-band-song #count-in-overlay { display: none !important; }
     transition: width 0.2s;
 }
 #player .bab-part-hud.bab-od-active .bab-od { border-color: #5cc8ff; box-shadow: 0 0 8px #5cc8ff; }
+#player .bab-part-hud.bab-od-active .bab-glow {
+    box-shadow: inset 0 0 0 3px #5cc8ff, inset 0 0 40px #5cc8ff66;
+}
+/* Enough bar to deploy: the border pulses (opacity-free, shadow only). */
+#player .bab-part-hud.bab-od-ready .bab-od { border-color: #5cc8ff; animation: bab-od-pulse 1s ease-in-out infinite; }
+@keyframes bab-od-pulse {
+    0%, 100% { box-shadow: 0 0 2px #5cc8ff; }
+    50% { box-shadow: 0 0 10px 2px #5cc8ff; }
+}
+/* Noodle it up: a glowing band across the guitar lane's lower third. */
+#player .bab-noodle-zone {
+    display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 33.333%;
+    background: linear-gradient(0deg, #5cc8ff55, #5cc8ff11);
+    border-top: 2px solid #5cc8ff; box-shadow: 0 -4px 24px #5cc8ff88;
+}
+#player .bab-part-hud.bab-noodle .bab-noodle-zone { display: block; }
+/* Dropped out (fail mode): the lane and strip grey, the tag says OUT. */
+#player .bab-lane.bab-failed, #player .bab-strip.bab-failed { filter: grayscale(1) brightness(0.6); }
+#player .bab-part-hud.bab-failed .bab-tag::after { content: ' · OUT'; }
 #player .bab-mult {
     min-width: 34px; text-align: right; color: var(--bab-c);
     font: 800 22px/1 'Unbounded', system-ui, sans-serif; text-shadow: 0 0 8px #000;
@@ -428,6 +447,7 @@ body.bab-band-song #count-in-overlay { display: none !important; }
     #player .bab-callout { transform: translate(-50%, -50%); }
     #player .bab-callout.bab-show { animation: bab-fade 1.6s ease-out; }
     #player .bab-glow.bab-glow-miss, #player .bab-glow.bab-glow-miss::after { animation: none; }
+    #player .bab-part-hud.bab-od-ready .bab-od { animation: none; box-shadow: 0 0 8px #5cc8ff; }
 }
 @keyframes bab-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 

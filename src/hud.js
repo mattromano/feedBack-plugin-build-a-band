@@ -102,10 +102,12 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
         // R6's starting crowd, so the marker doesn't sit at the floor and slide on the first update.
         marker.style.bottom = pct(CROWD.start);
         marker.classList.add('bab-crowd-' + crowdZone(CROWD.start));
+        // Guitar only: the glowing band across the lower third while the Noodle it up zone is open.
+        if (part === 'guitar') el('div', 'bab-noodle-zone', root).setAttribute('aria-hidden', 'true');
         const callout = el('div', 'bab-callout', root);
         callout.setAttribute('role', 'status');
         host.appendChild(root);
-        huds.set(part, { root, glow, odFill, mult, marker, callout });
+        huds.set(part, { root, host, glow, odFill, mult, marker, callout });
     }
 
     let prev = null;
@@ -163,19 +165,39 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
             const h = alive && huds.get(part);
             if (h) show(h, String(line));
         },
-        // Plan 5 drives this (R22); plan 4 never calls it, so the bars stay empty.
+        // Overdrive meter for a part: fill 0..1 and whether it is deployed. Writes changes only.
         setOverdrive(part, fraction, active) {
             const h = alive && huds.get(part);
             if (!h) return;
             const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
-            h.odFill.style.width = pct(f);
-            h.root.classList.toggle('bab-od-active', !!active);
+            put(h.odFill, 'width', pct(f), (v) => { h.odFill.style.width = v; });
+            flag(h.root, 'bab-od-active', !!active);
+        },
+        // Enough bar to deploy: the bar pulses.
+        setReady(part, on) {
+            const h = alive && huds.get(part);
+            if (h) flag(h.root, 'bab-od-ready', !!on);
+        },
+        // The Noodle it up zone on the guitar lane.
+        setNoodle(on) {
+            const h = alive && huds.get('guitar');
+            if (h) flag(h.root, 'bab-noodle', !!on);
+        },
+        // Fail mode: the part is out. Greys the lane (or strip) and marks the HUD tag.
+        setFailed(part, on) {
+            const h = alive && huds.get(part);
+            if (!h) return;
+            flag(h.root, 'bab-failed', !!on);
+            flag(h.host, 'bab-failed', !!on);
         },
         destroy() {
             if (!alive) return;
             alive = false;
             bar.remove();
-            for (const h of huds.values()) h.root.remove();
+            for (const h of huds.values()) {
+                h.root.remove();
+                h.host.classList.remove('bab-failed');
+            }
             huds.clear();
             written.clear();
         },

@@ -163,6 +163,79 @@ test('setOverdrive fills the bar (inert in plan 4)', () => {
     hud.destroy();
 });
 
+test('overdrive bar, ready pulse and active glow', () => {
+    const { hud, partHud } = setup();
+    const fill = partHud('guitar').querySelector('.bab-od').querySelector('i');
+    hud.setOverdrive('guitar', 0.5, false);
+    assert.equal(fill.style.width, '50%');
+    assert.equal(partHud('guitar').classList.contains('bab-od-active'), false);
+    hud.setReady('guitar', true);
+    assert.ok(partHud('guitar').classList.contains('bab-od-ready'));
+    hud.setOverdrive('guitar', 0.4, true);
+    assert.ok(partHud('guitar').classList.contains('bab-od-active'));
+    hud.setReady('guitar', false);
+    assert.equal(partHud('guitar').classList.contains('bab-od-ready'), false);
+    assert.equal(partHud('drums').classList.contains('bab-od-ready'), false);
+    hud.destroy();
+});
+
+test('noodle zone only on guitar', () => {
+    const { hud, partHud } = setup();
+    assert.equal(partHud('guitar').querySelectorAll('.bab-noodle-zone').length, 1);
+    assert.equal(partHud('guitar').querySelector('.bab-noodle-zone').getAttribute('aria-hidden'), 'true');
+    assert.equal(partHud('drums').querySelectorAll('.bab-noodle-zone').length, 0);
+    hud.setNoodle(true);
+    assert.ok(partHud('guitar').classList.contains('bab-noodle'));
+    assert.equal(partHud('drums').classList.contains('bab-noodle'), false);
+    hud.setNoodle(false);
+    assert.equal(partHud('guitar').classList.contains('bab-noodle'), false);
+    hud.destroy();
+});
+
+test('dropped out greys the lane and the HUD; destroy clears it', () => {
+    const { slots, hud, partHud } = setup();
+    hud.setFailed('drums', true);
+    assert.ok(partHud('drums').classList.contains('bab-failed'));
+    assert.ok(slots.drums.classList.contains('bab-failed'));
+    assert.equal(slots.guitar.classList.contains('bab-failed'), false);
+    hud.setFailed('drums', false);
+    assert.equal(slots.drums.classList.contains('bab-failed'), false);
+    hud.setFailed('drums', true);
+    hud.setFailed('guitar', true);
+    hud.destroy();
+    assert.equal(slots.drums.classList.contains('bab-failed'), false);
+    assert.equal(slots.guitar.classList.contains('bab-failed'), false);
+});
+
+test('unknown parts and a destroyed HUD are ignored', () => {
+    const { hud } = setup();
+    hud.setFailed('bass', true);
+    hud.setReady('bass', true);
+    hud.setNoodle(true);
+    hud.destroy();
+    hud.setFailed('drums', true);
+    hud.setReady('guitar', true);
+    hud.setNoodle(true);
+    hud.setOverdrive('guitar', 1, true);
+});
+
+test('guitar-less band: setNoodle is a no-op', () => {
+    const { hud } = setup({ parts: ['drums'] });
+    hud.setNoodle(true);
+    hud.destroy();
+});
+
+test('CSS: overdrive blue, noodle zone, dropped-out grey and reduced motion', () => {
+    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
+    assert.match(css, /\.bab-od-ready \.bab-od \{[^}]*#5cc8ff/);
+    assert.match(css, /\.bab-noodle-zone \{[^}]*display: none/);
+    assert.match(css, /\.bab-noodle \.bab-noodle-zone \{[^}]*display: block/);
+    assert.match(css, /\.bab-lane\.bab-failed, #player \.bab-strip\.bab-failed \{[^}]*filter: grayscale\(1\) brightness\(0\.6\)/);
+    assert.match(css, /\.bab-part-hud\.bab-failed \.bab-tag::after \{[^}]*content: ' · OUT'/);
+    const rm = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce) {\n    #player .bab-callout'));
+    assert.match(rm.slice(0, rm.indexOf('@keyframes bab-fade')), /bab-od-ready[^}]*animation: none/);
+});
+
 test('the vocals HUD lives in the strip slot', () => {
     const { stripSlot, hud, partHud } = setup({ parts: ['guitar', 'vocals'], strip: true });
     assert.equal(partHud('vocals').parentNode, stripSlot);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    formatScore, difficultyLabel, crowdZone, glowLevel, streakCallout, bandMultiplierText,
+    formatScore, difficultyLabel, OD_CALLOUT, crowdZone, glowLevel, streakCallout, bandMultiplierText,
 } from '../src/hud-model.js';
 
 test('formatScore groups en-US, rounds, and shows 0 for non-numbers', () => {
@@ -49,4 +49,11 @@ test('streakCallout: note streaks every 50, phrase streaks every 5', () => {
 
 test('bandMultiplierText', () => {
     assert.equal(bandMultiplierText(3), 'BAND ×3');
+});
+
+test('OD_CALLOUT holds the five overdrive callouts and is frozen', () => {
+    assert.deepEqual({ ...OD_CALLOUT }, {
+        ready: 'Overdrive ready', noodle: 'Noodle it up!', deploy: 'OVERDRIVE!', out: 'DROPPED OUT', saved: 'SAVED!',
+    });
+    assert.ok(Object.isFrozen(OD_CALLOUT));
 });

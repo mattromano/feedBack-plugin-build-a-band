@@ -46,3 +46,8 @@ export function streakCallout(part, prev, next) {
 export function bandMultiplierText(n) {
     return 'BAND ×' + n;
 }
+
+// Plan 5 R11: the overdrive and fail callouts, shown on the part's lane.
+export const OD_CALLOUT = Object.freeze({
+    ready: 'Overdrive ready', noodle: 'Noodle it up!', deploy: 'OVERDRIVE!', out: 'DROPPED OUT', saved: 'SAVED!',
+});
