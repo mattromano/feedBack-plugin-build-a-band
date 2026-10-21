@@ -3477,6 +3477,30 @@ test('end of song: the band screen already visible opens the pick once, now', as
     t.rt.dispose();
 });
 
+test("end of song: an overlapping showScreen before the band screen's late changed drops the pick", async () => {
+    const t = endToEnd();
+    toResults(t);
+    // Core flips .active to the band screen now and fires changed after an await.
+    t.win.showScreen = (id) => {
+        t.calls.showScreen.push(id);
+        t.fb.emit('screen:changing', { id, from: 'player' });
+        t.settingsScreen.classList.remove('active');
+        t.bandScreen.classList.add('active');
+        return Promise.resolve().then(() => t.fb.emit('screen:changed', { id, from: 'player' }));
+    };
+    t.rt.next();
+    // The user starts Settings before the band screen's late screen:changed.
+    t.fb.emit('screen:changing', { id: 'settings', from: 'plugin-build_a_band' });
+    t.bandScreen.classList.remove('active');
+    t.settingsScreen.classList.add('active');
+    await flush();
+    await flush();
+    assert.equal(t.picks.length, 0, 'the pick must not take the user from Settings to Songs');
+    assert.ok(t.settingsScreen.classList.contains('active'), 'Settings is still the active screen');
+    t.bs.dispose();
+    t.rt.dispose();
+});
+
 test('end of song: leaving to another screen before the band screen shows drops the pick', async () => {
     const t = endToEnd();
     toResults(t);

@@ -537,10 +537,12 @@ export function createBandScreen({
         showGen++;
         stopLights();
         // Next song: open the library first; the screen is leaving, so no
-        // device list loads and no mic opens on the way through.
+        // device list loads and no mic opens on the way through. A late
+        // screen:changed after the user moved on (an overlapping showScreen)
+        // finds the band screen inactive and drops the pick.
         if (pendingPick) {
             pendingPick = false;
-            if (openLibrary()) return;
+            if (isActive() && openLibrary()) return;
         }
         if (shown()) loadDevices(showGen);
     }
