@@ -42,7 +42,9 @@ function songRef(item) {
 // createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, fetchJson?, storage? })
 //   -> { dispose(), setSong(item | null), getSong(), isVisible() }
 // storage (default win.localStorage) receives karaoke's mic pick.
-export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, fetchJson, storage }) {
+// deviceMemo: shared with the band runtime (devices.js), so a device applied
+// here is not applied again at Go.
+export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, fetchJson, storage, deviceMemo = {} }) {
     const fb = win && win.feedBack;
     const getJson = fetchJson || ((url) => win.fetch(url).then((r) => r.json()));
     const $ = (sel, el = root) => el.querySelector(sel);
@@ -351,8 +353,8 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         save({ parts: { [id]: { [DEVICE_FIELD[id]]: value } } });
         stopLight(id); // the old device stops before the new one starts
         try {
-            if (id === 'guitar') applyGuitarDevice(value, win).catch(() => {});
-            else if (id === 'drums') applyDrumDevice(value, win);
+            if (id === 'guitar') applyGuitarDevice(value, win, deviceMemo).catch(() => {});
+            else if (id === 'drums') applyDrumDevice(value, win, deviceMemo);
             else applyMicDevice(value, micStorage);
         } catch (_) { /* a plugin that is not loaded */ }
         startLight(id);

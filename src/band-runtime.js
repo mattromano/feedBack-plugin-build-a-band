@@ -14,7 +14,6 @@ import { PART_TYPES, getPart, hasChart, songFacts } from './parts.js';
 const BAND_SCREEN = 'plugin-build_a_band';
 const SPLIT_KEY = 'splitscreenActive';
 const VIZ_KEY = 'vizSelection';
-const DRUMS_VIZ = 'drums';
 const EXIT_WAIT_MS = 1500;
 const TOAST_MS = 4000;
 const ONE_DIFFICULTY = 'This chart has one difficulty';
@@ -52,14 +51,16 @@ function effectivePrefs(prefs, item) {
     return { ...prefs, parts };
 }
 
-// createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer })
+// createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer, deviceMemo })
+//   deviceMemo: the inputs last handed to note_detect / drums (devices.js),
+//   shared with the band screen so a Go doesn't re-apply a device just picked.
 //   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase() }
 // startSession returns false when it refuses (a session is running, no song);
 // otherwise a promise of core's playSong that rejects, after the session went
 // back to idle, when playSong throws or rejects.
 export function createBandRuntime({
     win, doc, mountStage, loadPrefs, storage = win.localStorage, fetchJson,
-    setTimer = win.setTimeout, clearTimer = win.clearTimeout,
+    setTimer = win.setTimeout, clearTimer = win.clearTimeout, deviceMemo = {},
 }) {
     const fb = win.feedBack;
     const getJson = fetchJson || ((url) => win.fetch(url).then((r) => r.json()));
@@ -73,8 +74,6 @@ export function createBandRuntime({
     let stage = null;
     let release = null;
     let exitTimer = null;
-    // Inputs handed to note_detect / drums, so a Go doesn't re-apply them.
-    const deviceMemo = {};
 
     function sliderMastery() {
         const slider = doc.getElementById('mastery-slider');
@@ -94,7 +93,7 @@ export function createBandRuntime({
             // Drums only on a drum-tab-only pack: the drums view draws the tab
             // on whatever arrangement the main highway opens.
             drumView: drumsOnly && drumIndex < 0,
-            savedViz: undefined,
+            viewSwitched: false,
             savedSplit: null,
             savedMastery: null,
             readyDetail: null,
@@ -187,19 +186,37 @@ export function createBandRuntime({
     }
 
     // Core's Auto view and its instrument takeover both leave a guitar part on
-    // a guitar view, so the drums view is picked explicitly through core's
-    // window.setViz (what the picker does) and the user's pick put back after.
+    // a guitar view, so the drums renderer is installed straight onto the main
+    // highway, as core's takeover does (viz.js _installVizRenderer): nothing
+    // is saved, so a crash mid-session leaves the user's view as it was. Runs
+    // on the band song's song:ready, after core's own viz pick for it (core
+    // subscribes at app.js load, before any plugin).
     function showDrumView(s) {
-        if (!s.drumView || typeof win.setViz !== 'function' || typeof win.feedBackViz_drums !== 'function') return;
-        s.savedViz = safe(() => storage.getItem(VIZ_KEY)) ?? null;
-        safe(() => win.setViz(DRUMS_VIZ));
+        const hw = win.highway;
+        if (!s.drumView || !hw || typeof hw.setRenderer !== 'function' || typeof win.feedBackViz_drums !== 'function') return;
+        let renderer = null;
+        try { renderer = win.feedBackViz_drums(); } catch (e) { console.warn('[build-a-band] drums view failed', e); }
+        if (!renderer || typeof renderer.draw !== 'function') return;
+        if (safe(() => { hw.setRenderer(renderer); return true; })) s.viewSwitched = true;
     }
 
+    // Re-apply the user's view the way the picker does. setViz saves its id,
+    // so it is replayed with the saved id itself (an unchanged value); with
+    // nothing saved, the picker's view is replayed and the key removed again.
     function restoreView(s) {
-        if (s.savedViz === undefined) return;
-        const saved = s.savedViz;
-        s.savedViz = undefined;
-        safe(() => win.setViz(saved || 'auto'));
+        if (!s.viewSwitched) return;
+        s.viewSwitched = false;
+        const saved = safe(() => storage.getItem(VIZ_KEY)) ?? null;
+        if (typeof win.setViz !== 'function') return;
+        if (saved !== null) { safe(() => win.setViz(saved)); return; }
+        const picker = doc.getElementById('viz-picker');
+        const picked = picker && picker.value;
+        if (picked) {
+            safe(() => win.setViz(picked));
+            safe(() => storage.removeItem(VIZ_KEY));
+        } else {
+            safe(() => win.highway.setRenderer(null));
+        }
     }
 
     function pinDrumDifficulty(s) {

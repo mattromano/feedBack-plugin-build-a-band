@@ -17,7 +17,7 @@ function memStorage(init = {}) {
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
 }
 
-function setup({ active = true, stored = null, library = [], winExtra = {}, onGo = null } = {}) {
+function setup({ active = true, stored = null, library = [], winExtra = {}, onGo = null, deviceMemo } = {}) {
     const doc = makeDoc();
     const screen = makeEl('div', doc);
     screen.setAttribute('id', 'plugin-build_a_band');
@@ -40,6 +40,7 @@ function setup({ active = true, stored = null, library = [], winExtra = {}, onGo
         loadPrefs: () => loadPrefs(storage), savePrefs: (p) => savePrefs(p, storage),
         onGo: (item, prefs) => { gos.push({ item, prefs }); return onGo ? onGo(item, prefs) : undefined; },
         fetchJson: async (url) => { urls.push(url); return { songs: library }; },
+        deviceMemo,
     });
     const col = (id) => root.querySelector(`.bab-col[data-part="${id}"]`);
     const seg = (el, field) => el.querySelector(`.bab-seg[data-field="${field}"]`);
@@ -312,6 +313,23 @@ test('picking a device saves it and applies it at once', async () => {
     assert.equal(storage.getItem('lyrics_karaoke.deviceId'), 'usb-mic');
     assert.deepEqual(d.calls.gum.sort(), ['usb-guitar', 'usb-mic']);
     assert.equal(d.calls.open.length, 1);
+    bs.dispose();
+});
+
+test('a device picked on the band screen is not applied again at Go', async () => {
+    const d = deviceWin();
+    const memo = {};
+    const { col, bs } = setup({ winExtra: d.winExtra, deviceMemo: memo });
+    await flush();
+    const pick = (id, v) => { const s = col(id).querySelector('select'); s.value = v; s.fire('change'); };
+    pick('guitar', 'usb-guitar');
+    pick('drums', 'webmidi:kit');
+    await flush();
+    const { applyDevices } = await import('../src/devices.js');
+    await applyDevices({ parts: { guitar: { on: true, deviceKey: 'usb-guitar' }, drums: { on: true, deviceKey: 'webmidi:kit' } } },
+        d.winExtra, undefined, memo);
+    assert.deepEqual(d.calls.noteDetect, ['usb-guitar'], 'note_detect not restarted at Go');
+    assert.deepEqual(d.calls.drums, ['webmidi:kit'], 'drums not reconnected at Go');
     bs.dispose();
 });
 

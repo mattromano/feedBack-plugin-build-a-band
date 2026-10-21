@@ -17,7 +17,10 @@ function init() {
     if (prev && typeof prev.dispose === 'function') {
         try { prev.dispose(); } catch (_) { /* ignore */ }
     }
-    const runtime = createBandRuntime({ win: window, doc: document, mountStage, loadPrefs });
+    // Inputs already handed to note_detect / drums, shared by the band screen
+    // (device picks) and the runtime (Go), so neither re-applies the other's.
+    const deviceMemo = {};
+    const runtime = createBandRuntime({ win: window, doc: document, mountStage, loadPrefs, deviceMemo });
     window.__buildABandRuntime = runtime;
 
     const prevScreen = window.__buildABandScreen;
@@ -29,7 +32,7 @@ function init() {
     const root = document.getElementById('build-a-band-root');
     if (root) {
         window.__buildABandScreen = createBandScreen({
-            root, win: window, doc: document, loadPrefs, savePrefs,
+            root, win: window, doc: document, loadPrefs, savePrefs, deviceMemo,
             onGo: (item, prefs) => {
                 savePrefs(prefs);
                 // false or a rejection releases the band screen's Go latch.

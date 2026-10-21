@@ -89,7 +89,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         playSong: (f, i) => calls.playSong.push([f, i]),
         showScreen: (id) => calls.showScreen.push(id),
         setViz: (id) => { calls.setViz.push(id); storage.setItem('vizSelection', id); },
-        feedBackViz_drums: () => ({}),
+        feedBackViz_drums: () => ({ draw() {} }),
         feedBackDrums: {
             setDifficulty: (id, c) => calls.setDifficulty.push([id, c]),
             clearDifficulty: (c) => calls.clearDifficulty.push(c),
@@ -518,19 +518,53 @@ test('drums only plays the drum arrangement index, not its list position', () =>
     rt.dispose();
 });
 
-test('drums only on a drum-tab-only pack shows the drums view on the main highway, then restores it', () => {
-    const { rt, fb, calls, mounts, loadSong, highwayCanvas, storage } = setup({
+const TAB = { filename: 'deep.feedpak', has_drum_tab: true,
+    arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Bass' }] };
+
+// Watches every write to the saved view.
+function trackViz(storage) {
+    const writes = [];
+    const set = storage.setItem, remove = storage.removeItem;
+    storage.setItem = (k, v) => { if (k === 'vizSelection') writes.push(['set', v]); set(k, v); };
+    storage.removeItem = (k) => { if (k === 'vizSelection') writes.push(['remove']); remove(k); };
+    return writes;
+}
+
+test('drums only on a drum-tab-only pack installs the drums renderer on song:ready without saving it', () => {
+    const { rt, fb, win, calls, mounts, loadSong, highwayCanvas, storage } = setup({
         storageInit: { splitscreenActive: 'true', vizSelection: 'highway_3d' } });
-    const tab = { filename: 'deep.feedpak', has_drum_tab: true,
-        arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Bass' }] };
-    rt.startSession({ song: tab, prefs: prefsWith({ guitar: { on: false } }) });
+    const installed = [];
+    const drumsRenderer = { draw() {} };
+    win.feedBackViz_drums = () => drumsRenderer;
+    win.highway.setRenderer = (r) => installed.push(r);
+    const writes = trackViz(storage);
+    rt.startSession({ song: TAB, prefs: prefsWith({ guitar: { on: false } }) });
     assert.deepEqual(calls.playSong, [['deep.feedpak', undefined]], 'any arrangement streams the drum tab');
-    loadSong(tab);
+    assert.deepEqual(installed, [], 'nothing before the band song is ready');
+    loadSong(TAB);
     assert.equal(mounts.length, 0);
-    assert.deepEqual(calls.setViz, ['drums']);
+    assert.deepEqual(installed, [drumsRenderer], 'installed on song:ready');
+    assert.deepEqual(calls.setViz, [], 'never through setViz, which saves the pick');
+    assert.equal(storage.getItem('vizSelection'), 'highway_3d');
     assert.deepEqual(calls.setDifficulty, [['medium', highwayCanvas]]);
     fb.emit('song:stop', {});
-    assert.deepEqual(calls.setViz, ['drums', 'highway_3d'], "the user's view is put back");
+    assert.deepEqual(calls.setViz, ['highway_3d'], "the user's saved view is re-applied");
     assert.equal(storage.getItem('vizSelection'), 'highway_3d');
+    assert.ok(writes.every((w) => w[0] === 'set' && w[1] === 'highway_3d'), JSON.stringify(writes));
+    rt.dispose();
+});
+
+test('with no saved view, teardown re-applies the picker view and leaves nothing saved', () => {
+    const { rt, fb, win, doc, calls, loadSong, storage } = setup();
+    win.highway.setRenderer = () => {};
+    const picker = doc.createElement('select');
+    picker.id = 'viz-picker';
+    picker.value = 'highway_3d';
+    doc.body.appendChild(picker);
+    rt.startSession({ song: TAB, prefs: prefsWith({ guitar: { on: false } }) });
+    loadSong(TAB);
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.setViz, ['highway_3d']);
+    assert.equal(storage.getItem('vizSelection'), null, "never 'auto' or anything else");
     rt.dispose();
 });
