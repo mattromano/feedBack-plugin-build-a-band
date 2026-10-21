@@ -157,6 +157,13 @@ test('guitar arrangements grey what the song lacks', () => {
     assert.equal(none.columns.guitar.arrangement, 'Rhythm');
 });
 
+test('a smart_name-only arrangement counts', () => {
+    const m = bandScreenModel({ prefs: withParts({ guitar: { arrangement: 'Lead' } }),
+        item: { arrangements: [{ smart_name: 'Rhythm', index: 0 }] } });
+    assert.deepEqual(m.columns.guitar.arrangements, { Lead: false, Rhythm: true, Bass: false });
+    assert.equal(m.columns.guitar.arrangement, 'Rhythm');
+});
+
 test('no song: every arrangement available', () => {
     const m = bandScreenModel({ prefs: withParts({ guitar: { arrangement: 'Bass' } }), item: null });
     assert.deepEqual(m.columns.guitar.arrangements, { Lead: true, Rhythm: true, Bass: true });
