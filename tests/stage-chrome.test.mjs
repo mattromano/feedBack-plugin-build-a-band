@@ -106,3 +106,30 @@ test('stage CSS: hover chrome and full mode replace the stage hides', () => {
     assert.ok(css.includes('#player.bab-full #v3-railzone { display: none; }'));
     assert.ok(css.includes('#player.bab-full .bab-lanes { bottom: 0 !important; }'));
 });
+
+const rule = (css, sel) => {
+    const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const m = css.match(new RegExp('(?:^|\\n)' + esc + ' \\{([^}]*)\\}'));
+    return m ? m[1] : null;
+};
+
+test('stage CSS: the HUD is click-through until the chrome shows, and sits above the lane chrome', () => {
+    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
+    // Everything in the HUD (core's Up Next pill is pointer-events: auto) is
+    // click-through on the stage; only the reveal gives the pill clicks back.
+    assert.match(rule(css, '#player.bab-stage #player-hud,\n#player.bab-stage #player-hud *'), /pointer-events: none;/);
+    assert.match(rule(css, '#player.bab-stage.chrome-active #player-hud .v3-upnext,\n#player.bab-stage.pop-open #player-hud .v3-upnext'), /pointer-events: auto;/);
+    // The HUD anchor clears the lane chrome band: transport + section map and
+    // row (60px) + the lane chrome's 0.75rem lift + its 2.5rem band.
+    assert.match(rule(css, '#player.bab-stage #player-hud'), /bottom: calc\(var\(--bab-transport-h, 72px\) \+ 60px \+ 0\.75rem \+ 2\.5rem\);/);
+    assert.match(rule(css, '#player.bab-stage .bab-lane-chrome'), /bottom: calc\(60px \+ 0\.75rem\);/);
+    assert.match(rule(css, '#player.bab-stage.bab-full .bab-lane-chrome'), /bottom: calc\(var\(--bab-transport-h, 72px\) \+ 60px \+ 0\.75rem\);/);
+});
+
+test('stage CSS: only the chrome row buttons take clicks', () => {
+    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
+    assert.match(rule(css, '#player .bab-chrome'), /pointer-events: none;/);
+    const shown = rule(css, '#player.chrome-active .bab-chrome,\n#player.pop-open .bab-chrome');
+    assert.ok(shown && !/pointer-events/.test(shown), 'the shown row stays click-through');
+    assert.match(rule(css, '#player.chrome-active .bab-chrome button,\n#player.pop-open .bab-chrome button'), /pointer-events: auto;/);
+});

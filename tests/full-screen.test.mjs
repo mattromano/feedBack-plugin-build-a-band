@@ -23,10 +23,11 @@ function setup({ reject = false, win: winOver = {} } = {}) {
     return { doc, win, calls, listeners, fs: createFullScreen({ doc, win }) };
 }
 
-test('request asks once and owns the full screen', () => {
+test('request asks once and owns the full screen', async () => {
     const { doc, calls, fs } = setup();
     assert.equal(fs.request(), true);
     assert.equal(calls.request, 1);
+    await flush();
     doc.fullscreenElement = doc.documentElement;
     assert.equal(fs.isOn(), true);
     assert.equal(fs.request(), false);
@@ -60,10 +61,59 @@ test("never exits a full screen it didn't request", () => {
     assert.equal(calls.exit, 0);
 });
 
-test('an exit before the full screen arrives gives it up', () => {
+// A request whose promise the test settles by hand: the window between asking
+// and Chromium setting fullscreenElement (the macOS animation).
+function deferred(doc) {
+    const d = {};
+    doc.documentElement.requestFullscreen = () => {
+        d.calls = (d.calls || 0) + 1;
+        return new Promise((res, rej) => { d.resolve = res; d.reject = rej; });
+    };
+    return d;
+}
+
+test('an exit before the full screen arrives exits it once it arrives', async () => {
     const { doc, calls, fs } = setup();
+    const d = deferred(doc);
+    assert.equal(fs.request(), true);
+    fs.exit(); // still pending: nothing to leave yet
+    assert.equal(calls.exit, 0);
+    doc.fullscreenElement = doc.documentElement;
+    d.resolve();
+    await flush();
+    assert.equal(calls.exit, 1);
+    fs.exit(); // no longer ours
+    assert.equal(calls.exit, 1);
+});
+
+test('a request after an exit while pending keeps the full screen', async () => {
+    const { doc, calls, fs } = setup();
+    const d = deferred(doc);
     fs.request();
-    fs.exit(); // not on yet: nothing to leave, and no longer ours
+    fs.exit();
+    assert.equal(fs.request(), true);
+    assert.equal(d.calls, 1, 'no second request while one is pending');
+    doc.fullscreenElement = doc.documentElement;
+    d.resolve();
+    await flush();
+    assert.equal(calls.exit, 0);
+    fs.exit(); // still ours
+    assert.equal(calls.exit, 1);
+});
+
+test('an exit while pending then a refusal: no exit, not ours', async () => {
+    const { doc, calls, fs } = setup();
+    const d = deferred(doc);
+    const orig = console.warn;
+    console.warn = () => {};
+    try {
+        fs.request();
+        fs.exit();
+        d.reject(new Error('denied'));
+        await flush();
+    } finally {
+        console.warn = orig;
+    }
     assert.equal(calls.exit, 0);
     doc.fullscreenElement = doc.documentElement;
     fs.exit();
@@ -97,6 +147,7 @@ test('a rejected exitFullscreen is caught', async () => {
     const { doc, fs } = setup();
     doc.exitFullscreen = () => Promise.reject(new Error('nope'));
     fs.request();
+    await flush();
     doc.fullscreenElement = doc.documentElement;
     assert.doesNotThrow(() => fs.exit());
     await flush();

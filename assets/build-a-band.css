@@ -214,17 +214,25 @@
    from the footer), the section map (20px) and the band chrome row (40px), with
    core's HUD column (time, A/V offset, Up Next) on the right above them. The
    band HUD bar still replaces the song info and the live performance HUD
-   (plan 4 R9). */
+   (plan 4 R9). The HUD column sits above the lane chrome band (the lane
+   chrome's 0.75rem lift plus its 2.5rem height), so the time and Up Next never
+   cover the rightmost lane's Zoom and Fret buttons. */
 #player.bab-stage #player-hud {
     display: flex;
     justify-content: flex-end;
     top: auto;
-    bottom: calc(var(--bab-transport-h, 72px) + 60px);
+    bottom: calc(var(--bab-transport-h, 72px) + 60px + 0.75rem + 2.5rem);
     opacity: 0;
     transition: opacity .25s ease;
 }
 #player.bab-stage.chrome-active #player-hud,
 #player.bab-stage.pop-open #player-hud { opacity: 1; }
+/* Invisible, the HUD must not take clicks: core's Up Next pill is
+   pointer-events: auto. Only the reveal gives it clicks back. */
+#player.bab-stage #player-hud,
+#player.bab-stage #player-hud * { pointer-events: none; }
+#player.bab-stage.chrome-active #player-hud .v3-upnext,
+#player.bab-stage.pop-open #player-hud .v3-upnext { pointer-events: auto; }
 #player.bab-stage #player-hud > :first-child,
 #player.bab-stage #v3-live-performance-hud { display: none !important; }
 /* The section map plugin inlines position: relative; top: 0, hence !important. */
@@ -256,8 +264,12 @@
     pointer-events: none;
     transition: opacity .25s ease;
 }
+/* The row stays click-through when shown: only its buttons take clicks, so
+   the strip between them never covers the lanes. */
 #player.chrome-active .bab-chrome,
-#player.pop-open .bab-chrome { opacity: 1; pointer-events: auto; }
+#player.pop-open .bab-chrome { opacity: 1; }
+#player.chrome-active .bab-chrome button,
+#player.pop-open .bab-chrome button { pointer-events: auto; }
 #player .bab-chrome button {
     display: inline-flex;
     align-items: center;

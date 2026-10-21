@@ -14,28 +14,56 @@ export function alreadyFullScreen(win) {
 }
 
 // createFullScreen({ doc, win }) -> { request(), exit(), isOn(), onChange(fn) }
+// An exit() while a request is still pending (fullscreenElement is only set once
+// the enter completes, after the macOS animation) is held and carried out when the
+// request resolves, so a teardown in that window can't leave the app full screen.
 export function createFullScreen({ doc, win }) {
     let ours = false;
+    let pending = false;
+    let exitWanted = false;
     let warned = false;
 
     const isOn = () => !!doc.fullscreenElement;
 
+    function leave() {
+        if (typeof doc.exitFullscreen !== 'function') return;
+        try {
+            const p = doc.exitFullscreen();
+            if (p && typeof p.catch === 'function') p.catch(() => {});
+        } catch (_) { /* already left */ }
+    }
+
     function request() {
+        // Asked again before the first request settled: keep it, drop a held exit.
+        if (pending) { exitWanted = false; return true; }
         if (isOn() || alreadyFullScreen(win)) return false;
         const activation = win && win.navigator && win.navigator.userActivation;
         if (activation && activation.isActive === false) return false;
         const root = doc.documentElement;
         if (!root || typeof root.requestFullscreen !== 'function') return false;
         ours = true;
+        exitWanted = false;
         const refused = (err) => {
+            pending = false;
+            exitWanted = false;
             ours = false;
             if (warned) return;
             warned = true;
             console.warn('[build-a-band] full screen refused', err);
         };
+        const entered = () => {
+            pending = false;
+            if (!exitWanted) return;
+            exitWanted = false;
+            leave();
+            ours = false;
+        };
         try {
             const p = root.requestFullscreen();
-            if (p && typeof p.catch === 'function') p.catch(refused);
+            if (p && typeof p.then === 'function') {
+                pending = true;
+                p.then(entered, refused);
+            }
         } catch (err) {
             refused(err);
         }
@@ -43,12 +71,8 @@ export function createFullScreen({ doc, win }) {
     }
 
     function exit() {
-        if (ours && doc.fullscreenElement && typeof doc.exitFullscreen === 'function') {
-            try {
-                const p = doc.exitFullscreen();
-                if (p && typeof p.catch === 'function') p.catch(() => {});
-            } catch (_) { /* already left */ }
-        }
+        if (ours && pending) { exitWanted = true; return; }
+        if (ours && doc.fullscreenElement) leave();
         ours = false;
     }
 
