@@ -169,3 +169,10 @@ test('no song: every arrangement available', () => {
     assert.deepEqual(m.columns.guitar.arrangements, { Lead: true, Rhythm: true, Bass: true });
     assert.equal(m.columns.guitar.arrangement, 'Bass');
 });
+
+test('a five_fret_only pack leaves the guitar column unavailable with no arrangement offered', () => {
+    const item = { arrangements: [{ index: 0, name: 'Lead', notes: 0 }], five_fret_only: true };
+    const col = bandScreenModel({ prefs, item }).columns.guitar;
+    assert.equal(col.unavailable, true);
+    assert.deepEqual(col.arrangements, { Lead: false, Rhythm: false, Bass: false });
+});

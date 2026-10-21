@@ -1,6 +1,7 @@
 // Build-a-Band per-viewer prefs, persisted in localStorage. Every storage
 // access is guarded: private windows / blocked storage must never throw.
 import { DIFFICULTIES } from './mappings.js';
+import { CONTROLLER_KINDS, PART_AUDIO_MODES, isControllerId } from './controller-model.js';
 
 const KEY = 'build_a_band.prefs.v1';
 
@@ -14,7 +15,7 @@ const PART_DEFAULTS = Object.freeze({
 });
 // The library pick's chips (query.js PICK_FILTERS), remembered from every pick.
 export const PICK_FILTER_DEFAULTS = Object.freeze({
-    playable: true, drumStem: false, drums: false, vocals: false, guitar: false,
+    playable: true, drumStem: false, drums: false, vocals: false, guitar: false, fiveFret: false, fiveFretReal: false,
 });
 const ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass'];
 const SOUND_MODES = ['song', 'rockband', 'kit'];
@@ -91,6 +92,52 @@ function normalizeRecent(v) {
     return out;
 }
 
+const isKind = (k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(CONTROLLER_KINDS, k);
+
+// Joined controller players, in join order. Drops entries with no string key or a duplicate
+// key; an invalid or duplicate id is re-issued (the smallest free ctl<N>); each field falls
+// back to its default.
+function normalizeControllers(v) {
+    const seenKeys = new Set();
+    const kept = [];
+    for (const e of Array.isArray(v) ? v : []) {
+        if (!isObj(e) || typeof e.key !== 'string' || !e.key || seenKeys.has(e.key)) continue;
+        seenKeys.add(e.key);
+        kept.push(e);
+    }
+    const usedIds = new Set();
+    const ids = kept.map((e) => {
+        if (!isControllerId(e.id) || usedIds.has(e.id)) return null;
+        usedIds.add(e.id);
+        return e.id;
+    });
+    let n = 1;
+    return kept.map((e, i) => {
+        let id = ids[i];
+        if (!id) {
+            while (usedIds.has('ctl' + n)) n++;
+            id = 'ctl' + n;
+            usedIds.add(id);
+        }
+        const playsAs = isKind(e.playsAs) ? e.playsAs : 'five_fret';
+        return {
+            key: e.key, id, name: str(e.name, ''), playsAs,
+            part: oneOf(e.part, CONTROLLER_KINDS[playsAs].parts, CONTROLLER_KINDS[playsAs].parts[0]),
+            difficulty: oneOf(e.difficulty, DIFFICULTIES, 'medium'),
+            lefty: bool(e.lefty, false),
+            partAudio: oneOf(e.partAudio, PART_AUDIO_MODES, PART_AUDIO_MODES[0]),
+            on: bool(e.on, true),
+        };
+    });
+}
+
+// Explicit kind choices only, { controllerKey: kindId }; unregistered kinds are dropped.
+function normalizeControllerKinds(v) {
+    const out = {};
+    if (isObj(v)) for (const k of Object.keys(v)) if (isKind(v[k])) out[k] = v[k];
+    return out;
+}
+
 function normalizeZoom(v) {
     const z = isObj(v) ? v : DEFAULTS.zoom;
     return { guitar: clampZoom(z.guitar), drums: clampZoom(z.drums) };
@@ -121,6 +168,8 @@ export function normalizePrefs(raw) {
         lastSong: normalizeSong(r.lastSong),
         recentSongs: normalizeRecent(r.recentSongs),
         pickFilters: normalizePickFilters(r.pickFilters),
+        controllers: normalizeControllers(r.controllers),
+        controllerKinds: normalizeControllerKinds(r.controllerKinds),
     };
 }
 

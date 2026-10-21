@@ -16,6 +16,14 @@ export function stemIdFor(part, partPrefs, stemIds) {
         if (partPrefs && partPrefs.arrangement === 'Bass') return has('bass');
         return ids.find((id) => id === 'guitar' || id.startsWith('guitar')) || null;
     }
+    // A 5-fret controller: Bass plays the bass stem, Rhythm the rhythm stem (else the guitar stem), Lead the guitar stem.
+    if (part === 'five_fret') {
+        const guitar = () => ids.find((id) => id === 'guitar' || id.startsWith('guitar')) || null;
+        const want = partPrefs && partPrefs.part;
+        if (want === 'bass') return has('bass');
+        if (want === 'rhythm') return ids.find((id) => id === 'rhythm' || id.startsWith('rhythm')) || guitar();
+        return guitar();
+    }
     if (part === 'drums') return has('drums');
     if (part === 'vocals') return has('vocals');
     return null;

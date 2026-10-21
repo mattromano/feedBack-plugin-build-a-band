@@ -95,3 +95,14 @@ test('mute and restore take a claim id', async () => {
         ['release', { capability: 'stems', claimId, requester: 'build_a_band' }],
     ]);
 });
+
+test('stemIdFor five_fret: bass, rhythm stem or guitar, guitar', () => {
+    assert.equal(stemIdFor('five_fret', { part: 'bass' }, ['bass', 'guitar']), 'bass');
+    assert.equal(stemIdFor('five_fret', { part: 'bass' }, ['guitar']), null);
+    assert.equal(stemIdFor('five_fret', { part: 'rhythm' }, ['guitar', 'rhythm']), 'rhythm');
+    assert.equal(stemIdFor('five_fret', { part: 'rhythm' }, ['guitar_lead', 'drums']), 'guitar_lead');
+    assert.equal(stemIdFor('five_fret', { part: 'guitar' }, ['rhythm', 'guitar']), 'guitar');
+    assert.equal(stemIdFor('five_fret', { part: 'guitar' }, ['rhythm', 'other']), null);
+    assert.equal(stemIdFor('five_fret', { part: 'guitar' }, undefined), null);
+    assert.equal(stemIdFor('five_fret', null, ['guitar']), 'guitar', 'no part reads as Lead');
+});

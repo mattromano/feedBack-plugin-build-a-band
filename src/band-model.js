@@ -40,9 +40,11 @@ export function bandScreenModel({ prefs, item, vocalsSupported = true, noteDetec
             col.soundMode = col.soundModesDisabled ? 'song' : (pp.soundMode || 'song');
         }
         if (part.id === 'guitar') {
-            const arrs = songFacts(item).arrangements;
+            const facts = songFacts(item);
             col.arrangements = {};
-            for (const n of GUITAR_ARRANGEMENTS) col.arrangements[n] = !item || guitarArrIndex(arrs, n) !== undefined;
+            for (const n of GUITAR_ARRANGEMENTS) {
+                col.arrangements[n] = !item || (!facts.fiveFretOnly && guitarArrIndex(facts.arrangements, n) !== undefined);
+            }
             const stored = pp.arrangement || 'Lead';
             col.arrangement = col.arrangements[stored] ? stored
                 : (GUITAR_ARRANGEMENTS.find((n) => col.arrangements[n]) || stored);
