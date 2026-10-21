@@ -5,6 +5,7 @@
 // - else 2 s per measure from 0 (120 BPM 4/4, the drums engine's fallback).
 // Linear between anchors and extrapolated outside them with the nearest
 // segment's slope. Pure; never throws on bad beat data.
+// Differs from karaoke's src/measure.js only on degenerate data: 2-4 beats give beat-based measures here (karaoke needs 5+), and duplicate beat times are deduped before picking downbeats (karaoke dedupes downbeats alone).
 export const FALLBACK_MEASURE_S = 2;
 export const BEATS_PER_MEASURE = 4;
 

@@ -1,5 +1,5 @@
 /*
- * yarg-rules.js: star score rules from YARG for the feedBack Build-a-Band plugin.
+ * yarg-rules.js: star score and star power (overdrive) rules from YARG for the feedBack Build-a-Band plugin.
  *
  * Re-implemented from the numbers and rules in:
  *   YARG.Core (https://github.com/YARC-Official/YARG.Core):
