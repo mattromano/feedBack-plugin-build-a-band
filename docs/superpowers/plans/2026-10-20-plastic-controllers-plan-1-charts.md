@@ -19,6 +19,7 @@
 - Preserve CRLF files (core `CHANGELOG.md` is CRLF): edit in binary mode.
 - feedpak change stays in **Matt's fork** (`mattromano/feedpak-spec`): branch `fep/five-fret-charts` off `custom`, merged into `custom`. **Never open an issue or PR on `got-feedBack/feedpak-spec`.**
 - Core branch `feature/five-fret-charts` off the fork's integration branch per `slopsmith-custom/FORK-HANDOFF.md`. Push to `origin` (the mattromano fork) only.
+- **Silent testing** (Matt): never launch anything with sound without asking; debug while paused, over CDP.
 - Testing in the **installed app only** (`slopsmith-custom/feedback-fork/debug/README.md`: `launch-debug.sh`, `cdp.mjs`, `dev-sync.sh`). Never the browser dev server or the Claude app's browser. Ask before quitting Matt's running copy; leave nothing playing.
 - Credits: the new importer extends `drumchart.py`'s parsing, so its header carries the same Moonscraper (Alexander Ong) / YARC LGPL-3.0 credit as `drumchart.py` lines 1–58.
 - Tests: core `.venv/bin/python -m pytest tests -q`; feedpak-spec `python -m pytest tests -q` and `python tools/validate.py examples/extended.feedpak`.
@@ -218,13 +219,13 @@
 
 ### Task 8: Real-app check
 
-No new code. Proves the chain end to end in the installed app.
+No new code. Proves the chain end to end in the installed app, **silently**: never start playback, count-in, metronome, hit sounds or previews without asking Matt first. Load and inspect while paused, read state over CDP and WebSocket frames, and take screenshots. If anything starts playing, pause it at once and confirm the playhead stopped.
 
 - [ ] **Step 1: Make a test pack** from a real Clone Hero chart with guitar and bass. The drums cache `~/.cache/slopsmith-drums/sng/` holds `.sng` files that Chorus downloads gave us. Pick one with `PART GUITAR` and `PART BASS` (`python -c` with `lib/sngfile.py` to list its `notes.mid` tracks). Run `scripts/ch_to_sloppak.py` on it into a scratch folder, then `python feedpak-spec/tools/validate.py` on the output: exit 0.
 - [ ] **Step 2: Install the core changes** with `slopsmith-custom/feedback-fork/dev-sync.sh`, and copy the test pack into the app's library folder (ask Matt first if the app is running; never quit his copy unasked).
 - [ ] **Step 3: With `launch-debug.sh` and `cdp.mjs`:** rescan the library, then confirm `/api/library?five_fret=bass` returns the song, and `?five_fret=guitar:auto` doesn't.
-- [ ] **Step 4: Open the song** and read `song_info.five_fret_parts` from the highway WebSocket via `cdp.mjs` (it lists guitar and bass). Open a second socket with `?five_fret_part=five_fret_bass` and check that the `five_fret` frame `total` equals the note count in the pack's file.
-- [ ] **Step 5: Check nothing else moved.** The song's drums (if any) still load in the drums plugin, and a normal guitar song plays as before. Pause playback, leave nothing playing.
+- [ ] **Step 4: Without playing it**, read `song_info.five_fret_parts` from the highway WebSocket via `cdp.mjs` (it lists guitar and bass). Open a second socket with `?five_fret_part=five_fret_bass` and check that the `five_fret` frame `total` equals the note count in the pack's file.
+- [ ] **Step 5: Check nothing else moved, silently.** The song's drums (if any) still load in the drums plugin, and a normal guitar song still loads its arrangements. Check both while paused. Leave nothing playing.
 - [ ] **Step 6: Record the result** (song used, counts, any surprises) in the plan's review section below and in the shared notes folder.
 
 ## Later plans (each written when its turn comes)
