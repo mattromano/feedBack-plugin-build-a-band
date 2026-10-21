@@ -58,15 +58,16 @@ function setup() {
         getLabelScale: () => 1, setLabelScale: (v) => log.push('label ' + v),
     };
     const drumHws = [];
+    const coreResize = () => log.push('drum.resize');
     const createHighway = () => {
         const hw = {
             getRenderScale: () => 1,
             setRenderer: (r) => log.push('drum.setRenderer'),
-            init: (c) => { log.push('drum.init'); hw.resize(); },
+            init: (c, container) => { hw.initArgs = [c, container]; log.push('drum.init'); hw.resize(); },
             connect: (url) => log.push('drum.connect ' + url),
             setTime: () => {},
             stop: () => log.push('drum.stop'),
-            resize: () => {},
+            resize: coreResize,
         };
         drumHws.push(hw);
         return hw;
@@ -91,7 +92,7 @@ globalThis.requestAnimationFrame ??= () => 1;
 globalThis.cancelAnimationFrame ??= () => {};
 
 test('two lanes: splitscreen stops first, slots sized by split, drum lane wired', () => {
-    const { player, log, deps } = setup();
+    const { player, log, deps, drumHws } = setup();
     mountStage({ player, song: withDrums, prefs: { split: 70 }, deps });
     assert.equal(log[0], 'split.stop');
     assert.ok(player.classList.contains('bab-stage'));
@@ -110,6 +111,12 @@ test('two lanes: splitscreen stops first, slots sized by split, drum lane wired'
     assert.ok(log.includes('main.setContainer(slot)'));
     assert.ok(log.includes('drum.connect ws://x/a.psarc?arrangement=1'));
     assert.ok(log.includes('drums.target(canvas)'));
+    // Core's own resize() sizes the drum canvas to the slot (so the renderer
+    // is notified): init gets the slot as container, resize is not replaced.
+    const [canvas, container] = drumHws[0].initArgs;
+    assert.equal(container, drums);
+    assert.equal(canvas.parentNode, drums);
+    assert.equal(drumHws[0].resize.name, 'coreResize', 'drum hw.resize not overridden');
 });
 
 test('no drum chart: guitar alone at full width, no drum highway', () => {

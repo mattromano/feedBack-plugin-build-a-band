@@ -143,19 +143,15 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             drumCanvas.style.cssText = 'width:100%;height:100%;display:block;';
             slots.drums.appendChild(drumCanvas);
             const hw = makeHighway();
-            hw.resize = function () {
-                const c = drumCanvas;
-                if (!c || !slots.drums) return;
-                const rect = slots.drums.getBoundingClientRect();
-                c.style.width = rect.width + 'px';
-                c.style.height = rect.height + 'px';
-                const scale = hw.getRenderScale();
-                c.width = Math.round(rect.width * scale);
-                c.height = Math.round(rect.height * scale);
-            };
             drumHw = hw;
+            // Renderer before init so the fresh canvas locks to its context
+            // type (splitscreen's recreatePanelHighway order). The drums slot
+            // is passed as init's resize container, so core's own resize()
+            // measures the slot, applies the effective render scale and
+            // notifies the renderer (renderer.resize(w, h), gated on it being
+            // inited). A hand-rolled resize override can't reach the renderer.
             hw.setRenderer(drumRenderer());
-            hw.init(drumCanvas);
+            hw.init(drumCanvas, slots.drums);
             hw.connect(wsUrl(song.filename, plan.drumIndex), { onSongInfo() {} });
             hw.resize();
             clock.add(hw);
