@@ -16,8 +16,9 @@ import { createBandScore } from './band-score.js';
 import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals, onsetTime } from './part-events.js';
 import { chartPhrases } from './guitar-od.js';
 import { createOverdriveSession } from './overdrive-session.js';
-import { stemIdFor, muteStem, restoreStem, SOUND_CLAIM_ID } from './stem-claims.js';
+import { stemIdFor, muteStem, restoreStem, SOUND_CLAIM_ID, STEM_SOUND_CLAIM_PREFIX } from './stem-claims.js';
 import { createDrumSound } from './drum-sound.js';
+import { createStemSound } from './stem-sound.js';
 import { OD_CALLOUT } from './hud-model.js';
 import { guitarStarThresholds } from './stars.js';
 import { createBandHud } from './hud.js';
@@ -30,7 +31,7 @@ import { createStageChrome } from './stage-chrome.js';
 import { createSidebarOverlay } from './sidebar-overlay.js';
 import { openSettingsOverlay } from './settings-overlay.js';
 import { otherModalOpen } from './modal-open.js';
-import { CONTROLLER_KINDS, isControllerId } from './controller-model.js';
+import { CONTROLLER_KINDS, kindFor, isControllerId } from './controller-model.js';
 import { createControllerLanes, kindOf } from './controller-lanes.js';
 import { playingIds, playerStyle } from './players.js';
 
@@ -255,6 +256,13 @@ export function createBandRuntime({
             // a sound mute was sent and not yet restored.
             drumSound: null,
             soundClaim: false,
+            // Controller part audio (Plan 3 Decision 10): the session's
+            // createStemSound, whether it was built before stems listed any
+            // stem (rebuilt on provider-ready), and the stem ids whose sound
+            // mute was sent and not yet restored.
+            stemSound: null,
+            stemSoundEmpty: false,
+            stemSoundClaims: new Set(),
             // Plan 7: full mode (the stored pref sets where it starts), the hover
             // chrome, the sidebar overlay (one per session, as its click takeover
             // starts at create), the overlay over the paused song ({ kind }), the
@@ -315,6 +323,7 @@ export function createBandRuntime({
         },
         onPause: (s) => { if (!s.overlay) callTogglePlay(); },
         onBackHold: (s) => confirmLeave(s, () => { if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN)); }),
+        onJudgment: (s, id, type) => { if (s.stemSound) syncStemSound(s, s.stemSound.judge(id, type)); },
     });
 
     // A controller player's name for toasts: its part, then the controller's name.
@@ -554,6 +563,48 @@ export function createBandRuntime({
         syncDrumSound(s);
     }
 
+    // Controller part audio (Plan 3 Decision 10), once the ledger exists: every
+    // playing player on the stem it plays, a controller through its kind's
+    // stemIdFor. Idempotent.
+    function startStemSound(s) {
+        if (s.stemSound || !s.score) return;
+        const ids = songStemIds();
+        const members = s.scoreParts.map((id) => {
+            if (!isControllerId(id)) return { id, stemId: stemIdFor(id, s.prefs.parts[id], ids), controller: false };
+            const c = s.prefs.controllers.find((x) => x.id === id);
+            return c ? { id, stemId: stemIdFor(kindFor(s.prefs, c.key), c, ids), controller: true, mode: c.partAudio } : null;
+        }).filter(Boolean);
+        s.stemSound = createStemSound({ members });
+        s.stemSoundEmpty = ids.length === 0;
+        syncStemSound(s, s.stemSound.setFailed([...s.failed]));
+    }
+
+    // Each changed stem becomes one queued claim op under its own claim. force:
+    // every held mute is sent again (stems rebuilt its graph).
+    function syncStemSound(s, changed, { force = false } = {}) {
+        const caps = fb.capabilities;
+        const op = (stemId, mute) => {
+            const claimId = STEM_SOUND_CLAIM_PREFIX + stemId;
+            safe(() => queueStemOp('sound:stem:' + stemId, () => (mute
+                ? muteStem({ caps, part: stemId, stemId, claimId })
+                : restoreStem({ caps, part: stemId, claimId }))));
+        };
+        if (force) for (const stemId of s.stemSoundClaims) op(stemId, true);
+        for (const stemId of changed) {
+            const want = !!(s.stemSound && s.stemSound.muted(stemId));
+            if (want === s.stemSoundClaims.has(stemId) || (want && !caps)) continue;
+            if (want) s.stemSoundClaims.add(stemId); else s.stemSoundClaims.delete(stemId);
+            op(stemId, want);
+        }
+    }
+
+    // The session ends: every held stem mute is restored and released.
+    function releaseStemSound(s) {
+        const held = [...s.stemSoundClaims];
+        s.stemSound = null;
+        syncStemSound(s, held);
+    }
+
     // Fail mode (R12, R13): brings the lanes and stem claims in line with the
     // ledger after it changed (a judgment, a deploy, a rewind or a dropped part),
     // and ends the song when everyone is out (R15). silent: no callouts or toasts
@@ -580,6 +631,7 @@ export function createBandRuntime({
                 restoreFailedStem(s, id);
             }
         }
+        if (s.stemSound) syncStemSound(s, s.stemSound.setFailed([...s.failed]));
         if (snap.bandFailed && !s.bandFailed && session === s && state.phase === 'playing') {
             s.bandFailed = true;
             dispatch({ type: 'failed' });
@@ -692,6 +744,7 @@ export function createBandRuntime({
                 // The ledger came with this mount: overdrive starts now.
                 startOverdrive(s);
                 startDrumSound(s);
+                startStemSound(s);
                 // Splitscreen was still up at song:ready, so vocals had no
                 // strip slot then: start them now the stage is up.
                 if (s.vocals && !s.vocalsStarted && !s.vocalsFailed) EFFECTS.startVocals(s);
@@ -1105,6 +1158,7 @@ export function createBandRuntime({
             }
             startOverdrive(s);
             startDrumSound(s);
+            startStemSound(s);
         },
         applyDevices(s) {
             Promise.resolve()
@@ -1268,6 +1322,7 @@ export function createBandRuntime({
             // 7. Every stem the band muted comes back, and its claim is released.
             for (const id of [...s.stemClaims]) restoreFailedStem(s, id);
             releaseDrumSound(s);
+            releaseStemSound(s);
         },
         releaseExit() {
             const r = release;
@@ -1432,6 +1487,8 @@ export function createBandRuntime({
         // Any seek brings Rock Band drums back (plan 6 R11): the drums engine
         // starts clean from the seek time.
         if (s.drumSound && s.drumSound.seek()) syncDrumSound(s);
+        // So do controllers' dropped stems (Review Focus 5).
+        if (s.stemSound) syncStemSound(s, s.stemSound.seek());
         // A loop wrap keeps the ledger; the looped phrases earn again (R8).
         if (d.reason === 'loop-wrap') {
             if (s.od) { const od = s.od; safe(() => od.loopWrap(d.to)); }
@@ -1494,12 +1551,20 @@ export function createBandRuntime({
         if (safe(() => od.onset(t, displayTime(s))) === true) record(s, { part: 'guitar', t: displayTime(s), kind: 'deploy' });
     }
     // Stems built a new stem graph (R4): its claims are gone, so a held sound
-    // mute is sent again.
+    // mute is sent again. Part audio built before any stem was listed is
+    // built again now there are stems.
     function onStemsState(e) {
         const d = e && e.detail;
         if (!d || d.event !== 'provider-ready') return;
         const s = scoring();
-        if (s && s.drumSound) syncDrumSound(s, { force: true });
+        if (!s) return;
+        if (s.drumSound) syncDrumSound(s, { force: true });
+        if (s.stemSound && s.stemSoundEmpty && songStemIds().length) {
+            releaseStemSound(s);
+            startStemSound(s);
+        } else if (s.stemSound) {
+            syncStemSound(s, [], { force: true });
+        }
     }
     const winHandlers = {
         'notedetect:hit': onGuitarJudgment, 'notedetect:miss': onGuitarJudgment, 'notedetect:onset': onOnset,

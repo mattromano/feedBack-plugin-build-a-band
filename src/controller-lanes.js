@@ -19,15 +19,16 @@ export function kindOf(kinds, prefs, c) {
     return kinds && Object.prototype.hasOwnProperty.call(kinds, id) ? kinds[id] : null;
 }
 
-// createControllerLanes({ kinds, getStage, getSession, isLive, displayTime, record, onDeploy, onPause, onBackHold })
+// createControllerLanes({ kinds, getStage, getSession, isLive, displayTime, record, onDeploy, onPause, onBackHold, onJudgment })
 //   getStage(): the mounted stage, or null; getSession(): the current session, or null
 //   isLive(s): the session is playing with a ledger (its judgments score)
 //   displayTime(s), record(s, entry): the runtime's clock and ledger
 //   onDeploy(s, id), onPause(s), onBackHold(s): a live lane's sp-activate, Start and held Back
+//   onJudgment(s, id, type): a live lane's judgment, after its ledger entry (part audio)
 // -> { lanePlayer, refreshLanes, laneOwner, laneState, readConnected, teardown, events, onEvent }
 //   events: [{ name, type }], one per bus event name across every kind
 export function createControllerLanes({
-    kinds, getStage, getSession, isLive, displayTime, record, onDeploy, onPause, onBackHold,
+    kinds, getStage, getSession, isLive, displayTime, record, onDeploy, onPause, onBackHold, onJudgment,
 }) {
     const laneCanvasOf = (id) => {
         const stage = getStage();
@@ -173,9 +174,11 @@ export function createControllerLanes({
             p.last.score = d.score;
             p.last.resets = d.resets;
         }
-        if (!entry) return;
-        syncLaneThresholds(s, id, p);
-        record(s, entry);
+        if (entry) {
+            syncLaneThresholds(s, id, p);
+            record(s, entry);
+        }
+        if (live && typeof onJudgment === 'function') onJudgment(s, id, type);
     }
 
     const events = [];

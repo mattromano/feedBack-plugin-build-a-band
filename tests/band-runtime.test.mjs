@@ -3872,3 +3872,113 @@ test("events from a canvas the band doesn't own are ignored", async () => {
     assert.equal(rt.snapshot().parts.ctl1.score, 500);
     rt.dispose();
 });
+
+// ---- Plan 3 Task 11: Rock Band part audio for controller players, per stem ----
+
+const BASS_STEM = 'build_a_band:sound:stem:bass';
+const isStemSound = (claimId) => (r) => !!r && (r.claimId === claimId || !!(r.args && r.args.claimId === claimId));
+const stemSoundKinds = (calls, claimId) => calls.caps.filter((c) => isStemSound(claimId)(c[1]))
+    .map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
+const BASS_STEMS = ['guitar', 'bass', 'drums'];
+
+test('a controller miss mutes the bass stem through its claim; a hit restores and releases', async () => {
+    const env = setup({ stems: BASS_STEMS });
+    const { rt, fb, mounts, calls } = env;
+    await goCtl(env);
+    const canvas = mounts[0].ctlCanvas.ctl1;
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), [], 'nothing at load');
+    fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    assert.deepEqual(capCalls(calls, 'claim', isStemSound(BASS_STEM)), [{ capability: 'stems', claimId: BASS_STEM, requester: 'build_a_band' }]);
+    assert.deepEqual(stemsCommand(calls, 'mute').filter(isStemSound(BASS_STEM)).map((r) => r.args), [{ id: 'bass', claimId: BASS_STEM }]);
+    fb.emit('five_fret:overstrum', ffEv(canvas, { combo: 0 }));
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), ['claim', 'dispatch:mute'], 'already dropped');
+    fb.emit('five_fret:hit', ffEv(canvas, { score: 50 }));
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    // Any seek brings a dropped stem back (Review Focus 5).
+    fb.emit('five_fret:miss', ffEv(canvas, { combo: 0, score: 50 }));
+    await flush();
+    fb.emit('song:seek', { from: 10, to: 4 });
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM).slice(4), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    // The guitar and drum stems are never touched by the bass player.
+    assert.ok(calls.caps.every((c) => !isStemSound('build_a_band:sound:stem:guitar')(c[1])));
+    rt.dispose();
+});
+
+test('Always play sends nothing', async () => {
+    const env = setup({ stems: BASS_STEMS });
+    const { rt, fb, mounts, calls } = env;
+    await goCtl(env, ctlPrefs([{ ...PAD1, partAudio: 'always' }]));
+    const canvas = mounts[0].ctlCanvas.ctl1;
+    fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    fb.emit('five_fret:overstrum', ffEv(canvas, { combo: 0 }));
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), []);
+    rt.dispose();
+    // A Lead controller beside the real guitarist: the guitar stem is theirs too.
+    const lead = setup({ stems: BASS_STEMS });
+    await goCtl(lead, ctlPrefs([{ ...PAD1, part: 'guitar' }]));
+    lead.fb.emit('five_fret:miss', ffEv(lead.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    await flush();
+    assert.deepEqual(stemSoundKinds(lead.calls, 'build_a_band:sound:stem:guitar'), []);
+    lead.rt.dispose();
+});
+
+test('a failed controller mutes its stem; rescue unmutes', async () => {
+    const env = setup({ stems: BASS_STEMS });
+    const { rt, fb, mounts, calls, clock } = env;
+    await goCtl(env, { ...ctlPrefs([{ ...PAD1, partAudio: 'always' }]), failMode: 'fail' });
+    const canvas = mounts[0].ctlCanvas.ctl1;
+    for (let i = 0; i < 14; i++) {
+        clock.t = 20 + i;
+        fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    }
+    assert.equal(rt.snapshot().parts.ctl1.failed, true);
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), ['claim', 'dispatch:mute']);
+    fb.emit('drums:sp-activate', { canvas: mounts[0].drumCanvas, spActive: true });
+    assert.equal(rt.snapshot().parts.ctl1.failed, false);
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    rt.dispose();
+});
+
+test('teardown restores held claims', async () => {
+    const env = setup({ stems: BASS_STEMS });
+    const { rt, fb, mounts, calls } = env;
+    await goCtl(env);
+    fb.emit('five_fret:miss', ffEv(mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    fb.emit('song:stop');
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    const total = calls.caps.length;
+    fb.emit('five_fret:hit', ffEv(mounts[0].ctlCanvas.ctl1, { score: 10 }));
+    env.fireWin('stems:state', { event: 'provider-ready', stemIds: BASS_STEMS });
+    await flush();
+    assert.equal(calls.caps.length, total, 'nothing after the session');
+    rt.dispose();
+});
+
+test('provider-ready re-mutes', async () => {
+    // The stems graph arrives after song:ready: the stem sound is rebuilt then.
+    const ids = [];
+    const env = setup({ stems: ids });
+    const { rt, fb, mounts, calls, fireWin } = env;
+    await goCtl(env);
+    const canvas = mounts[0].ctlCanvas.ctl1;
+    fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), [], 'no stems yet');
+    ids.push(...BASS_STEMS);
+    fireWin('stems:state', { event: 'provider-ready', stemIds: ids });
+    fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), ['claim', 'dispatch:mute']);
+    // A rebuilt graph lost the claim: the held mute is sent again.
+    fireWin('stems:state', { event: 'provider-ready', stemIds: ids });
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM), ['claim', 'dispatch:mute', 'claim', 'dispatch:mute']);
+    fb.emit('five_fret:hit', ffEv(canvas, { score: 10 }));
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, BASS_STEM).slice(4), ['dispatch:restore', 'release']);
+    rt.dispose();
+});
