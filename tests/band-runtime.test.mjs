@@ -50,11 +50,13 @@ const ITEM = { filename: 'My Song.sloppak', arrangements: [{ index: 0, name: 'Le
 const DRUM_ITEM = { filename: 'Beat.sloppak', arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Drums' }] };
 
 function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 },
-    karaoke = true, karaokePitch = true, mountFails = false, drumLane = true } = {}) {
+    karaoke = true, karaokePitch = true, mountFails = false, drumLane = true,
+    stems = ['guitar', 'drums'], caps = true, pauseStatus = 'paused' } = {}) {
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
-        karaoke: [], karaokeAt: [], playSongAt: [], hides: [], countIn: [], countInAt: [], nd: [], micHit: [] };
+        karaoke: [], karaokeAt: [], playSongAt: [], hides: [], countIn: [], countInAt: [], nd: [], micHit: [],
+        caps: [], audioPause: 0 };
     // Shared sequence counter: orders karaoke calls against playSong and unmount.
     let seq = 0;
     const doc = makeDoc();
@@ -70,6 +72,12 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         s.value = slider;
         doc.body.appendChild(s);
     }
+    // The song's media element: pause() only records (nothing plays).
+    const audio = doc.createElement('audio');
+    audio.id = 'audio';
+    audio.paused = false;
+    audio.pause = () => { calls.audioPause++; audio.paused = true; };
+    player.appendChild(audio);
     const bandScreen = doc.createElement('div');
     bandScreen.id = 'plugin-build_a_band';
     bandScreen.className = 'screen';
@@ -86,6 +94,19 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         setSongCountInOverride: (v) => { calls.countIn.push(v); calls.countInAt.push(++seq); },
         getDisplayTime: () => clock.t,
     };
+    // Core's capability host, recording [name, request] into calls.caps. Nothing plays:
+    // stems mutes are only recorded, and playback pause answers with pauseStatus.
+    if (caps) {
+        fb.capabilities = {
+            claim: (req) => { calls.caps.push(['claim', req]); return () => {}; },
+            release: (req) => { calls.caps.push(['release', req]); return { ok: true }; },
+            dispatch: (req) => {
+                calls.caps.push(['dispatch', req]);
+                if (req.capability === 'playback') return Promise.resolve({ outcome: 'handled', status: pauseStatus });
+                return Promise.resolve({ outcome: 'handled', status: 'applied' });
+            },
+        };
+    }
     // The song's display time, moved by the tests.
     const clock = { t: 0 };
     // The chart: highway time, beats and phrases (overdrive), moved by the tests.
@@ -127,6 +148,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         },
         feedBackScorecard: { setHudHidden: (v) => { calls.hides.push(['scorecard', v]); return true; } },
         slopsmithSplitscreen: { isActive: () => ssActive, start: () => { calls.splitStart++; }, stop() { ssActive = false; } },
+        stems: { getState: () => stems.map((id) => ({ id, on: true, vol: 1 })) },
     };
     // note_detect's judgments arrive on window.
     const winEvents = new EventTarget();
@@ -196,7 +218,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         fb.emit('song:ready', { hasPhraseData });
     }
     const fireWin = (type, detail) => win.dispatchEvent(new CustomEvent(type, { detail }));
-    return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong, clock, chart, od, fireWin,
+    return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong, clock, chart, od, fireWin, audio,
         makeRuntime, setSplit: (v) => { ssActive = v; } };
 }
 
@@ -1854,5 +1876,301 @@ test('splitscreen up at song:ready: overdrive starts once the stage mounts', () 
     timers.fire(50);
     assert.ok(rt.overdrive(), 'started with the ledger');
     assert.deepEqual(timers.delays().filter((ms) => ms === 100), [100], 'one tick chain');
+    rt.dispose();
+});
+
+// ── Fail mode (plan 5 Task 11) ──
+
+const failPrefs = (opts) => ({ ...prefsWith(opts), failMode: 'fail' });
+const guitarMiss = () => ({ isDefault: true, counted: true, hit: false, points: 0, multiplier: 1, streak: 0 });
+const FAIL_CLAIM = 'build_a_band:fail:guitar';
+const capCalls = (calls, name, pred = () => true) => calls.caps.filter((c) => c[0] === name && pred(c[1])).map((c) => c[1]);
+const stemsCommand = (calls, command) => capCalls(calls, 'dispatch', (r) => r.capability === 'stems' && r.command === command);
+const toastTexts = (player) => player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+const partCallout = (player, part) => {
+    const hud = player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === part);
+    return hud ? hud.querySelector('.bab-callout').textContent : null;
+};
+
+// 14 guitar misses empty the crowd from its 0.66 start (−0.05 each), at display times from..from+13.
+function dropGuitar(env, from = 1) {
+    for (let i = 0; i < 14; i++) {
+        env.clock.t = from + i;
+        env.fireWin('notedetect:miss', guitarMiss());
+    }
+}
+
+test('an empty crowd drops the player: grey lane, stem muted, toast', () => {
+    const env = setup();
+    const { rt, loadSong, mounts, calls, player } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    assert.equal(rt.snapshot().parts.guitar.failed, true);
+    assert.ok(mounts[0].lanes.guitar.classList.contains('bab-failed'));
+    assert.equal(mounts[0].lanes.drums.classList.contains('bab-failed'), false);
+    assert.deepEqual(capCalls(calls, 'claim'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }]);
+    assert.deepEqual(stemsCommand(calls, 'mute').map((r) => r.args), [{ id: 'guitar', claimId: FAIL_CLAIM }]);
+    assert.ok(toastTexts(player).includes('Guitar dropped out: overdrive brings them back'));
+    assert.equal(partCallout(player, 'guitar'), 'DROPPED OUT');
+    assert.equal(rt.phase(), 'playing', 'drums still play');
+    rt.dispose();
+});
+
+test("a bandmate's overdrive rescues them", async () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls, player } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    fb.emit('drums:sp-activate', { canvas: mounts[0].drumCanvas, spActive: true, spAmount: 0.5 });
+    assert.equal(mounts[0].lanes.guitar.classList.contains('bab-failed'), false);
+    assert.equal(rt.snapshot().parts.guitar.crowd, 0.4);
+    assert.equal(partCallout(player, 'guitar'), 'SAVED!');
+    assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
+    await flush();
+    assert.deepEqual(capCalls(calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }]);
+    rt.dispose();
+});
+
+test('no fail never drops', () => {
+    const env = setup();
+    const { rt, loadSong, mounts, calls } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: { ...prefsWith(), failMode: 'nofail' } });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    assert.equal(rt.snapshot().parts.guitar.crowd, 0);
+    assert.deepEqual(stemsCommand(calls, 'mute'), []);
+    assert.deepEqual(capCalls(calls, 'claim'), []);
+    assert.equal(mounts[0].lanes.guitar.classList.contains('bab-failed'), false);
+    rt.dispose();
+});
+
+test('everyone out: the song pauses and the results say Band failed', async () => {
+    const env = setup();
+    const { rt, loadSong, calls, player } = env;
+    rt.startSession({ song: ITEM, prefs: failPrefs({ drums: { on: false } }) });
+    loadSong(ITEM);
+    dropGuitar(env);
+    assert.equal(rt.phase(), 'ending');
+    assert.deepEqual(capCalls(calls, 'dispatch', (r) => r.capability === 'playback'), [
+        { capability: 'playback', command: 'pause', requester: 'build_a_band', args: { requesterId: 'build_a_band' } },
+    ]);
+    await flush();
+    assert.equal(calls.audioPause, 0, "core's pause answered 'paused'");
+    const results = player.querySelector('.bab-results');
+    assert.ok(results);
+    assert.equal(results.querySelector('.bab-results-failed').textContent, 'Band failed');
+    assert.equal(calls.hold, 0, 'the song never ended: no exit is held');
+    rt.dispose();
+});
+
+test("band failed: #audio pauses when core's pause doesn't answer 'paused' or there is no capability host", async () => {
+    for (const opts of [{ pauseStatus: 'no-target' }, { caps: false }]) {
+        const env = setup(opts);
+        const { rt, loadSong, calls } = env;
+        rt.startSession({ song: ITEM, prefs: failPrefs({ drums: { on: false } }) });
+        loadSong(ITEM);
+        dropGuitar(env);
+        assert.equal(rt.phase(), 'ending');
+        await flush();
+        assert.equal(calls.audioPause, 1, JSON.stringify(opts));
+        rt.dispose();
+    }
+});
+
+test('after Band failed, Next song reaches the band screen and Play again replays, with no exit held', async () => {
+    for (const exit of ['next', 'again']) {
+        const env = setup();
+        const { rt, loadSong, calls, player } = env;
+        rt.startSession({ song: ITEM, prefs: failPrefs({ drums: { on: false } }) });
+        loadSong(ITEM);
+        dropGuitar(env);
+        assert.equal(rt.phase(), 'ending');
+        rt[exit]();
+        await flush();
+        assert.equal(calls.hold, 0, exit);
+        assert.equal(calls.release, 0, `${exit}: no exit to release`);
+        assert.equal(player.querySelector('.bab-results'), null, exit);
+        if (exit === 'next') {
+            assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+            assert.equal(rt.phase(), 'idle');
+        } else {
+            assert.deepEqual(calls.playSong, [['My%20Song.sloppak', 0], ['My%20Song.sloppak', 0]]);
+            assert.equal(rt.phase(), 'armed');
+            loadSong(ITEM);
+            assert.equal(rt.phase(), 'playing', 'the replay plays');
+            assert.equal(rt.snapshot().parts.guitar.failed, false, 'a fresh ledger');
+        }
+        rt.dispose();
+    }
+});
+
+test('a seek back before the drop restores the player silently', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls, player } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    assert.ok(mounts[0].lanes.guitar.classList.contains('bab-failed'));
+    fb.emit('song:seek', { from: 20, to: 0.5 });
+    assert.equal(rt.snapshot().parts.guitar.failed, false);
+    assert.equal(mounts[0].lanes.guitar.classList.contains('bab-failed'), false);
+    assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
+    assert.notEqual(partCallout(player, 'guitar'), 'SAVED!');
+    await flush();
+    assert.equal(capCalls(calls, 'release').length, 1);
+    // Dropping again after the rewind claims and mutes again.
+    dropGuitar(env, 21);
+    assert.equal(stemsCommand(calls, 'mute').length, 2);
+    rt.dispose();
+});
+
+test('every exit path releases the stem claim', async () => {
+    const exits = {
+        'Next song': (e) => { e.fb.emit('song:ended', {}); e.rt.next(); },
+        'Play again': (e) => { e.fb.emit('song:ended', {}); e.rt.again(); },
+        'song:stop': (e) => e.fb.emit('song:stop', {}),
+        'screen:changing away': (e) => e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }),
+    };
+    for (const [name, exit] of Object.entries(exits)) {
+        const env = setup();
+        env.rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+        env.loadSong(DRUM_ITEM);
+        dropGuitar(env);
+        assert.equal(stemsCommand(env.calls, 'mute').length, 1, name);
+        exit(env);
+        await flush();
+        assert.deepEqual(stemsCommand(env.calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }], name);
+        assert.deepEqual(capCalls(env.calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }], name);
+        const kinds = env.calls.caps.map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
+        assert.ok(kinds.indexOf('dispatch:restore') < kinds.indexOf('release'), `${name}: restore before release`);
+        env.rt.dispose();
+        await flush();
+        assert.equal(capCalls(env.calls, 'release').length, 1, `${name}: released once`);
+    }
+});
+
+test('a song without that stem still drops the player', () => {
+    const env = setup({ stems: [] });
+    const { rt, loadSong, mounts, calls } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    assert.ok(mounts[0].lanes.guitar.classList.contains('bab-failed'));
+    assert.deepEqual(calls.caps, []);
+    rt.dispose();
+});
+
+test('a HUD remount keeps a dropped part greyed', async () => {
+    const env = setup();
+    const { rt, loadSong, player } = env;
+    let fail;
+    env.win.lyricsKaraoke.startMic = () => new Promise((r) => { fail = () => r('error'); });
+    rt.startSession({ song: FULL_ITEM, prefs: failPrefs({ vocals: SINGER }) });
+    loadSong(FULL_ITEM);
+    await flush();
+    dropGuitar(env);
+    fail();
+    await flush();
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar', 'drums'], 'vocals left the band');
+    const hud = player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === 'guitar');
+    assert.ok(hud.classList.contains('bab-failed'), 'the remounted HUD is greyed again');
+    assert.equal(rt.phase(), 'playing');
+    rt.dispose();
+});
+
+// Review carry-forward: dropPart can fail the band.
+test('dropping the last part still alive fails the band', async () => {
+    const env = setup();
+    const { rt, loadSong, player, calls } = env;
+    let fail;
+    env.win.lyricsKaraoke.startMic = () => new Promise((r) => { fail = () => r('error'); });
+    rt.startSession({ song: PITCH_ITEM, prefs: failPrefs({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    dropGuitar(env);
+    assert.equal(rt.phase(), 'playing', 'vocals are still in');
+    fail();
+    await flush();
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
+    assert.equal(rt.phase(), 'ending');
+    assert.equal(player.querySelector('.bab-results-failed').textContent, 'Band failed');
+    assert.equal(capCalls(calls, 'dispatch', (r) => r.capability === 'playback').length, 1);
+    rt.dispose();
+});
+
+// Review carry-forward (ledger): dropPart keeps the deploys that took effect.
+test("a dropped part's rescue stays: the rescued player is still in", async () => {
+    const env = setup();
+    const { rt, fb, loadSong, player, calls } = env;
+    let fail;
+    env.win.lyricsKaraoke.startMic = () => new Promise((r) => { fail = () => r('error'); });
+    rt.startSession({ song: PITCH_ITEM, prefs: failPrefs({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    dropGuitar(env);
+    env.clock.t = 16;
+    fb.emit('karaoke:od-activate', { fill: 0.5, t: 16 });
+    assert.equal(rt.snapshot().parts.guitar.failed, false, 'rescued');
+    fail();
+    await flush();
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
+    assert.equal(rt.snapshot().parts.guitar.failed, false, 'still rescued after vocals left');
+    assert.equal(rt.phase(), 'playing');
+    const hud = player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === 'guitar');
+    assert.equal(hud.classList.contains('bab-failed'), false);
+    assert.equal(stemsCommand(calls, 'mute').length, 1, 'no new mute');
+    rt.dispose();
+});
+
+// Review carry-forward (ledger): a failed part's streak resets and its deploy is ignored.
+test("a dropped drummer's star power rescues nobody, and a rescue restarts the player at ×1", () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls, player } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    fb.emit('drums:hit', { canvas: lane, points: 30, multiplier: 3, combo: 25 });
+    assert.equal(rt.snapshot().parts.drums.multiplier, 3);
+    for (let i = 0; i < 14; i++) fb.emit('drums:miss', { canvas: lane, multiplier: 1, combo: 0 });
+    assert.equal(rt.snapshot().parts.drums.failed, true);
+    assert.equal(rt.snapshot().parts.drums.streak, 0);
+    assert.equal(rt.snapshot().parts.drums.multiplier, 1);
+    assert.deepEqual(stemsCommand(calls, 'mute').map((r) => r.args.id), ['drums']);
+    const before = partCallout(player, 'drums');
+    fb.emit('drums:sp-activate', { canvas: lane, spActive: true, spAmount: 0.5 });
+    assert.equal(rt.snapshot().parts.drums.failed, true, "its own deploy doesn't bring it back");
+    assert.equal(rt.snapshot().parts.drums.deploys, 0);
+    assert.equal(partCallout(player, 'drums'), before, 'no OVERDRIVE! on a dropped lane');
+    assert.deepEqual(stemsCommand(calls, 'restore'), []);
+    rt.dispose();
+});
+
+test("a dropped guitar's noodle never deploys", () => {
+    const env = odSetup();
+    const { rt, loadSong, fireWin, timers, at } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    // Two cleared phrases fill half a bar: ready.
+    for (let i = 0; i < 9; i++) {
+        at(i);
+        fireWin('notedetect:hit', guitarHit({ noteTime: i, points: 100 }));
+    }
+    at(6);
+    timers.fire(100);
+    at(10);
+    timers.fire(100);
+    assert.equal(rt.overdrive().guitar.ready, true);
+    // Nine hits lift the crowd to 0.84: 17 misses empty it.
+    for (let i = 0; i < 17; i++) { at(10 + i * 0.01); fireWin('notedetect:miss', guitarMiss()); }
+    assert.equal(rt.snapshot().parts.guitar.failed, true);
+    for (const t of [10.5, 11, 11.5]) {
+        at(t);
+        fireWin('notedetect:onset', { t, midi: null, confidence: null, level: 0.3, source: 'level', isDefault: true });
+    }
+    assert.equal(rt.overdrive().guitar.active, false, 'the bar is not spent');
+    assert.equal(rt.snapshot().parts.guitar.deploys, 0);
+    assert.equal(rt.snapshot().parts.guitar.failed, true);
     rt.dispose();
 });

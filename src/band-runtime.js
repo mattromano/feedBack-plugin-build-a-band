@@ -16,6 +16,8 @@ import { createBandScore } from './band-score.js';
 import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals, onsetTime } from './part-events.js';
 import { chartPhrases } from './guitar-od.js';
 import { createOverdriveSession } from './overdrive-session.js';
+import { stemIdFor, muteStem, restoreStem } from './stem-claims.js';
+import { OD_CALLOUT } from './hud-model.js';
 import { guitarStarThresholds } from './stars.js';
 import { createBandHud } from './hud.js';
 import { createToastStack } from './toasts.js';
@@ -182,7 +184,9 @@ export function createBandRuntime({
             odTimer: null,
             // Drums stars over the full chart (M6, R20): the largest thresholds seen.
             drumsThresholds: null,
-            // Fail mode (Task 11).
+            // Fail mode (plan 5 R12, R13): the parts shown dropped out, the parts
+            // whose stem the band muted (restored at rescue and teardown), and
+            // whether everyone was out (the results say Band failed).
             failed: new Set(),
             stemClaims: new Set(),
             bandFailed: false,
@@ -275,6 +279,13 @@ export function createBandRuntime({
             oneLevel: !(s.readyDetail && s.readyDetail.hasPhraseData),
         })) || null;
         if (s.hud) safe(() => s.hud.update(s.score.snapshot()));
+        // A remount keeps the dropped-out lanes grey.
+        for (const id of s.failed) hudCall(s, 'setFailed', id, true);
+    }
+
+    function hudCall(s, method, ...args) {
+        const hud = s.hud;
+        if (hud && typeof hud[method] === 'function') safe(() => hud[method](...args));
     }
 
     function startCountIn(s) {
@@ -295,6 +306,8 @@ export function createBandRuntime({
         // The drop replays the ledger: karaoke's latest reset applies again.
         if (s.vocalsReset !== undefined) s.score.syncTotals('vocals', s.vocalsReset);
         if (s.hud) mountHud(s);
+        // The part's own claim goes with it; with it gone, everyone left may be out.
+        syncFailures(s, { silent: true });
     }
 
     // Vocals that couldn't start leave the band unless they have judged
@@ -364,6 +377,62 @@ export function createBandRuntime({
         if (!entry) return;
         s.score.record(entry);
         refreshHud(s, false);
+        syncFailures(s);
+    }
+
+    // The stem ids of the song playing (stems' own list).
+    function songStemIds() {
+        const stems = win.stems;
+        const list = stems && typeof stems.getState === 'function' ? safe(() => stems.getState()) : null;
+        return Array.isArray(list) ? list.map((st) => st && st.id).filter((id) => typeof id === 'string') : [];
+    }
+
+    function muteFailedStem(s, id) {
+        const stemId = stemIdFor(id, s.prefs.parts[id], songStemIds());
+        const caps = fb.capabilities;
+        if (!stemId || !caps) return;
+        s.stemClaims.add(id);
+        safe(() => muteStem({ caps, part: id, stemId }));
+    }
+
+    function restoreFailedStem(s, id) {
+        if (!s.stemClaims.has(id)) return;
+        s.stemClaims.delete(id);
+        const caps = fb.capabilities;
+        safe(() => restoreStem({ caps, part: id }));
+    }
+
+    // Fail mode (R12, R13): brings the lanes and stem claims in line with the
+    // ledger after it changed (a judgment, a deploy, a rewind or a dropped part),
+    // and ends the song when everyone is out (R15). silent: no callouts or toasts
+    // (a rewind replays the drops and rescues, a dropped part just leaves).
+    function syncFailures(s, { silent = false } = {}) {
+        if (!s.score) return;
+        const snap = s.score.snapshot();
+        const ids = new Set([...s.failed, ...Object.keys(snap.parts)]);
+        for (const id of ids) {
+            const failed = !!(snap.parts[id] && snap.parts[id].failed);
+            if (failed === s.failed.has(id)) continue;
+            if (failed) {
+                s.failed.add(id);
+                hudCall(s, 'setFailed', id, true);
+                if (!silent) {
+                    hudCall(s, 'callout', id, OD_CALLOUT.out);
+                    const type = getPart(id);
+                    showToast(s, `${type ? type.label : id} dropped out: overdrive brings them back`);
+                }
+                muteFailedStem(s, id);
+            } else {
+                s.failed.delete(id);
+                hudCall(s, 'setFailed', id, false);
+                if (!silent && snap.parts[id]) hudCall(s, 'callout', id, OD_CALLOUT.saved);
+                restoreFailedStem(s, id);
+            }
+        }
+        if (snap.bandFailed && !s.bandFailed && session === s && state.phase === 'playing') {
+            s.bandFailed = true;
+            dispatch({ type: 'failed' });
+        }
     }
 
     // The drums engine's state on the band's drum canvas, or null.
@@ -603,7 +672,7 @@ export function createBandRuntime({
             // The band score survives a remount; the HUD moves to the new slots.
             if (!s.score) {
                 s.scoreParts = playingParts(s.prefs);
-                s.score = createBandScore({ parts: s.scoreParts });
+                s.score = createBandScore({ parts: s.scoreParts, failMode: s.prefs.failMode });
                 if (s.guitarThresholds) s.score.setStarThresholds('guitar', s.guitarThresholds);
             }
             // Drums that can't play leave the band: beside guitar, the lane
@@ -674,6 +743,29 @@ export function createBandRuntime({
         holdExit() {
             release = (typeof fb.holdAutoExit === 'function') ? safe(() => fb.holdAutoExit()) || null : null;
         },
+        // Band failed (R15): the song never ended, so no exit is held (Next song
+        // shows the band screen and core's screen change stops the song). Core's
+        // playback pause first; #audio itself when that is missing, throws or
+        // doesn't answer 'paused', unless the session moved on meanwhile.
+        pauseSong(s) {
+            const pauseAudio = () => {
+                if (session !== s || state.phase !== 'ending') return;
+                const audio = doc.getElementById('audio');
+                if (audio && !audio.paused && typeof audio.pause === 'function') safe(() => audio.pause());
+            };
+            const caps = fb.capabilities;
+            if (!caps || typeof caps.dispatch !== 'function') { pauseAudio(); return; }
+            let result;
+            try {
+                result = caps.dispatch({
+                    capability: 'playback', command: 'pause', requester: 'build_a_band', args: { requesterId: 'build_a_band' },
+                });
+            } catch (_) {
+                pauseAudio();
+                return;
+            }
+            Promise.resolve(result).then((r) => { if (!r || r.status !== 'paused') pauseAudio(); }, pauseAudio);
+        },
         // The results over the stage (R16, R17), with this session's numbers.
         // A session with no ledger (the stage never mounted) still gets them,
         // empty; if they can't show at all, Next song runs so core's held
@@ -687,6 +779,7 @@ export function createBandRuntime({
                 song: { title: s.item.title, artist: s.item.artist },
                 oneLevel: !(s.readyDetail && s.readyDetail.hasPhraseData),
                 drumsExtra: drumsStarPower(s),
+                failed: s.bandFailed,
             }));
             s.results = model ? safe(() => showResultsScreen({
                 doc, win, host: player, model,
@@ -759,6 +852,8 @@ export function createBandRuntime({
             if (s.odTimer !== null) { clearTimer(s.odTimer); s.odTimer = null; }
             s.od = null;
             s.drumCanvas = null;
+            // 7. Every stem the band muted comes back, and its claim is released.
+            for (const id of [...s.stemClaims]) restoreFailedStem(s, id);
         },
         releaseExit() {
             const r = release;
@@ -869,17 +964,19 @@ export function createBandRuntime({
     };
     for (const type of DRUM_JUDGMENTS) handlers['drums:' + type] = drumHandler(type);
     // Deploys (R18): drums star power on the band's drum canvas, karaoke's overdrive.
+    // A dropped-out part's deploy is recorded but ignored by the ledger (R12), so its
+    // greyed lane gets no OVERDRIVE! callout.
     handlers['drums:sp-activate'] = (e) => {
         const s = scoring();
         const d = e && e.detail;
         if (!s || !s.od || !d || !d.canvas || d.canvas !== bandDrumCanvas(s)) return;
-        s.od.deployed('drums');
+        if (!s.failed.has('drums')) s.od.deployed('drums');
         record(s, { part: 'drums', t: displayTime(s), kind: 'deploy' });
     };
     handlers['karaoke:od-activate'] = () => {
         const s = scoring();
         if (!s || !s.od) return;
-        s.od.deployed('vocals');
+        if (!s.failed.has('vocals')) s.od.deployed('vocals');
         record(s, { part: 'vocals', t: displayTime(s), kind: 'deploy' });
     };
     handlers['karaoke:phrase'] = (e) => {
@@ -913,6 +1010,7 @@ export function createBandRuntime({
         if (s.vocalsReset !== undefined) s.score.syncTotals('vocals', s.vocalsReset);
         if (s.od) { const od = s.od; safe(() => od.rewindTo(d.to)); }
         refreshHud(s, true);
+        syncFailures(s, { silent: true });
     };
     function onGuitarJudgment(e) {
         const s = scoring();
@@ -929,13 +1027,14 @@ export function createBandRuntime({
         if (od && !failed) safe(() => od.guitarJudgment(entry.noteTime, entry.kind === 'hit', entry.t));
     }
     // Noodle it up (R9, R10): an onset that deploys is the guitar's deploy entry.
+    // A dropped-out guitar never spends its bar (its deploy would be ignored, R12).
     function onOnset(e) {
         const s = scoring();
         const d = e && e.detail;
         if (!s || !d || typeof d !== 'object' || seenOnset.has(d)) return;
         seenOnset.add(d);
         const t = onsetTime(d);
-        if (!s.od || !Number.isFinite(t)) return;
+        if (!s.od || s.failed.has('guitar') || !Number.isFinite(t)) return;
         const od = s.od;
         if (safe(() => od.onset(t, displayTime(s))) === true) record(s, { part: 'guitar', t: displayTime(s), kind: 'deploy' });
     }
