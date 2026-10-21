@@ -1,1 +1,90 @@
 .build-a-band { padding: 2rem; color: inherit; }
+
+/* ── Stage (inside core #player while band mode is on) ─────────────────────
+   .bab-lanes overlays #player down to the footer (bottom set from JS). The
+   guitar slot is empty: core's #highway canvas is positioned over it and
+   sized to it via highway.setContainer(). Everything here is scoped under
+   #player.bab-stage, so removing the class restores the normal layout. */
+#player.bab-stage #highway {
+    position: absolute;
+    left: 0;
+    top: 0;
+    flex: none;
+}
+#player .bab-lanes {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 2;
+    pointer-events: none;
+}
+#player .bab-lane {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    overflow: hidden;
+}
+#player .bab-lane[data-part="drums"] {
+    pointer-events: auto;
+    background: #050508;
+}
+#player .bab-divider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    margin-left: -5px;
+    z-index: 3;
+    cursor: col-resize;
+    pointer-events: auto;
+    touch-action: none;
+}
+#player .bab-divider::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.18);
+}
+#player .bab-divider:hover::after,
+#player .bab-lanes.bab-dragging .bab-divider::after {
+    background: rgba(255, 255, 255, 0.5);
+}
+#player .bab-lanes.bab-dragging { cursor: col-resize; user-select: none; }
+
+/* Guitar lane chrome: fret-number scale, revealed on hover. */
+#player .bab-lane-chrome {
+    position: absolute;
+    top: 3.25rem;
+    right: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    background: rgba(10, 10, 16, 0.8);
+    color: #ddd;
+    font-size: 0.75rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+#player .bab-lane.bab-hover .bab-lane-chrome {
+    opacity: 1;
+    pointer-events: auto;
+}
+#player .bab-lane-chrome button {
+    min-width: 1.5rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.375rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+    cursor: pointer;
+}
+#player .bab-lane-chrome button:hover { background: rgba(255, 255, 255, 0.2); }
+
+.bab-band-btn[aria-pressed="true"] { background: rgba(120, 90, 255, 0.45); color: #fff; }
