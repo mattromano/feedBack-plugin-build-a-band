@@ -719,3 +719,14 @@ A builder check (2026-10-21) found these; each is decided here.
     - Task 3 bumps `plugin.json` `version` along with `ASSET_VERSION`.
     - Plan 5 edits the same `CHANGELOG.md`, `session.js` and `screen.js`; the coordinator merges.
 12. **Score resets.** The five-fret band events carry the session's `resets` count. `fiveFretEntry` detects a reset from a change in that count, not from a score drop.
+
+### Amendments after Plan 6's builder check (binding)
+
+- **Ruling 7, extended.** A pinned lane maps Start and a 1 s hold on Back to bus events, so Build-a-Band handles both (toggle pause, open the leave prompt):
+  - `five_fret:band-pause` and `five_fret:band-back-hold`, with `detail { controllerKey, canvas }`;
+  - Plan 6 adds the same for drums under `drums:`.
+  A pinned lane never calls `togglePlay` itself.
+- **Ruling 9, extended.**
+  - Each `CONTROLLER_KINDS` entry also has `pin(laneCanvas, controllerKey, opts)` and `unpin(laneCanvas)`. For `five_fret` these call `setLane` / `clearLane`.
+  - Runtime event handlers are registered once per event name and dispatch by `detail.canvas` to the owning player. Never key a handler map by a kind's prefix in a way that can overwrite another player's handler.
+  - `prefs.controllerKinds` stores **only explicit choices**. A standard pad with no entry plays as `five_fret` while that is the only kind; Plan 6 asks when more than one kind is available.
