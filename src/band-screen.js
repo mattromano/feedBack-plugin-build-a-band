@@ -2,7 +2,7 @@
 // picked song. Thin DOM layer; the rules live in band-model.js.
 import { PART_TYPES } from './parts.js';
 import { pushRecent } from './prefs.js';
-import { songChips, resolveRecent } from './query.js';
+import { songChips, resolveRecent, pickFilters } from './query.js';
 import { bandScreenModel, isGoKey } from './band-model.js';
 import {
     listGuitarInputs, listDrumInputs, listMicInputs, findKit,
@@ -33,6 +33,14 @@ const MIC_HIT_FLASH_MS = 300;
 const METER_FLOOR_DB = 60;
 const NEEDS_KARAOKE = 'Needs Lyrics Karaoke';
 const TAP_THE_MIC = 'Tap the mic';
+// The library pick (core's feedBack.library.pick).
+const PICK_TITLE = 'Pick a song for the band';
+const PICK_CONFIRM = 'Use this song';
+const PICK_BACK = 'Back to the band';
+const NO_DEVICE = 'none picked';
+const DEVICE_NOT_FOUND = 'Saved device (not found)';
+const TEXT_TAGS = ['INPUT', 'TEXTAREA', 'SELECT'];
+const isTyping = (a) => !!a && (TEXT_TAGS.includes(String(a.tagName || '').toUpperCase()) || !!a.isContentEditable);
 const meterPct = (db) => `${Math.min(1, Math.max(0, (db + METER_FLOOR_DB) / METER_FLOOR_DB)) * 100}%`;
 
 function defaultStorage(win) {
@@ -47,13 +55,21 @@ function songRef(item) {
     return { filename: item.filename, title: item.title || '', artist: item.artist || '' };
 }
 
-// createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, fetchJson?, storage? })
-//   -> { dispose(), setSong(item | null), getSong(), isVisible() }
+// createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, fetchJson?, storage?, library? })
+//   -> { dispose(), setSong(item | null), getSong(), isVisible(), view(), openLibrary(), nextSong() }
+// Two views: 'setup' (the parts' devices and checks, then Choose a song) and
+// 'confirm' (the song, each part's difficulty and sound, then GO).
 // storage (default win.localStorage) receives karaoke's mic pick.
 // deviceMemo: shared with the band runtime (devices.js), so a device applied
 // here is not applied again at Go.
-export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, fetchJson, storage, deviceMemo = {} }) {
+// library (default win.feedBack.library): core's pick hook; songs are chosen
+// in the Song Library through library.pick().
+export function createBandScreen({
+    root, win, doc, loadPrefs, savePrefs, onGo, fetchJson, storage, deviceMemo = {},
+    library = win && win.feedBack && win.feedBack.library,
+}) {
     const fb = win && win.feedBack;
+    const pickAvailable = !!(library && typeof library.pick === 'function');
     const getJson = fetchJson || ((url) => win.fetch(url).then((r) => r.json()));
     const $ = (sel, el = root) => el.querySelector(sel);
     const $$ = (sel, el = root) => [...el.querySelectorAll(sel)];
@@ -67,6 +83,11 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     let song = null;
     let picked = false; // setSong was called: the lastSong restore must not override it
     let disposed = false;
+    let view = 'setup';
+    let pickGen = 0; // a late result from an older library pick is ignored
+    let pendingPick = false; // nextSong while hidden: pick on the next show
+    let lastResolved = false; // lastSong resolved to a library row: offer Continue with
+    let artFile = null; // the file the art <img> shows
     // Go fires once per showing: a burst of pad hits or Space + pad must not
     // start the song twice while core is still switching screens.
     let launched = false;
@@ -90,6 +111,14 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     function renderSong() {
         $('.bab-title').textContent = song ? (song.title || song.filename) : 'Pick a song';
         $('.bab-artist').textContent = song ? (song.artist || '') : '';
+        const art = $('.bab-art-img');
+        const file = song && song.filename ? song.filename : null;
+        if (art && file !== artFile) {
+            artFile = file;
+            // The URL core's library uses; a song without art hides the <img> (onerror).
+            if (file) art.src = `/api/song/${encodeURIComponent(file)}/art`;
+            art.hidden = !file;
+        }
         const chips = $('.bab-chips');
         chips.replaceChildren();
         if (!song) return;
@@ -127,35 +156,64 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         }
     }
 
+    // The segment value shown and the values greyed out, from the column model.
+    function segState(field, c, pp) {
+        if (field === 'soundMode') return [c.soundMode, c.soundModesDisabled ? SOUND_MODES_NEEDING_STEM : []];
+        if (field === 'arrangement') {
+            return [c.arrangement, Object.keys(c.arrangements).filter((n) => c.arrangements[n] === false)];
+        }
+        return [pp[field], []];
+    }
+
     function render() {
         if (disposed) return;
-        const model = bandScreenModel({ prefs, item: song, vocalsSupported: !!karaokeApi(win), noteDetectLoaded: !!win.noteDetect });
+        const model = bandScreenModel({
+            prefs, item: song, vocalsSupported: !!karaokeApi(win), noteDetectLoaded: !!win.noteDetect, pickAvailable,
+        });
+        root.setAttribute('data-view', view);
         renderSong();
         for (const part of PART_TYPES) {
-            const col = $(`.bab-col[data-part="${part.id}"]`);
-            if (!col) continue;
             const c = model.columns[part.id];
             const pp = prefs.parts[part.id];
-            col.classList.toggle('bab-off', !c.on);
-            col.classList.toggle('bab-unavailable', c.unavailable);
-            $('.bab-toggle', col).setAttribute('aria-pressed', c.on ? 'true' : 'false');
-            for (const seg of $$('.bab-seg[data-field]', col)) {
-                const field = seg.getAttribute('data-field');
-                const off = field === 'soundMode' && c.soundModesDisabled ? SOUND_MODES_NEEDING_STEM : [];
-                renderSeg(seg, toDom(field, field === 'soundMode' ? c.soundMode : pp[field]), off);
+            if (!c || !pp) continue;
+            // The Setup column and the Confirm row of the same part.
+            for (const el of $$(`[data-part="${part.id}"]`)) {
+                el.classList.toggle('bab-off', !c.on);
+                el.classList.toggle('bab-unavailable', c.unavailable);
+                const toggle = $('.bab-toggle', el);
+                if (toggle) toggle.setAttribute('aria-pressed', c.on ? 'true' : 'false');
+                for (const seg of $$('.bab-seg[data-field]', el)) {
+                    const field = seg.getAttribute('data-field');
+                    const [value, off] = segState(field, c, pp);
+                    renderSeg(seg, toDom(field, value), off);
+                }
+                const note = $('.bab-note', el);
+                if (note) note.textContent = [c.note, inputNote[part.id]].filter(Boolean).join(' \u00b7 ');
             }
-            $('.bab-note', col).textContent = [c.note, inputNote[part.id]].filter(Boolean).join(' \u00b7 ');
+            renderDeviceLine(part.id);
         }
         renderMicHit();
         renderSeg($('.bab-seg[data-field="failMode"]'), prefs.failMode);
         $('input.bab-fullscreen').checked = !!prefs.fullScreenStage;
+        $('.bab-choose').disabled = !model.pickEnabled;
+        $('.bab-change').disabled = !model.pickEnabled;
+        $('.bab-setup-hint').textContent = model.setupHint;
+        const cont = $('.bab-continue');
+        cont.hidden = !(lastResolved && song);
+        cont.textContent = song ? `Continue with ${song.title || song.filename}` : '';
         $('.bab-hint').textContent = goError || model.goHint;
         $('.bab-go').disabled = !model.goEnabled;
+    }
+
+    function setView(v) {
+        view = v;
+        render();
     }
 
     // onGo may throw, return false, or return a promise that rejects or
     // resolves false: any of those releases the latch so Go works again.
     function go() {
+        if (view !== 'confirm') return false; // Setup has no Go (Choose a song first)
         if (disposed || launched || !bandScreenModel({ prefs, item: song, vocalsSupported: !!karaokeApi(win) }).goEnabled) return false;
         launched = true;
         const attempt = ++goAttempt;
@@ -196,25 +254,29 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         render();
     }
 
-    // Column controls: on/off toggle and every segment write through savePrefs.
+    // Part controls (the Setup column and the Confirm row): on/off toggle and
+    // every segment write through savePrefs.
     for (const part of PART_TYPES) {
-        const col = $(`.bab-col[data-part="${part.id}"]`);
-        if (!col) continue;
-        col.style.setProperty('--bab-c', part.color);
-        const name = $('.bab-part-name', col);
-        if (name) name.textContent = part.label;
-        const ico = $('.bab-ico', col);
-        if (ico) ico.innerHTML = icon(part.icon, { size: 30 });
-        listen($('.bab-toggle', col), 'click', () => {
-            save({ parts: { [part.id]: { on: !prefs.parts[part.id].on } } });
-            startLight(part.id);
-        });
-        for (const seg of $$('.bab-seg[data-field]', col)) {
-            const field = seg.getAttribute('data-field');
-            for (const b of $$('button[data-value]', seg)) {
-                listen(b, 'click', () => {
-                    save({ parts: { [part.id]: { [field]: fromDom(field, b.getAttribute('data-value')) } } });
+        for (const el of $$(`[data-part="${part.id}"]`)) {
+            el.style.setProperty('--bab-c', part.color);
+            const name = $('.bab-part-name', el);
+            if (name) name.textContent = part.label;
+            const ico = $('.bab-ico', el);
+            if (ico) ico.innerHTML = icon(part.icon, { size: 30 });
+            const toggle = $('.bab-toggle', el);
+            if (toggle) {
+                listen(toggle, 'click', () => {
+                    save({ parts: { [part.id]: { on: !prefs.parts[part.id].on } } });
+                    startLight(part.id);
                 });
+            }
+            for (const seg of $$('.bab-seg[data-field]', el)) {
+                const field = seg.getAttribute('data-field');
+                for (const b of $$('button[data-value]', seg)) {
+                    listen(b, 'click', () => {
+                        save({ parts: { [part.id]: { [field]: fromDom(field, b.getAttribute('data-value')) } } });
+                    });
+                }
             }
         }
     }
@@ -224,6 +286,65 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     const fsBox = $('input.bab-fullscreen');
     listen(fsBox, 'change', () => save({ fullScreenStage: !!fsBox.checked }));
     listen($('.bab-go'), 'click', () => { go(); });
+    listen($('.bab-choose'), 'click', () => openLibrary());
+    listen($('.bab-change'), 'click', () => openLibrary());
+    listen($('.bab-continue'), 'click', () => { if (song) setView('confirm'); });
+    listen($('.bab-setup-btn'), 'click', () => setView('setup'));
+    const artImg = $('.bab-art-img');
+    if (artImg) listen(artImg, 'error', () => { artImg.hidden = true; });
+
+    // Choose a song / Change song: the Song Library in pick mode. A picked
+    // song goes to Confirm; Back or leaving keeps the view as it was.
+    function openLibrary() {
+        if (!pickAvailable || disposed) return;
+        const vocalsSupported = !!karaokeApi(win);
+        if (!bandScreenModel({ prefs, item: song, vocalsSupported, pickAvailable }).pickEnabled) return;
+        const gen = ++pickGen;
+        // "Playable by band" leaves vocals out when Lyrics Karaoke isn't loaded.
+        const parts = vocalsSupported ? prefs.parts
+            : { ...prefs.parts, vocals: { ...prefs.parts.vocals, on: false } };
+        const live = () => gen === pickGen && !disposed;
+        const failed = (err) => console.warn('[build-a-band] library pick failed', err);
+        let pending;
+        try {
+            pending = library.pick({
+                title: PICK_TITLE,
+                filters: pickFilters({ parts, on: prefs.pickFilters }),
+                selected: song ? { filename: song.filename } : null,
+                returnTo: SCREEN_ID,
+                confirmLabel: PICK_CONFIRM,
+                backLabel: PICK_BACK,
+            });
+        } catch (err) {
+            failed(err);
+            return;
+        }
+        Promise.resolve(pending).then((result) => {
+            if (!live()) return;
+            const r = result || {};
+            if (r.filters && typeof r.filters === 'object') save({ pickFilters: r.filters });
+            if (!r.item) return;
+            setSong(r.item);
+            setView('confirm');
+            // The grid row may be grouped: re-fetch the full row for chips and greying.
+            const ref = { filename: song.filename, title: song.title || '' };
+            resolveRecent(ref, getJson).then((it) => {
+                if (!live() || !it || !song || it.filename !== song.filename) return;
+                song = it;
+                lastResolved = true;
+                render();
+            });
+        }).catch(failed);
+    }
+
+    // Next song (from the results): Confirm is where Back from the library
+    // lands; the pick opens now, or on the next show while core switches screens.
+    function nextSong() {
+        if (disposed) return;
+        setView('confirm');
+        if (shown()) openLibrary();
+        else pendingPick = true;
+    }
 
     // ── Input devices and signal lights ─────────────────────────────────
     const micStorage = storage || defaultStorage(win);
@@ -365,6 +486,18 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         }));
         p.select.value = current;
         if (p.find) p.find.hidden = items.length > 0;
+        renderDeviceLine(id);
+    }
+
+    // Confirm's "Input: USB Guitar" line, from the same list as the Setup select.
+    function renderDeviceLine(id) {
+        const row = $(`.bab-part[data-part="${id}"]`);
+        const line = row && $('.bab-part-device', row);
+        if (!line || !(id in DEVICE_FIELD)) return;
+        const key = prefs.parts[id][DEVICE_FIELD[id]] || '';
+        const hit = key && (lists[id] || []).find((i) => i.key === key);
+        const label = !key ? NO_DEVICE : (hit ? hit.label : DEVICE_NOT_FOUND);
+        line.textContent = `${INPUT_LABEL[id]}: ${label}`;
     }
 
     async function loadDevices(gen) {
@@ -393,6 +526,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         showGen++;
         stopLights();
         if (shown()) loadDevices(showGen);
+        if (pendingPick) { pendingPick = false; openLibrary(); }
     }
 
     function hide() {
@@ -470,9 +604,16 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         });
     }
 
-    // Space starts the song while the band screen is showing.
+    // On Confirm, Space starts the song and Esc goes back to the library pick.
     listen(doc, 'keydown', (e) => {
-        if (!visible || !isActive() || !isGoKey(e, doc.activeElement)) return;
+        if (!visible || !isActive() || view !== 'confirm') return;
+        if (e.key === 'Escape') {
+            if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || isTyping(doc.activeElement)) return;
+            openLibrary();
+            if (e.preventDefault) e.preventDefault();
+            return;
+        }
+        if (!isGoKey(e, doc.activeElement)) return;
         if (go() && e.preventDefault) e.preventDefault();
     });
 
@@ -502,7 +643,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     // Reopen on the last song, unless the user picks one first.
     if (prefs.lastSong) {
         resolveRecent(prefs.lastSong, getJson).then((item) => {
-            if (!disposed && item && !picked) { song = item; render(); }
+            if (!disposed && item && !picked) { song = item; lastResolved = true; render(); }
         });
     }
 
@@ -519,5 +660,8 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         setSong,
         getSong: () => song,
         isVisible: () => visible,
+        view: () => view,
+        openLibrary,
+        nextSong,
     };
 }

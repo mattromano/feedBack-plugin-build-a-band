@@ -3,6 +3,12 @@
 A Rock Band-style band mode plugin for [feedBack](https://github.com/got-feedback/feedBack).
 Early skeleton: the band screen is a placeholder until plan 2.
 
+## Picking a song
+
+- **Picking a song.** Band setup → **Choose a song** opens the Song Library in pick mode
+  (band chips, click to select, **Use this song**) → Confirm (parts, difficulty, devices,
+  drum sound) → GO. Next song goes back to the library.
+
 ## On the stage: full screen, the hover chrome, the sidebar and Settings
 
 - **Full screen.** With "Full screen stage" on (the band screen), Go and Play again take the

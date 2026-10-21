@@ -17,7 +17,20 @@ function memStorage(init = {}) {
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
 }
 
-function setup({ active = true, stored = null, library = [], winExtra = {}, onGo = null, deviceMemo } = {}) {
+// A fake core pick hook (feedBack.library): records each pick's options and
+// keeps its resolver, so a test settles the pick as core would.
+function fakePickLibrary() {
+    const calls = [];
+    const resolvers = [];
+    return {
+        calls, resolvers,
+        resolveLast: (result) => resolvers[resolvers.length - 1](result),
+        pick(opts) { calls.push(opts); return new Promise((r) => { resolvers.push(r); }); },
+    };
+}
+
+// `library` is the /api/library rows; `picker` is the core pick hook (null: an old core).
+function setup({ active = true, stored = null, library = [], picker = fakePickLibrary(), libraryOnWin = false, winExtra = {}, onGo = null, deviceMemo } = {}) {
     const doc = makeDoc();
     const screen = makeEl('div', doc);
     screen.setAttribute('id', 'plugin-build_a_band');
@@ -35,17 +48,28 @@ function setup({ active = true, stored = null, library = [], winExtra = {}, onGo
     };
     const urls = [];
     const gos = [];
+    const feedBack = { ...fb, ...(winExtra.feedBack || {}) };
+    // libraryOnWin: the hook comes from window.feedBack.library (the default).
+    if (libraryOnWin) feedBack.library = picker;
     const bs = createBandScreen({
-        root, doc, win: { ...winExtra, feedBack: { ...fb, ...(winExtra.feedBack || {}) } }, storage,
+        root, doc, win: { ...winExtra, feedBack }, storage,
         loadPrefs: () => loadPrefs(storage), savePrefs: (p) => savePrefs(p, storage),
         onGo: (item, prefs) => { gos.push({ item, prefs }); return onGo ? onGo(item, prefs) : undefined; },
         fetchJson: async (url) => { urls.push(url); return { songs: library }; },
-        deviceMemo,
+        deviceMemo, ...(libraryOnWin ? {} : { library: picker }),
     });
     const col = (id) => root.querySelector(`.bab-col[data-part="${id}"]`);
+    const part = (id) => root.querySelector(`.bab-part[data-part="${id}"]`);
     const seg = (el, field) => el.querySelector(`.bab-seg[data-field="${field}"]`);
     const btn = (el, field, v) => seg(el, field).querySelector(`button[data-value="${v}"]`);
-    return { doc, root, bs, fb, gos, urls, col, btn, storage, prefs: () => loadPrefs(storage) };
+    return { doc, root, bs, fb, gos, urls, col, part, btn, picker, storage, prefs: () => loadPrefs(storage) };
+}
+
+// Puts a song on Confirm synchronously: nextSong() moves the view to Confirm
+// (the library pick it opens stays pending).
+function onConfirm(t, item) {
+    t.bs.setSong(item);
+    t.bs.nextSong();
 }
 
 test('skeleton: columns coloured from the registry, Go disabled until a song is picked', () => {
@@ -77,7 +101,7 @@ test('column icons are Lucide SVGs', () => {
 });
 
 test('setSong stores lastSong + recentSongs, renders chips and greys what the song lacks', () => {
-    const { root, col, btn, bs, prefs } = setup({ winExtra: { lyricsKaraoke: karaokeFake() } });
+    const { root, col, part, btn, bs, prefs } = setup({ winExtra: { lyricsKaraoke: karaokeFake() } });
     bs.setSong(holiday);
     assert.equal(bs.getSong(), holiday);
     assert.equal(prefs().lastSong.filename, holiday.filename);
@@ -86,19 +110,20 @@ test('setSong stores lastSong + recentSongs, renders chips and greys what the so
     assert.equal(root.querySelectorAll('.bab-chip').length, 4);
     assert.ok(col('vocals').classList.contains('bab-unavailable'));
     assert.equal(col('vocals').querySelector('.bab-note').textContent, 'No vocal pitch for this song');
-    assert.equal(btn(col('drums'), 'soundMode', 'rockband').disabled, true);
-    assert.equal(btn(col('drums'), 'soundMode', 'kit').disabled, true);
-    assert.equal(btn(col('drums'), 'soundMode', 'song').disabled, false);
+    assert.ok(part('vocals').classList.contains('bab-unavailable'));
+    assert.equal(btn(part('drums'), 'soundMode', 'rockband').disabled, true);
+    assert.equal(btn(part('drums'), 'soundMode', 'kit').disabled, true);
+    assert.equal(btn(part('drums'), 'soundMode', 'song').disabled, false);
     assert.equal(root.querySelector('.bab-go').disabled, false);
     assert.equal(root.querySelector('.bab-hint').textContent, 'Press Space or hit any pad to start');
     bs.dispose();
 });
 
 test('every control writes through savePrefs immediately', () => {
-    const { root, col, btn, bs, prefs } = setup();
-    btn(col('guitar'), 'arrangement', 'Bass').click();
-    btn(col('guitar'), 'difficulty', 'expert').click();
-    btn(col('drums'), 'soundMode', 'kit').click();
+    const { root, col, part, btn, bs, prefs } = setup();
+    btn(part('guitar'), 'arrangement', 'Bass').click();
+    btn(part('guitar'), 'difficulty', 'expert').click();
+    btn(part('drums'), 'soundMode', 'kit').click();
     btn(col('vocals'), 'hearMyself', 'on').click();
     col('vocals').querySelector('.bab-toggle').click();
     btn(root, 'failMode', 'fail').click();
@@ -113,17 +138,23 @@ test('every control writes through savePrefs immediately', () => {
     assert.equal(p.parts.vocals.on, false);
     assert.equal(p.failMode, 'fail');
     assert.equal(p.fullScreenStage, false);
-    assert.equal(btn(col('guitar'), 'difficulty', 'expert').getAttribute('aria-pressed'), 'true');
+    assert.equal(btn(part('guitar'), 'difficulty', 'expert').getAttribute('aria-pressed'), 'true');
     assert.ok(col('vocals').classList.contains('bab-off'));
+    assert.ok(part('vocals').classList.contains('bab-off'));
     assert.equal(col('vocals').querySelector('.bab-toggle').getAttribute('aria-pressed'), 'false');
+    assert.equal(part('vocals').querySelector('.bab-toggle').getAttribute('aria-pressed'), 'false');
+    part('vocals').querySelector('.bab-toggle').click();
+    assert.equal(prefs().parts.vocals.on, true, 'the Confirm toggle writes the same pref');
+    assert.equal(col('vocals').querySelector('.bab-toggle').getAttribute('aria-pressed'), 'true');
     bs.dispose();
 });
 
 test('Go button and Space call onGo only while visible and a part can play', () => {
-    const { doc, root, fb, bs, gos } = setup();
+    const t = setup();
+    const { doc, root, fb, bs, gos } = t;
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0, 'no song yet');
-    bs.setSong(holiday);
+    onConfirm(t, holiday);
     doc.activeElement = { tagName: 'INPUT' };
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0, 'typing in the search box');
@@ -161,8 +192,9 @@ test('reopens on the last song through resolveRecent', async () => {
 });
 
 test('screen:changing away hides the screen before screen:changed arrives', () => {
-    const { doc, fb, bs, gos } = setup();
-    bs.setSong(holiday);
+    const t = setup();
+    const { doc, fb, bs, gos } = t;
+    onConfirm(t, holiday);
     fb.emit('screen:changing', { id: 'player', from: 'plugin-build_a_band' });
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0);
@@ -171,8 +203,9 @@ test('screen:changing away hides the screen before screen:changed arrives', () =
 });
 
 test('Space does nothing when the plugin screen is not .active', () => {
-    const { doc, bs, gos } = setup();
-    bs.setSong(holiday);
+    const t = setup();
+    const { doc, bs, gos } = t;
+    onConfirm(t, holiday);
     doc.getElementById('plugin-build_a_band').classList.remove('active');
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0);
@@ -377,13 +410,14 @@ test('a device change stops the old meter before the new one starts', async () =
 
 test('a pad hit flashes the drum light and starts the song when Go is enabled', async () => {
     const d = deviceWin();
-    const { col, bs, gos } = setup({ stored: withDevices, winExtra: d.winExtra });
+    const t = setup({ stored: withDevices, winExtra: d.winExtra });
+    const { col, bs, gos } = t;
     await flush();
     await flush();
     d.hit([0x99, 38, 100]);
     assert.ok(col('drums').querySelector('.bab-signal').classList.contains('bab-hit'));
     assert.equal(gos.length, 0, 'no song: Go disabled');
-    bs.setSong(holiday);
+    onConfirm(t, holiday);
     d.hit([0x89, 38, 64]);
     assert.equal(gos.length, 0, 'note-off is not a hit');
     d.hit([0x99, 38, 100]);
@@ -433,10 +467,11 @@ test('Find my kit discovers MIDI and lists the kit', async () => {
 
 test('a burst of pad hits, or Space right after a pad Go, calls onGo once', async () => {
     const d = deviceWin();
-    const { doc, fb, bs, gos } = setup({ stored: withDevices, winExtra: d.winExtra });
+    const t = setup({ stored: withDevices, winExtra: d.winExtra });
+    const { doc, fb, bs, gos } = t;
     await flush();
     await flush();
-    bs.setSong(holiday);
+    onConfirm(t, holiday);
     d.hit([0x99, 38, 100]);
     d.hit([0x99, 38, 100]);
     d.hit([0x99, 36, 90]);
@@ -504,13 +539,14 @@ test('a failed Go releases the latch, restores the drums light and says so', asy
         const warned = await quietWarn(async () => {
             const d = deviceWin();
             let failing = true;
-            const { root, bs, gos } = setup({
+            const t = setup({
                 stored: withDevices, winExtra: d.winExtra,
                 onGo: () => (failing ? fail() : Promise.resolve(true)),
             });
+            const { root, bs, gos } = t;
             await flush();
             await flush();
-            bs.setSong(holiday);
+            onConfirm(t, holiday);
             const hint = root.querySelector('.bab-hint');
             d.hit([0x99, 38, 100]);
             await flush();
@@ -534,8 +570,9 @@ test('a failed Go releases the latch, restores the drums light and says so', asy
 
 test('the drums light stays off after Go: device picks and in-flight list loads', async () => {
     const d = deviceWin();
-    const { root, col, bs, gos } = setup({ stored: withDevices, winExtra: d.winExtra });
-    bs.setSong(holiday);
+    const t = setup({ stored: withDevices, winExtra: d.winExtra });
+    const { root, col, bs, gos } = t;
+    onConfirm(t, holiday);
     root.querySelector('.bab-go').click(); // before the device lists finish loading
     assert.equal(gos.length, 1);
     await flush();
@@ -565,8 +602,9 @@ test('without window.lyricsKaraoke the vocals column says to turn the plugin on'
 });
 
 test('with only vocals on and a pitched song, Go is enabled', () => {
-    const { root, bs, gos } = setup({ stored: vocalsOnly, winExtra: { lyricsKaraoke: karaokeFake() } });
-    bs.setSong({ ...holiday, has_vocal_pitch: true });
+    const t = setup({ stored: vocalsOnly, winExtra: { lyricsKaraoke: karaokeFake() } });
+    const { root, bs, gos } = t;
+    onConfirm(t, { ...holiday, has_vocal_pitch: true });
     assert.equal(root.querySelector('.bab-go').disabled, false);
     root.querySelector('.bab-go').click();
     assert.equal(gos.length, 1);
@@ -729,13 +767,339 @@ test("a throwing karaoke detector doesn't stop the vocals meter", async () => {
 
 test('a song without a drum stem shows Song drums pressed and keeps the stored mode', () => {
     const stored = { parts: { drums: { soundMode: 'kit' } } };
-    const { col, btn, bs, prefs } = setup({ stored });
+    const { part, btn, bs, prefs } = setup({ stored });
     bs.setSong(holiday);
-    assert.equal(btn(col('drums'), 'soundMode', 'song').getAttribute('aria-pressed'), 'true');
-    assert.equal(btn(col('drums'), 'soundMode', 'kit').getAttribute('aria-pressed'), 'false');
+    assert.equal(btn(part('drums'), 'soundMode', 'song').getAttribute('aria-pressed'), 'true');
+    assert.equal(btn(part('drums'), 'soundMode', 'kit').getAttribute('aria-pressed'), 'false');
     assert.equal(prefs().parts.drums.soundMode, 'kit');
     bs.setSong({ ...holiday, stem_ids: ['drums'] });
-    assert.equal(btn(col('drums'), 'soundMode', 'kit').getAttribute('aria-pressed'), 'true');
-    assert.equal(btn(col('drums'), 'soundMode', 'kit').disabled, false);
+    assert.equal(btn(part('drums'), 'soundMode', 'kit').getAttribute('aria-pressed'), 'true');
+    assert.equal(btn(part('drums'), 'soundMode', 'kit').disabled, false);
     bs.dispose();
+});
+
+// ── Band setup, the Song Library pick and Confirm (Plan 8 Task 4) ─────────
+
+// A grouped grid row, as core's library pick resolves it: no chart facts.
+const holidayGrouped = { filename: holiday.filename, title: 'Holiday', artist: 'Green Day', group_count: 2 };
+const view = (root) => root.getAttribute('data-view');
+const esc = (doc, extra = {}) => doc.fire('keydown', { key: 'Escape', code: 'Escape', ...extra });
+
+// Picks `item` through the library and lets the re-resolve settle.
+async function pickSong(t, item, filters = { playable: true }) {
+    t.bs.openLibrary();
+    t.picker.resolveLast({ item, filters, reason: 'picked' });
+    await flush();
+}
+
+test('opens on Band setup with no song controls', () => {
+    const { root, col, part, bs } = setup();
+    assert.equal(view(root), 'setup');
+    assert.equal(bs.view(), 'setup');
+    assert.equal(root.querySelector('.bab-search'), null);
+    assert.equal(root.querySelector('.bab-picker'), null);
+    for (const id of ['guitar', 'drums', 'vocals']) {
+        for (const f of ['difficulty', 'arrangement', 'soundMode']) {
+            assert.equal(col(id).querySelector(`.bab-seg[data-field="${f}"]`), null, `${id} ${f}`);
+        }
+    }
+    const fields = (id) => part(id).querySelectorAll('.bab-seg[data-field]').map((x) => x.getAttribute('data-field'));
+    assert.deepEqual(fields('guitar'), ['arrangement', 'difficulty']);
+    assert.deepEqual(fields('drums'), ['difficulty', 'soundMode']);
+    assert.deepEqual(fields('vocals'), ['difficulty']);
+    assert.ok(col('vocals').querySelector('.bab-seg[data-field="hearMyself"]'));
+    assert.ok(col('vocals').querySelector('.bab-michit'));
+    assert.equal(root.querySelector('.bab-choose').disabled, false);
+    assert.equal(root.querySelector('.bab-setup-hint').textContent, '');
+    assert.equal(root.querySelector('.bab-continue').hidden, true);
+    bs.dispose();
+});
+
+test('Choose a song asks core with the band chips', () => {
+    const { root, picker, bs } = setup({ stored: { pickFilters: { drumStem: true } } });
+    root.querySelector('.bab-choose').click();
+    assert.equal(picker.calls.length, 1);
+    const o = picker.calls[0];
+    assert.equal(o.title, 'Pick a song for the band');
+    assert.equal(o.returnTo, 'plugin-build_a_band');
+    assert.equal(o.confirmLabel, 'Use this song');
+    assert.equal(o.backLabel, 'Back to the band');
+    assert.equal(o.selected, null);
+    assert.deepEqual(o.filters.map((f) => f.id), ['playable', 'drumStem', 'drums', 'vocals', 'guitar']);
+    const playable = o.filters[0];
+    assert.equal(playable.on, true);
+    assert.equal(playable.params.has_drums, '1');
+    assert.equal(playable.params.arrangements_has, 'Lead,Rhythm,Bass');
+    assert.equal('has_lyrics' in playable.params, false, 'karaoke absent: vocals left out');
+    assert.equal(o.filters[1].on, true, 'the stored chip flags');
+    assert.equal(o.filters[2].on, false);
+    bs.dispose();
+});
+
+test('the screen drops vocals from the parts it passes when karaoke is missing', () => {
+    const playable = (t) => { t.root.querySelector('.bab-choose').click(); return t.picker.calls[0].filters[0].params; };
+    const without = setup({ stored: vocalsOnly });
+    // Vocals is the only part on, so without karaoke no part can play.
+    assert.equal(without.root.querySelector('.bab-choose').disabled, true);
+    without.bs.dispose();
+    const a = setup();
+    assert.equal(a.prefs().parts.vocals.on, true);
+    assert.deepEqual(playable(a), { arrangements_has: 'Lead,Rhythm,Bass', has_drums: '1' });
+    assert.equal(a.prefs().parts.vocals.on, true, 'the stored part is not changed');
+    a.bs.dispose();
+    const b = setup({ winExtra: { lyricsKaraoke: karaokeFake() } });
+    assert.deepEqual(playable(b), { arrangements_has: 'Lead,Rhythm,Bass', has_drums: '1', has_lyrics: 'pitch' });
+    b.bs.dispose();
+});
+
+test('a picked song lands on Confirm, re-resolved', async () => {
+    const t = setup({ library: [holiday] });
+    const { root, bs, picker, urls, prefs } = t;
+    root.querySelector('.bab-choose').click();
+    picker.resolveLast({ item: holidayGrouped, filters: { playable: true, drumStem: true }, reason: 'picked' });
+    await flush();
+    assert.equal(view(root), 'confirm');
+    assert.equal(root.querySelector('.bab-title').textContent, 'Holiday');
+    assert.ok(root.querySelector('.bab-art-img').src.endsWith('/api/song/sloppak%2Fgreeholi.sloppak/art'));
+    assert.equal(prefs().lastSong.filename, holiday.filename);
+    assert.equal(prefs().pickFilters.drumStem, true);
+    assert.ok(urls.includes('/api/library?q=Holiday&size=30'));
+    assert.equal(bs.getSong(), holiday, 'the full row replaces the grouped one');
+    assert.equal(root.querySelectorAll('.bab-chip').length, 4);
+    bs.dispose();
+});
+
+test('a picked row the library cannot re-resolve stays as picked', async () => {
+    const t = setup({ library: [] });
+    await pickSong(t, holidayGrouped);
+    assert.equal(t.bs.getSong(), holidayGrouped);
+    assert.equal(t.bs.view(), 'confirm');
+    t.bs.dispose();
+});
+
+test('the art hides when it fails to load and comes back for the next song', async () => {
+    const t = setup();
+    await pickSong(t, holiday);
+    const img = t.root.querySelector('.bab-art-img');
+    assert.equal(img.hidden, false);
+    img.fire('error');
+    assert.equal(img.hidden, true);
+    t.bs.setSong({ ...holiday }); // same file: still hidden
+    assert.equal(img.hidden, true);
+    await pickSong(t, { ...holiday, filename: 'other.psarc', title: 'Other' });
+    assert.equal(img.hidden, false);
+    assert.ok(img.src.endsWith('/api/song/other.psarc/art'));
+    t.bs.dispose();
+});
+
+test('Back from the library keeps the view and song', async () => {
+    const t = setup({ library: [holiday] });
+    const { root, bs, picker, prefs } = t;
+    await pickSong(t, holiday);
+    root.querySelector('.bab-change').click();
+    assert.equal(picker.calls.length, 2);
+    assert.deepEqual(picker.calls[1].selected, { filename: holiday.filename });
+    picker.resolveLast({ item: null, filters: { playable: false, drumStem: true }, reason: 'back' });
+    await flush();
+    assert.equal(view(root), 'confirm');
+    assert.equal(bs.getSong(), holiday);
+    assert.equal(prefs().pickFilters.playable, false, 'the chips are remembered on Back');
+    bs.dispose();
+});
+
+test('a pick from Setup that comes back empty stays on Setup', async () => {
+    const t = setup();
+    t.root.querySelector('.bab-choose').click();
+    t.picker.resolveLast({ item: null, filters: { playable: true }, reason: 'left' });
+    await flush();
+    assert.equal(t.bs.view(), 'setup');
+    assert.equal(t.bs.getSong(), null);
+    t.bs.dispose();
+});
+
+test('Esc on Confirm opens the library; Esc on Setup does nothing', async () => {
+    const t = setup();
+    const { doc, root, picker, bs } = t;
+    let ev = esc(doc);
+    assert.equal(picker.calls.length, 0, 'Setup');
+    assert.equal(ev.defaultPrevented, false);
+    await pickSong(t, holiday);
+    assert.equal(picker.calls.length, 1);
+    for (const extra of [{ shiftKey: true }, { ctrlKey: true }, { metaKey: true }, { altKey: true }, { repeat: true }]) {
+        esc(doc, extra);
+    }
+    doc.activeElement = { tagName: 'SELECT' };
+    esc(doc);
+    doc.activeElement = null;
+    assert.equal(picker.calls.length, 1, 'modifiers, repeats and form fields');
+    ev = esc(doc);
+    assert.equal(picker.calls.length, 2);
+    assert.equal(ev.defaultPrevented, true);
+    assert.deepEqual(picker.calls[1].selected, { filename: holiday.filename });
+    assert.equal(view(root), 'confirm');
+    doc.getElementById('plugin-build_a_band').classList.remove('active');
+    esc(doc);
+    assert.equal(picker.calls.length, 2, 'not the active screen');
+    bs.dispose();
+});
+
+test('Go only on Confirm', async () => {
+    const d = deviceWin();
+    const t = setup({ stored: withDevices, winExtra: d.winExtra });
+    const { doc, root, col, bs, gos } = t;
+    await flush();
+    await flush();
+    bs.setSong(holiday);
+    assert.equal(bs.view(), 'setup');
+    let ev = doc.fire('keydown', { code: 'Space' });
+    assert.equal(ev.defaultPrevented, false);
+    d.hit([0x99, 38, 100]);
+    assert.ok(col('drums').querySelector('.bab-signal').classList.contains('bab-hit'), 'the pad still flashes on Setup');
+    root.querySelector('.bab-go').click();
+    assert.equal(gos.length, 0);
+    bs.nextSong();
+    assert.equal(bs.view(), 'confirm');
+    ev = doc.fire('keydown', { code: 'Space' });
+    assert.equal(gos.length, 1);
+    assert.equal(ev.defaultPrevented, true);
+    bs.dispose();
+});
+
+test('Band setup returns to Setup and Continue with goes to Confirm', async () => {
+    const stored = { lastSong: { filename: holiday.filename, title: 'Holiday', artist: 'Green Day' } };
+    const { root, bs } = setup({ stored, library: [holiday] });
+    const cont = root.querySelector('.bab-continue');
+    assert.equal(cont.hidden, true, 'not resolved yet');
+    await flush();
+    assert.equal(cont.hidden, false);
+    assert.equal(cont.textContent, 'Continue with Holiday');
+    cont.click();
+    assert.equal(view(root), 'confirm');
+    root.querySelector('.bab-setup-btn').click();
+    assert.equal(view(root), 'setup');
+    bs.setSong(null);
+    assert.equal(cont.hidden, true, 'no song');
+    bs.dispose();
+});
+
+test('Continue with stays hidden when the last song is gone', async () => {
+    const stored = { lastSong: { filename: holiday.filename, title: 'Holiday', artist: 'Green Day' } };
+    const { root, bs } = setup({ stored, library: [] });
+    await flush();
+    assert.equal(root.querySelector('.bab-continue').hidden, true);
+    bs.dispose();
+});
+
+test('Confirm greys what the song lacks', () => {
+    const { part, btn, bs } = setup({ winExtra: { lyricsKaraoke: karaokeFake() } });
+    bs.setSong({ ...holiday, arrangements: [{ name: 'Rhythm', index: 0 }] });
+    const g = part('guitar');
+    assert.equal(btn(g, 'arrangement', 'Lead').disabled, true);
+    assert.equal(btn(g, 'arrangement', 'Bass').disabled, true);
+    assert.equal(btn(g, 'arrangement', 'Rhythm').disabled, false);
+    assert.equal(btn(g, 'arrangement', 'Rhythm').getAttribute('aria-pressed'), 'true');
+    assert.equal(btn(g, 'arrangement', 'Lead').getAttribute('aria-pressed'), 'false');
+    assert.equal(btn(part('drums'), 'soundMode', 'rockband').disabled, true);
+    assert.equal(btn(part('drums'), 'soundMode', 'kit').disabled, true);
+    assert.ok(part('vocals').classList.contains('bab-unavailable'));
+    assert.equal(part('vocals').querySelector('.bab-note').textContent, 'No vocal pitch for this song');
+    bs.dispose();
+});
+
+test('Confirm parts are coloured and carry their icons', () => {
+    const { part, bs } = setup();
+    assert.equal(part('guitar').style.props['--bab-c'], '#f5c542');
+    assert.equal(part('drums').querySelector('.bab-part-name').textContent, 'Drums');
+    assert.ok(String(part('vocals').querySelector('.bab-ico').innerHTML).includes('<svg'));
+    bs.dispose();
+});
+
+test("the device line names each part's device", async () => {
+    const d = deviceWin();
+    const a = setup({ stored: withDevices, winExtra: d.winExtra });
+    await flush();
+    await flush();
+    const line = (t, id) => t.part(id).querySelector('.bab-part-device').textContent;
+    assert.equal(line(a, 'guitar'), 'Input: USB Guitar');
+    assert.equal(line(a, 'drums'), 'Kit: Kit');
+    assert.equal(line(a, 'vocals'), 'Mic: USB Mic');
+    a.bs.dispose();
+    const d2 = deviceWin();
+    const b = setup({ stored: { parts: { drums: { deviceKey: 'webmidi:gone' } } }, winExtra: d2.winExtra });
+    await flush();
+    await flush();
+    assert.equal(line(b, 'guitar'), 'Input: none picked');
+    assert.equal(line(b, 'drums'), 'Kit: Saved device (not found)');
+    b.bs.dispose();
+});
+
+test('without the core hook, picking is off', async () => {
+    const stored = { lastSong: { filename: holiday.filename, title: 'Holiday', artist: 'Green Day' } };
+    const { root, bs } = setup({ picker: null, stored, library: [holiday] });
+    assert.equal(root.querySelector('.bab-choose').disabled, true);
+    assert.equal(root.querySelector('.bab-change').disabled, true);
+    assert.equal(root.querySelector('.bab-setup-hint').textContent, 'Update feedBack to pick songs here');
+    assert.doesNotThrow(() => bs.openLibrary());
+    await flush();
+    root.querySelector('.bab-continue').click();
+    assert.equal(bs.view(), 'confirm', 'Continue with still works');
+    bs.dispose();
+});
+
+test('the pick hook defaults to window.feedBack.library', () => {
+    const { root, picker, bs } = setup({ libraryOnWin: true });
+    root.querySelector('.bab-choose').click();
+    assert.equal(picker.calls.length, 1);
+    bs.dispose();
+});
+
+test('nextSong opens the library now when visible, else on the next show', () => {
+    const a = setup();
+    a.bs.nextSong();
+    assert.equal(a.bs.view(), 'confirm');
+    assert.equal(a.picker.calls.length, 1);
+    a.bs.dispose();
+    const b = setup({ active: false });
+    b.bs.nextSong();
+    assert.equal(b.bs.view(), 'confirm');
+    assert.equal(b.picker.calls.length, 0, 'hidden: waits');
+    b.doc.getElementById('plugin-build_a_band').classList.add('active');
+    b.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    assert.equal(b.picker.calls.length, 1);
+    b.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    assert.equal(b.picker.calls.length, 1, 'once');
+    b.bs.dispose();
+});
+
+test('a stale pick result is ignored', async () => {
+    const { bs, picker } = setup();
+    bs.openLibrary();
+    bs.openLibrary();
+    picker.resolvers[1]({ item: null, filters: { playable: true }, reason: 'back' });
+    picker.resolvers[0]({ item: holiday, filters: { playable: false }, reason: 'replaced' });
+    await flush();
+    assert.equal(bs.getSong(), null);
+    assert.equal(bs.view(), 'setup');
+    bs.dispose();
+});
+
+test('a pick after dispose does nothing, and a failing hook is logged', async () => {
+    const a = setup();
+    a.bs.openLibrary();
+    a.bs.dispose();
+    a.picker.resolveLast({ item: holiday, filters: {}, reason: 'picked' });
+    await flush();
+    assert.equal(a.bs.getSong(), null);
+    a.bs.openLibrary();
+    assert.equal(a.picker.calls.length, 1, 'disposed: no pick');
+    for (const pick of [() => { throw new Error('boom'); }, () => Promise.reject(new Error('nope'))]) {
+        const warned = await quietWarn(async () => {
+            const b = setup({ picker: { pick } });
+            assert.doesNotThrow(() => b.bs.openLibrary());
+            await flush();
+            b.bs.dispose();
+        });
+        assert.equal(warned.length, 1);
+        assert.equal(warned[0][0], '[build-a-band] library pick failed');
+    }
 });

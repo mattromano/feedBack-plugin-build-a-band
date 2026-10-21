@@ -19,7 +19,13 @@
 }
 .bab-screen *, .bab-screen *::before, .bab-screen *::after { box-sizing: border-box; }
 .bab-screen button { font: inherit; color: inherit; }
-.bab-screen .bab-band { max-width: 1100px; margin: 0 auto; padding: 26px 20px; }
+.bab-screen .bab-setup, .bab-screen .bab-confirm { max-width: 1100px; margin: 0 auto; padding: 26px 20px; }
+.bab-screen [hidden] { display: none !important; }
+
+/* Two views: Band setup, then Confirm (the picked song, its parts and GO) */
+.bab-screen[data-view="setup"] .bab-confirm,
+.bab-screen[data-view="confirm"] .bab-setup { display: none; }
+.bab-screen .bab-step { margin: 0 0 18px; font-family: var(--bab-head); font-weight: 700; font-size: 26px; }
 
 /* Song head */
 .bab-screen .bab-songhead { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
@@ -40,61 +46,26 @@
 }
 .bab-screen .bab-chip.bab-good { color: var(--bab-ok); border-color: #2c6b47; }
 .bab-screen .bab-chip.bab-good::before { content: '\25CF\00A0'; }
-
-.bab-screen .bab-picker { margin-bottom: 22px; }
-.bab-screen .bab-picker-body {
-    display: flex; flex-direction: column; gap: 10px; padding: 14px;
-    background: var(--bab-panel); border: 1px solid var(--bab-line); border-radius: 14px;
-}
-.bab-screen .bab-search {
-    width: 100%; padding: 9px 12px; font: inherit; color: var(--bab-text);
-    background: var(--bab-field); border: 1px solid var(--bab-line); border-radius: 8px;
-}
-.bab-screen .bab-search:focus { outline: none; border-color: #4aa3ff; }
-.bab-screen .bab-filters { display: flex; flex-wrap: wrap; gap: 6px; }
-.bab-screen .bab-filter {
-    padding: 4px 11px; font-size: 12px; cursor: pointer; color: var(--bab-dim);
-    background: var(--bab-field); border: 1px solid var(--bab-line); border-radius: 999px;
-}
-.bab-screen .bab-filter[aria-pressed="true"] {
-    color: #fff; border-color: #4aa3ff; background: color-mix(in srgb, #4aa3ff 22%, var(--bab-field));
-}
-.bab-screen .bab-results-label {
-    font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bab-dim);
-}
-.bab-screen .bab-results-label:empty { display: none; }
-.bab-screen .bab-results {
-    list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto;
-    display: flex; flex-direction: column; gap: 2px;
-}
-.bab-screen .bab-results:empty { display: none; }
-.bab-screen .bab-row {
-    display: flex; align-items: center; gap: 12px; padding: 7px 10px;
-    border-radius: 8px; cursor: pointer;
-}
-.bab-screen .bab-row:hover { background: rgba(255, 255, 255, 0.05); }
-.bab-screen .bab-row-text { display: flex; flex-direction: column; min-width: 0; }
-.bab-screen .bab-row-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bab-screen .bab-row-artist { font-size: 12px; color: var(--bab-dim); }
-.bab-screen .bab-row .bab-chips { flex-wrap: nowrap; overflow: hidden; }
-.bab-screen .bab-row .bab-chip { font-size: 11px; padding: 2px 7px; }
-.bab-screen .bab-row-missing { margin-left: auto; font-size: 12px; color: #e0533d; }
-.bab-screen .bab-results-msg { padding: 7px 10px; color: var(--bab-dim); }
+.bab-screen .bab-art { overflow: hidden; }
+.bab-screen .bab-art-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
+.bab-screen .bab-confirm .bab-songhead .bab-art { width: 120px; height: 120px; }
 
 /* Part columns */
 .bab-screen .bab-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 120px; gap: 14px; }
-.bab-screen .bab-col {
+.bab-screen .bab-parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.bab-screen .bab-col,
+.bab-screen .bab-part {
     --bab-c: #888;
     display: flex; flex-direction: column; gap: 12px; padding: 18px;
     background: var(--bab-panel); border: 1px solid var(--bab-line);
     border-top: 4px solid var(--bab-c); border-radius: 14px;
     transition: opacity 0.2s, filter 0.2s;
 }
-.bab-screen .bab-col.bab-off { opacity: 0.35; }
-.bab-screen .bab-col.bab-unavailable { opacity: 0.35; filter: grayscale(1); }
+.bab-screen .bab-col.bab-off, .bab-screen .bab-part.bab-off { opacity: 0.35; }
+.bab-screen .bab-col.bab-unavailable, .bab-screen .bab-part.bab-unavailable { opacity: 0.35; filter: grayscale(1); }
 .bab-screen .bab-top { display: flex; align-items: center; gap: 10px; }
 .bab-screen .bab-ico { font-size: 34px; line-height: 1; }
-.bab-screen .bab-col .bab-ico { display: inline-flex; color: var(--bab-c); }
+.bab-screen .bab-col .bab-ico, .bab-screen .bab-part .bab-ico { display: inline-flex; color: var(--bab-c); }
 .bab-screen .bab-part-name { margin: 0; flex: 1; font-family: var(--bab-head); font-weight: 700; font-size: 20px; }
 .bab-screen .bab-toggle {
     position: relative; flex: none; width: 42px; height: 24px; padding: 0;
@@ -119,7 +90,9 @@
     background: color-mix(in srgb, var(--bab-c) 25%, var(--bab-field));
     border-color: var(--bab-c); color: #fff;
 }
-.bab-screen .bab-seg button:disabled { opacity: 0.3; cursor: not-allowed; }
+/* Also the guitar arrangements the picked song lacks */
+.bab-screen .bab-seg button:disabled,
+.bab-screen .bab-part[data-part="guitar"] .bab-seg[data-field="arrangement"] button:disabled { opacity: 0.3; cursor: not-allowed; }
 .bab-screen .bab-note { min-height: 1.2em; font-size: 11px; color: var(--bab-dim); }
 
 /* Input device pick + silent signal light */
@@ -132,6 +105,7 @@
     background: transparent; border: 1px dashed var(--bab-c); border-radius: 7px;
 }
 .bab-screen .bab-findkit[hidden] { display: none; }
+.bab-screen .bab-part-device { font-size: 12px; color: var(--bab-dim); }
 .bab-screen .bab-signal { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--bab-dim); }
 .bab-screen .bab-light {
     --bab-level: 0;
@@ -177,20 +151,37 @@
 }
 .bab-screen .bab-addslot .bab-ico { font-size: 28px; opacity: 0.5; }
 
-/* Go bar */
+/* Setup bar and Go bar */
+.bab-screen .bab-setupbar,
 .bab-screen .bab-gobar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 22px; }
 .bab-screen .bab-failing { --bab-c: #4aa3ff; min-width: 230px; }
 .bab-screen .bab-fsbox { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
-.bab-screen .bab-hint { color: var(--bab-dim); font-size: 12px; }
+.bab-screen .bab-hint,
+.bab-screen .bab-setup-hint { color: var(--bab-dim); font-size: 12px; }
+.bab-screen .bab-setup-hint { margin-left: auto; }
+.bab-screen .bab-choose,
 .bab-screen .bab-go {
-    margin-left: auto; padding: 14px 54px; border: 0; border-radius: 12px; cursor: pointer;
+    padding: 14px 54px; border: 0; border-radius: 12px; cursor: pointer;
     font-family: var(--bab-head); font-weight: 800; font-size: 20px; letter-spacing: 0.08em; color: #fff;
     background: linear-gradient(180deg, #4aa3ff, #2a6fd6); box-shadow: 0 6px 24px #2a6fd655;
 }
+.bab-screen .bab-choose { padding: 14px 32px; font-size: 16px; letter-spacing: 0.02em; }
+.bab-screen .bab-go { margin-left: auto; }
+.bab-screen .bab-choose:disabled,
 .bab-screen .bab-go:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+.bab-screen .bab-change,
+.bab-screen .bab-setup-btn,
+.bab-screen .bab-continue {
+    padding: 8px 14px; font-size: 13px; cursor: pointer;
+    background: transparent; border: 1px solid var(--bab-line); border-radius: 7px;
+}
+.bab-screen .bab-change:hover:not(:disabled),
+.bab-screen .bab-setup-btn:hover,
+.bab-screen .bab-continue:hover { border-color: #4aa3ff; }
+.bab-screen .bab-change:disabled { opacity: 0.35; cursor: not-allowed; }
 
 @media (max-width: 860px) {
-    .bab-screen .bab-cols { grid-template-columns: minmax(0, 1fr); }
+    .bab-screen .bab-cols, .bab-screen .bab-parts { grid-template-columns: minmax(0, 1fr); }
     .bab-screen .bab-songhead { flex-wrap: wrap; }
     .bab-screen .bab-chips { margin-left: 0; justify-content: flex-start; }
 }
