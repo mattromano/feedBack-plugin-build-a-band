@@ -30,7 +30,8 @@ import { createStageChrome } from './stage-chrome.js';
 import { createSidebarOverlay } from './sidebar-overlay.js';
 import { openSettingsOverlay } from './settings-overlay.js';
 import { otherModalOpen } from './modal-open.js';
-import { CONTROLLER_KINDS, kindFor, isControllerId } from './controller-model.js';
+import { CONTROLLER_KINDS, isControllerId } from './controller-model.js';
+import { createControllerLanes, kindOf } from './controller-lanes.js';
 import { playingIds, playerStyle } from './players.js';
 
 const BAND_SCREEN = 'plugin-build_a_band';
@@ -71,11 +72,6 @@ function sessionPrefs(prefs, item) {
 }
 
 const isOn = (prefs, id) => !!(prefs && prefs.parts && prefs.parts[id] && prefs.parts[id].on);
-// A controller's kind entry in the registry, or null.
-function kindOf(kinds, prefs, c) {
-    const id = kindFor(prefs, c && c.key);
-    return kinds && Object.prototype.hasOwnProperty.call(kinds, id) ? kinds[id] : null;
-}
 
 // The parts this session plays, decided once at Go: a part plays only when it
 // is on AND the song has its chart (the band screen's rule for greying a
@@ -305,108 +301,21 @@ export function createBandRuntime({
         safe(() => api.setScoreHudHidden(canvas, true));
     }
 
-    // ---- Controller lanes (Plan 3) ----
-
-    // A controller player's runtime state.
-    function lanePlayer(s, id) {
-        let p = s.ctl.get(id);
-        if (!p) {
-            const c = s.prefs.controllers.find((x) => x.id === id);
-            p = { kind: c ? kindOf(kinds, s.prefs, c) : null, canvas: null, last: null, starsSet: false };
-            s.ctl.set(id, p);
-        }
-        return p;
-    }
-
-    function laneApi(p) {
-        return p.kind && typeof p.kind.api === 'function' ? safe(() => p.kind.api()) : null;
-    }
-
-    // The controller lanes' canvases from the stage (which follows a canvas
-    // replacement), each one's score HUD hidden. A new canvas is a new engine
-    // session, so its score delta starts over.
-    function refreshLanes(s) {
-        s.ctlCanvas.clear();
-        if (!stage || typeof stage.getLaneCanvas !== 'function') return;
-        for (const id of s.scoreParts) {
-            if (!isControllerId(id)) continue;
-            const canvas = safe(() => stage.getLaneCanvas(id));
-            if (!canvas) continue;
-            const p = lanePlayer(s, id);
-            if (p.canvas !== canvas) { p.canvas = canvas; p.last = null; }
-            s.ctlCanvas.set(canvas, id);
-            hideLaneHud(s, p, canvas);
-        }
-    }
-
-    // The player whose lane `canvas` is, or null. The map is rebuilt on a miss
-    // or a stale entry (the stage swapped a canvas without telling us).
-    function laneOwner(s, canvas) {
-        if (!canvas || !stage || typeof stage.getLaneCanvas !== 'function') return null;
-        const id = s.ctlCanvas.get(canvas);
-        if (id && safe(() => stage.getLaneCanvas(id)) === canvas) return id;
-        refreshLanes(s);
-        return s.ctlCanvas.get(canvas) || null;
-    }
-
-    function hideLaneHud(s, p, canvas) {
-        if (s.hidden.ctl.has(canvas)) return;
-        const api = laneApi(p);
-        if (!api || typeof api.setScoreHudHidden !== 'function') return;
-        s.hidden.ctl.set(canvas, api);
-        safe(() => api.setScoreHudHidden(canvas, true));
-    }
-
-    function undoLaneHides(s) {
-        for (const [canvas, api] of s.hidden.ctl) safe(() => api.setScoreHudHidden(canvas, false));
-        s.hidden.ctl.clear();
-    }
-
-    // The lane engine's state (getInstanceState), or null.
-    function laneState(s, id) {
-        const p = lanePlayer(s, id);
-        const api = laneApi(p);
-        const canvas = stage && typeof stage.getLaneCanvas === 'function' ? stage.getLaneCanvas(id) : null;
-        if (!canvas || !api || typeof api.getInstanceState !== 'function') return null;
-        return api.getInstanceState(canvas);
-    }
-
-    // Stars over the full chart (Decision 8): the engine's starThresholds, set
-    // once the lane reports them.
-    function syncLaneThresholds(s, id, p) {
-        if (p.starsSet) return;
-        const th = safe(() => { const st = laneState(s, id); return st && st.starThresholds; });
-        if (!Array.isArray(th) || !th.length || !Number.isFinite(th[th.length - 1])) return;
-        p.starsSet = true;
-        safe(() => s.score.setStarThresholds(id, th.slice()));
-    }
-
-    // The connected controllerKeys, read once per session through each kind's
-    // API (a Promise, Ruling 4). Go never waits for it: the mount applies
-    // whatever came back by then, and a list that hasn't (or failed) counts
-    // as nobody connected.
-    function readConnected(s) {
-        const apis = new Set();
-        for (const c of s.prefs.controllers) {
-            if (c.on !== true) continue;
-            const api = laneApi({ kind: kindOf(kinds, s.prefs, c) });
-            if (api && typeof api.listControllers === 'function') apis.add(api);
-        }
-        if (!apis.size) return;
-        const lists = [...apis].map((api) => Promise.resolve().then(() => api.listControllers()).catch((e) => {
-            console.warn('[build-a-band] could not list controllers', e);
-            return [];
-        }));
-        Promise.all(lists).then((all) => {
-            const keys = new Set();
-            for (const list of all) {
-                for (const e of Array.isArray(list) ? list : []) {
-                    if (e && e.connected === true && typeof e.controllerKey === 'string') keys.add(e.controllerKey);
-                }
-            }
-            s.connected = keys;
-        });
-    }
+    // ---- Controller lanes (Plan 3): controller-lanes.js ----
+    const lanes = createControllerLanes({
+        kinds,
+        getStage: () => stage,
+        getSession: () => session,
+        isLive: (s) => scoring() === s,
+        displayTime,
+        record,
+        onDeploy: (s, id) => {
+            if (s.od && !s.failed.has(id)) { const od = s.od; safe(() => od.deployed(id)); }
+            record(s, { part: id, t: displayTime(s), kind: 'deploy' });
+        },
+        onPause: (s) => { if (!s.overlay) callTogglePlay(); },
+        onBackHold: (s) => confirmLeave(s, () => { if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN)); }),
+    });
 
     // A controller player's name for toasts: its part, then the controller's name.
     function playerLabel(s, id) {
@@ -435,7 +344,7 @@ export function createBandRuntime({
             hideDrumHud(s, bandDrumCanvas(s));
             listenCanvas(s);
         }
-        refreshLanes(s);
+        lanes.refreshLanes(s);
         const sc = win.feedBackScorecard;
         if (!s.hidden.scorecard && sc && typeof sc.setHudHidden === 'function') {
             s.hidden.scorecard = true;
@@ -701,7 +610,7 @@ export function createBandRuntime({
             getHud: () => s.hud,
             readDrums: () => drumsState(s),
             readVocals: () => (s.karaoke && typeof s.karaoke.getOverdrive === 'function' ? s.karaoke.getOverdrive() : null),
-            controllers: s.scoreParts.filter(isControllerId).map((id) => ({ id, read: () => laneState(s, id) })),
+            controllers: s.scoreParts.filter(isControllerId).map((id) => ({ id, read: () => lanes.laneState(s, id) })),
         })) || null;
         if (s.od) s.odTimer = setTimer(() => odTick(s), OD_TICK_MS);
         else if (s.score && s.stallTimer === null) s.stallTimer = setTimer(() => stallTick(s), OD_TICK_MS);
@@ -1327,8 +1236,7 @@ export function createBandRuntime({
             // 1. Stage, then the controller lanes' score HUDs (their canvases
             // went with it; a replay hides its own new lanes).
             unmountStage(s);
-            undoLaneHides(s);
-            s.ctlCanvas.clear();
+            lanes.teardown(s);
             // 2. Drums-only: the main highway's band difficulty.
             if (s.drumsOnly) {
                 const api = win.feedBackDrums;
@@ -1423,7 +1331,7 @@ export function createBandRuntime({
         const s = newSession(song, effectivePrefs(sessionPrefs(prefs, song), song, win, kinds), prefs);
         if (hidden) s.hidden = hidden;
         session = s;
-        readConnected(s);
+        lanes.readConnected(s);
         dispatch({ type: 'go', filename: song.filename });
         if (state.phase === 'idle') return false;
         // Inside the Go (or Play again) click, so the request has user activation.
@@ -1537,59 +1445,11 @@ export function createBandRuntime({
         refreshHud(s, true);
         syncFailures(s, { silent: true });
     };
-    // Controller lanes (Plan 3, Ruling 9): one listener per event name for every
-    // kind, dispatching by detail.canvas to the player whose lane it is; events
-    // from any other canvas are ignored. Judgments score through the player's
-    // kind (`entry`), its score delta tracked per lane on every judgment, even
-    // ones the ledger ignores (a dropped-out player), so points scored while out
-    // never land later. Deploys rescue as drums' do. Start and a held Back are
-    // the band's pause and leave prompt (Ruling 7): a pinned lane never pauses.
-    function onLaneEvent(type, e) {
-        const s = session;
-        const d = e && e.detail;
-        if (!s || !d || typeof d !== 'object') return;
-        const id = laneOwner(s, d.canvas);
-        if (!id) return;
-        const live = scoring() === s;
-        if (type === 'band-pause') {
-            if (live && !s.overlay) callTogglePlay();
-            return;
-        }
-        if (type === 'band-back-hold') {
-            if (live) confirmLeave(s, () => { if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN)); });
-            return;
-        }
-        if (type === 'sp-activate') {
-            if (!live) return;
-            if (s.od && !s.failed.has(id)) { const od = s.od; safe(() => od.deployed(id)); }
-            record(s, { part: id, t: displayTime(s), kind: 'deploy' });
-            return;
-        }
-        const p = lanePlayer(s, id);
-        if (!p.kind || !Array.isArray(p.kind.judgments) || !p.kind.judgments.includes(type)) return;
-        const entry = live && typeof p.kind.entry === 'function' ? safe(() => p.kind.entry(type, d, displayTime(s), id, p.last)) : null;
-        if (Number.isFinite(d.score)) {
-            if (!p.last) p.last = { score: 0, resets: undefined };
-            p.last.score = d.score;
-            p.last.resets = d.resets;
-        }
-        if (!entry) return;
-        syncLaneThresholds(s, id, p);
-        record(s, entry);
-    }
-    const laneEvents = new Set();
-    for (const kind of Object.values(kinds || {})) {
-        const prefix = kind && kind.eventPrefix;
-        if (typeof prefix !== 'string' || !prefix) continue;
-        const types = [...(Array.isArray(kind.judgments) ? kind.judgments : []), 'sp-activate', 'band-pause', 'band-back-hold'];
-        for (const type of types) {
-            const name = prefix + ':' + type;
-            if (laneEvents.has(name)) continue;
-            laneEvents.add(name);
-            // A real part's handler on the same name (Plan 6's drums:*) keeps running first.
-            const prev = handlers[name];
-            handlers[name] = prev ? (e) => { prev(e); onLaneEvent(type, e); } : (e) => onLaneEvent(type, e);
-        }
+    // Controller lanes (Ruling 9): one listener per event name for every kind.
+    // A real part's handler on the same name (Plan 6's drums:*) keeps running first.
+    for (const { name, type } of lanes.events) {
+        const prev = handlers[name];
+        handlers[name] = prev ? (e) => { prev(e); lanes.onEvent(type, e); } : (e) => lanes.onEvent(type, e);
     }
 
     function onGuitarJudgment(e) {
