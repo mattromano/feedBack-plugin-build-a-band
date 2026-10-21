@@ -290,7 +290,11 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         mic.level.style.setProperty('width', meterPct(db));
         if (!micDetector) return;
         const at = Number.isFinite(t) ? t : Date.now() / 1000;
-        if (!micDetector.push(db, at)) return;
+        let hit;
+        // karaoke's detector is another plugin's code: one that throws is dropped,
+        // and the level bar keeps running.
+        try { hit = micDetector.push(db, at); } catch (_) { micDetector = null; return; }
+        if (!hit) return;
         mic.light.classList.add('bab-hit');
         if (micFlashTimer !== null) clearTimeout(micFlashTimer);
         micFlashTimer = setTimeout(() => { micFlashTimer = null; mic.light.classList.remove('bab-hit'); }, MIC_HIT_FLASH_MS);

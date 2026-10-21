@@ -742,3 +742,29 @@ test('leaving the screen stops the check', async () => {
     assert.deepEqual(liveStreams(d), []);
     bs.dispose();
 });
+
+test("a throwing karaoke detector doesn't stop the vocals meter", async () => {
+    const created = [];
+    const micHit = fakeMicHit(created);
+    const make = micHit.createDetector;
+    micHit.createDetector = (o) => {
+        const det = make(o);
+        det.push = () => { throw new Error('detector broke'); };
+        return det;
+    };
+    const d = micWin([0.001, 0.03, 0.1]);
+    const { col, bs } = setup({ stored: withDevices, winExtra: { ...d.winExtra, lyricsKaraoke: { ...karaokeFake(), micHit } } });
+    await flush();
+    const block = col('vocals').querySelector('.bab-michit');
+    const width = () => parseFloat(block.querySelector('.bab-michit-meter').querySelector('i').style.props.width);
+    const pct = (level) => ((20 * Math.log10(level) + 60) / 60) * 100;
+    assert.doesNotThrow(() => d.runFrames()); // -60 dB: the detector throws
+    vocalsCtx(d).currentTime = 0.1;
+    d.runFrames(); // -30.46 dB
+    assert.ok(Math.abs(width() - pct(0.03)) < 1e-4, 'the meter still moves');
+    vocalsCtx(d).currentTime = 0.2;
+    d.runFrames(); // -20 dB
+    assert.ok(Math.abs(width() - pct(0.1)) < 1e-4);
+    assert.equal(block.querySelector('.bab-michit-light').classList.contains('bab-hit'), false);
+    bs.dispose();
+});
