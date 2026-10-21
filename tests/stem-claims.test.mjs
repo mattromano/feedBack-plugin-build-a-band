@@ -2,7 +2,7 @@
 // capabilities that only record calls: nothing plays.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { FAIL_CLAIM_PREFIX, stemIdFor, muteStem, restoreStem } from '../src/stem-claims.js';
+import { FAIL_CLAIM_PREFIX, SOUND_CLAIM_ID, stemIdFor, muteStem, restoreStem } from '../src/stem-claims.js';
 
 function fakeCaps({ status = 'handled', outcome = 'handled', throwOn = null } = {}) {
     const calls = [];
@@ -74,4 +74,24 @@ test('restoreStem still releases when the restore fails, and never throws', asyn
     assert.deepEqual(caps.calls.map((c) => c[0]), ['dispatch', 'release']);
     await restoreStem({ caps: fakeCaps({ throwOn: 'release' }), part: 'drums' });
     await restoreStem({ caps: null, part: 'drums' });
+});
+
+test('mute and restore take a claim id', async () => {
+    assert.equal(SOUND_CLAIM_ID, 'build_a_band:sound:drums');
+    const claimId = SOUND_CLAIM_ID;
+    const caps = fakeCaps();
+    assert.equal(await muteStem({ caps, part: 'drums', stemId: 'drums', claimId }), true);
+    assert.deepEqual(caps.calls, [
+        ['claim', { capability: 'stems', claimId, requester: 'build_a_band' }],
+        ['dispatch', {
+            capability: 'stems', command: 'mute', requester: 'build_a_band',
+            args: { id: 'drums', claimId }, claim: { claimId, capability: 'stems' },
+        }],
+    ]);
+    const caps2 = fakeCaps();
+    await restoreStem({ caps: caps2, part: 'drums', claimId });
+    assert.deepEqual(caps2.calls, [
+        ['dispatch', { capability: 'stems', command: 'restore', requester: 'build_a_band', args: { claimId } }],
+        ['release', { capability: 'stems', claimId, requester: 'build_a_band' }],
+    ]);
 });

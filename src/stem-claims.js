@@ -1,12 +1,12 @@
-// Fail mode's stem mutes (plan 5 R13): a dropped-out part's stem is muted through
-// core's capability host (`feedBack.capabilities`) under a claim of its own, and
-// restored, then released, when the part comes back or the session ends. Stems
+// Fail mode's and the drum sound mode's stem mutes (plan 5 R13, plan 6 R3): a stem
+// is muted through core's capability host (`feedBack.capabilities`) under a claim
+// of its own (a fail claim per part, or the drum sound claim), and restored, then
+// released, when the part comes back or the session ends. Stems
 // stacks claims and fades the mute (~12 ms); capability mutes are never saved per
 // song. Every call is guarded: a missing or failing host never breaks the session.
 export const FAIL_CLAIM_PREFIX = 'build_a_band:fail:';
+export const SOUND_CLAIM_ID = 'build_a_band:sound:drums';
 const REQUESTER = 'build_a_band';
-
-const claimIdFor = (part) => FAIL_CLAIM_PREFIX + part;
 
 // The stem a part plays, only when the song's stem list has it; never `other`.
 export function stemIdFor(part, partPrefs, stemIds) {
@@ -25,9 +25,8 @@ export function stemIdFor(part, partPrefs, stemIds) {
 // before the first await, so a restore issued later always follows them.
 // Resolves true when the mute was handled: core's dispatch answers a provider's
 // `{ outcome: 'handled' }` with status 'applied', so either field counts.
-export async function muteStem({ caps, part, stemId } = {}) {
+export async function muteStem({ caps, part, stemId, claimId = FAIL_CLAIM_PREFIX + part } = {}) {
     if (!caps || typeof caps.claim !== 'function' || typeof caps.dispatch !== 'function') return false;
-    const claimId = claimIdFor(part);
     try {
         caps.claim({ capability: 'stems', claimId, requester: REQUESTER });
         const result = await caps.dispatch({
@@ -42,9 +41,8 @@ export async function muteStem({ caps, part, stemId } = {}) {
 
 // Restores the part's claim, then releases it (stems drops a released claim's
 // snapshot, so the restore must land first).
-export async function restoreStem({ caps, part } = {}) {
+export async function restoreStem({ caps, part, claimId = FAIL_CLAIM_PREFIX + part } = {}) {
     if (!caps) return;
-    const claimId = claimIdFor(part);
     try {
         if (typeof caps.dispatch === 'function') {
             await caps.dispatch({ capability: 'stems', command: 'restore', requester: REQUESTER, args: { claimId } });
