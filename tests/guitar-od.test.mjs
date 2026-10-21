@@ -70,6 +70,14 @@ test('a phrase clears at 90 % of its notes', () => {
     assert.equal(dup.closeUpTo(10.5, 11), 0);
 });
 
+test('duplicate note times count once toward the 90 %', () => {
+    // Two items at the same millisecond (e.g. a double-stop as two notes) share one judgment key.
+    const times = [...range(0, 10), 3, 3.0001, 7];
+    const tr = createPhraseTracker({ phrases: [{ start: 0, end: 10 }], times });
+    for (const n of range(0, 10)) tr.judge(n, true, n);
+    assert.equal(tr.closeUpTo(10.5, 11), 1);
+});
+
 test('phrases without notes never clear', () => {
     const tr = createPhraseTracker({ phrases: [{ start: 0, end: 4 }, { start: 4, end: 8 }], times: [5, 6] });
     tr.judge(5, true, 5);
@@ -103,12 +111,9 @@ test('loop wrap reopens phrases from the loop start', () => {
     for (const n of range(0, 9)) tr.judge(n, true, n);
     assert.equal(tr.closeUpTo(10.5, 11), 1);
     tr.reopenFrom(0);
-    // Without new hits the reopened phrase no longer clears (its hits were forgotten).
-    const fresh = createPhraseTracker({ phrases: [{ start: 0, end: 10 }], times: range(0, 10) });
-    for (const n of range(0, 9)) fresh.judge(n, true, n);
-    fresh.closeUpTo(10.5, 11);
-    fresh.reopenFrom(0);
-    assert.equal(fresh.closeUpTo(10.5, 30), 0);
+    // The reopened phrase forgot its hits: closing it again without new ones earns nothing.
+    assert.equal(tr.closeUpTo(10.5, 30), 0);
+    tr.reopenFrom(0);
     for (const n of range(0, 9)) tr.judge(n, true, 30 + n);
     assert.equal(tr.closeUpTo(10.5, 40), 1);
 });
@@ -130,7 +135,6 @@ test('noodle: three new attacks in an open gap deploy, once', () => {
     assert.equal(nd.onset(6), true);
     assert.equal(nd.onset(6.5), false);
     assert.deepEqual(nd.zoneAt(5), { start: 4, end: 8, index: 0 });
-    assert.equal(nd.zoneAt(5).index, 0);
     assert.equal(nd.zoneAt(9), null);
     nd.reset();
     assert.equal(nd.onset(5), false);

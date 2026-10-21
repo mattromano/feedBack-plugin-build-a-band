@@ -68,7 +68,8 @@ export function findGaps(notes, chords, minGapS = GAP_MIN_S) {
 }
 
 export function createPhraseTracker({ phrases, times } = {}) {
-    const noteTimes = list(times).filter(finite);
+    // Distinct note keys, so the 90 % total uses the same key as the hits.
+    const noteTimes = [...new Set(list(times).filter(finite).map(noteKey))].map((k) => k / 1000);
     const windows = list(phrases)
         .filter((p) => p && finite(p.start) && typeof p.end === 'number' && !Number.isNaN(p.end))
         .map((p) => ({
