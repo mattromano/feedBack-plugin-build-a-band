@@ -4,13 +4,14 @@
 // off while it shows. Draws only: the caller decides what the buttons do.
 import { icon } from './icons.js';
 import { formatScore } from './hud-model.js';
+import { holdMediaKeys } from './media-keys.js';
 
 const STAR_COUNT = 5;
 const STAR_PX = 40;
 const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 // Core's player-scope shortcuts (play/pause, seek, speed, ...): never passed
 // through to the player while the results show.
-const PLAYER_KEYS = new Set([' ', 'Spacebar', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '[', ']', '+', '-', '=']);
+export const PLAYER_KEYS = new Set([' ', 'Spacebar', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '[', ']', '+', '-', '=']);
 
 function isTyping(target) {
     if (!target) return false;
@@ -143,12 +144,15 @@ export function showResultsScreen({ doc, win, host, model, onAgain, onNext }) {
 
     // Registered last, so a throw above can't leak it.
     win.addEventListener('keydown', onKey, true);
+    // Media keys would play the ended song behind the dialog (plan 7 R15).
+    const releaseMedia = holdMediaKeys(win.navigator);
     let shown = true;
     return {
         hide() {
             if (!shown) return;
             shown = false;
             win.removeEventListener('keydown', onKey, true);
+            releaseMedia();
             root.remove();
         },
     };

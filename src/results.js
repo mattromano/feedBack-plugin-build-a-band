@@ -71,12 +71,13 @@ export function pickAwards(cards) {
     const band = list.length >= 2;
     const streakTop = band ? uniqueTop(list, (c) => c.bestStreak) : null;
     const streakCard = streakTop && streakTop.bestStreak >= STREAK_AWARD_MIN ? streakTop : null;
-    const accurateCard = band ? uniqueTop(list, (c) => (num(c.judged) >= ACCURACY_MIN_JUDGED ? c.accuracy : null)) : null;
+    const accurateCard = band ? uniqueTop(list, (c) => (num(c.judged) >= ACCURACY_MIN_JUDGED && c.accuracy > 0 ? c.accuracy : null)) : null;
     return list.map((c) => {
         if (c.accuracy === 1 && num(c.judged) >= ACCURACY_MIN_JUDGED) return 'Flawless';
         if (c === streakCard) return 'Best streak in the band';
         if (c === accurateCard) return 'Most accurate';
-        return FALLBACK_AWARDS[c.part] || '';
+        // A part that scored nothing gets no award (plan 7 R17).
+        return num(c.score) > 0 ? FALLBACK_AWARDS[c.part] || '' : '';
     });
 }
 

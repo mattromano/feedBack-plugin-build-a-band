@@ -101,8 +101,8 @@ test('gold stars at 6', () => {
     assert.equal(m.starDisplay.gold, true);
 });
 
-const card = (part, accuracy, judged, bestStreak) => ({
-    part, accuracy, accuracyPct: accuracy === null ? null : Math.round(accuracy * 100), judged, bestStreak,
+const card = (part, accuracy, judged, bestStreak, score = 100) => ({
+    part, accuracy, accuracyPct: accuracy === null ? null : Math.round(accuracy * 100), judged, bestStreak, score,
 });
 
 test('awards', () => {
@@ -116,6 +116,15 @@ test('awards', () => {
 test('awards: flawless needs 20 judged; streaks under 10 and tied accuracy give nothing', () => {
     assert.deepEqual(pickAwards([card('guitar', 1, 19, 5), card('drums', 1, 19, 9)]), ['Riff keeper', 'Held it down']);
     assert.deepEqual(pickAwards([card('drums', null, 0, 0), card('vocals', null, 0, 0)]), ['Held it down', 'Big voice']);
+});
+
+test('a part that scored nothing gets no award', () => {
+    assert.deepEqual(pickAwards([card('guitar', 0.8, 30, 12, 500), card('drums', 0, 14, 0, 0)]),
+        ['Best streak in the band', '']);
+});
+
+test('0% is never Most accurate', () => {
+    assert.deepEqual(pickAwards([card('guitar', 0, 25, 0, 0), card('vocals', null, 0, 0, 0)]), ['', '']);
 });
 
 test('most accurate needs 20 judged, like flawless', () => {

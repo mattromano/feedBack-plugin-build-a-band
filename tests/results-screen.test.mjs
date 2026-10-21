@@ -227,3 +227,17 @@ test('a failed band shows the heading', () => {
     assert.equal(plain.querySelector('.bab-results-failed'), null);
     assert.equal(plain.getAttribute('aria-label'), 'Results: Everlong');
 });
+
+test('the results hold the media keys while shown', () => {
+    const doc = makeDoc();
+    const host = makeEl('div', doc);
+    doc.body.appendChild(host);
+    const handlers = {};
+    const fake = { setActionHandler: (a, f) => { handlers[a] = f; } };
+    const win = { navigator: { mediaSession: fake }, addEventListener() {}, removeEventListener() {} };
+    const screen = showResultsScreen({ doc, win, host, model: MODEL, onAgain() {}, onNext() {} });
+    assert.equal(typeof handlers.play, 'function');
+    screen.hide();
+    assert.equal(handlers.play, null);
+    screen.hide();
+});
