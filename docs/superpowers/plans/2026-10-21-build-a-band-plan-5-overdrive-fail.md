@@ -744,8 +744,8 @@ No code and no questions to Matt. The controller runs this alone, silently, at t
   1. Read `highway.getPhrases()` and pick two phrases. For each, dispatch `notedetect:hit` on `window` (`isDefault:true, counted:true, hit:true, points:100, multiplier:1, noteTime:` each filtered note time in the phrase).
   2. `feedBack.seek(<phrase end + 0.6>, 'acceptance')` while paused. After 200 ms the guitar bar reads `50%` and "Overdrive ready" called out.
   3. Seek into a gap of ≥ 2 s (computed from the filtered notes). Confirm `.bab-noodle` and the "Noodle it up!" callout.
-  4. Dispatch three `notedetect:onset` (`isDefault:true`) with `t` 0.5, 1.0 and 1.5 s into the gap. Confirm `overdrive().guitar.active === true` and the "OVERDRIVE!" callout.
-  5. One guitar hit of 100 adds 200 to the guitar score.
+  4. (Amended by the final-review ruling: a paused song never deploys guitar.) Dispatch three `notedetect:onset` (`isDefault:true`) with `t` 0.5, 1.0 and 1.5 s into the gap while paused. Confirm `overdrive().guitar.active === false`, the guitar `deploys === 0`, and no "OVERDRIVE!" callout.
+  5. The guitar deploy and ×2 are covered by the runtime unit tests (a playing song cannot be run silently), so record them as "unit-tested".
 - [ ] **Step 6: Drums and vocals.**
   1. Emit `drums:sp-activate` on `feedBack` with `canvas: document.querySelector('.bab-drum-canvas')`. Confirm the drums `deploys === 1`.
   2. Emit `karaoke:od-activate {fill:0.5, t}`. Confirm the vocals `deploys === 1`.
@@ -776,7 +776,7 @@ No code and no questions to Matt. The controller runs this alone, silently, at t
 - **Stems changes after all** (R14): claims stack, and automation mutes fade (~12 ms). The spec expected no stems change and an existing fade.
 - **No Rock Band rescue timer,** as the spec says. Deploys by a dropped-out player never rescue (R12).
 - **Guitar charts with neither phrases nor sections earn no overdrive** (R8).
-- **A paused song never deploys vocal overdrive** (R6). Guitar onsets in a gap can (the acceptance relies on it).
+- **A paused song never deploys vocal overdrive** (R6). Amended by the final-review ruling: neither does guitar.
 
 ## Later plans (each written when the previous one has landed)
 
