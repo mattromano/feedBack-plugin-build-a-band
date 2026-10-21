@@ -178,9 +178,12 @@
 #player.bab-stage #highway {
     position: absolute;
     left: 0;
-    top: 0;
+    top: var(--bab-lanes-top, 0px);
     flex: none;
 }
+/* Vocals alone: no lane holds the main highway. setVisible(false) stops its
+   drawing; this hides the last frame left on the canvas. */
+#player.bab-stage.bab-main-hidden #highway { visibility: hidden; }
 #player .bab-lanes {
     position: absolute;
     left: 0;
@@ -192,7 +195,7 @@
 }
 #player .bab-lane {
     position: absolute;
-    top: 0;
+    top: var(--bab-lanes-top, 0px);
     bottom: 0;
     overflow: hidden;
 }
@@ -200,9 +203,23 @@
     pointer-events: auto;
     background: #050508;
 }
+/* The lane holding the main highway (drums alone with vocals) stays
+   see-through and lets input reach #highway beneath it. */
+#player .bab-lane.bab-lane-main {
+    pointer-events: none;
+    background: none;
+}
+/* Vocal strip slot: full width under the HUD row (top/height set from JS). */
+#player .bab-strip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
 #player .bab-divider {
     position: absolute;
-    top: 0;
+    top: var(--bab-lanes-top, 0px);
     bottom: 0;
     width: 10px;
     margin-left: -5px;

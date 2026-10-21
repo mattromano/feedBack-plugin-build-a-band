@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { clampSplit, computeStageLayout } from '../src/layout.js';
+import { clampSplit, computeStageLayout, computeStageRows } from '../src/layout.js';
 
 test('clampSplit', () => {
     assert.equal(clampSplit(10), 35);
@@ -28,4 +28,12 @@ test('split is clamped inside layout', () => {
 
 test('throws on more than two lanes', () => {
     assert.throws(() => computeStageLayout({ lanes: ['a', 'b', 'c'], split: 50 }));
+});
+
+test('stage rows: none, strip over lanes, strip alone', () => {
+    assert.deepEqual(computeStageRows({ strip: false, lanes: ['guitar'] }), { strip: null, lanesTopPx: 0 });
+    assert.deepEqual(computeStageRows({ strip: true, lanes: ['guitar', 'drums'] }),
+        { strip: { topPx: 60, heightPx: 90, fill: false }, lanesTopPx: 150 });
+    assert.deepEqual(computeStageRows({ strip: true, lanes: [] }),
+        { strip: { topPx: 60, heightPx: null, fill: true }, lanesTopPx: null });
 });

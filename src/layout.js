@@ -18,3 +18,17 @@ export function computeStageLayout({ lanes, split }) {
         { part: lanes[1], leftPct: first, widthPct: 100 - first },
     ];
 }
+
+// Vertical rows: the vocal strip sits under core's HUD row, full width; lanes
+// start below it, or the strip fills the stage when there are no lanes.
+export const HUD_RESERVE_PX = 60;
+export const STRIP_HEIGHT_PX = 90;
+
+export function computeStageRows({ strip, lanes }) {
+    if (!strip) return { strip: null, lanesTopPx: 0 };
+    if (lanes.length === 0) return { strip: { topPx: HUD_RESERVE_PX, heightPx: null, fill: true }, lanesTopPx: null };
+    return {
+        strip: { topPx: HUD_RESERVE_PX, heightPx: STRIP_HEIGHT_PX, fill: false },
+        lanesTopPx: HUD_RESERVE_PX + STRIP_HEIGHT_PX,
+    };
+}

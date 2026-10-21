@@ -15,11 +15,23 @@ function makeListeners() {
     };
 }
 
+// Plain style properties plus custom properties backed by a map.
+function makeStyle() {
+    const props = new Map();
+    const style = {};
+    Object.defineProperties(style, {
+        setProperty: { value: (k, v) => { props.set(k, String(v)); } },
+        removeProperty: { value: (k) => { props.delete(k); } },
+        getPropertyValue: { value: (k) => (props.has(k) ? props.get(k) : '') },
+    });
+    return style;
+}
+
 function makeEl(tag, doc) {
     const classes = new Set();
     const el = {
         tagName: tag.toUpperCase(), ownerDocument: doc, parentNode: null, children: [],
-        style: {}, dataset: {}, attrs: {}, className: '', textContent: '', title: '',
+        style: makeStyle(), dataset: {}, attrs: {}, className: '', textContent: '', title: '',
         classList: {
             add: (c) => classes.add(c), remove: (c) => classes.delete(c),
             contains: (c) => classes.has(c),
@@ -64,6 +76,7 @@ function setup() {
         scale: 1.5, // the user's solo-play fret-number size
         resize: () => log.push('main.resize'),
         setContainer: (el) => log.push(el ? 'main.setContainer(slot)' : 'main.setContainer(null)'),
+        setVisible: (v) => log.push('main.setVisible(' + v + ')'),
         getLabelScale: () => mainHw.scale,
         setLabelScale: (v, opts) => {
             mainHw.scale = Math.max(0.75, Math.min(2.5, v));
@@ -302,4 +315,76 @@ test('a drum-tab-only song gets a drum lane on the guitar arrangement', () => {
     const parts = player.children[0].children.map((c) => c.dataset && c.dataset.part).filter(Boolean);
     assert.deepEqual(parts, ['guitar', 'drums']);
     assert.ok(log.includes('drum.connect ws://x/deep.feedpak?arrangement=0'), log.join('\n'));
+});
+
+const vocalsOn = (guitar, drums) => ({ split: 62, parts: { guitar: { on: guitar }, drums: { on: drums }, vocals: { on: true } } });
+
+test('vocals with guitar and drums: strip slot above the lanes, lanes pushed down', () => {
+    const { player, deps, drumHws } = setup();
+    const s = mountStage({ player, song: withDrums, prefs: vocalsOn(true, true), deps });
+    const strip = s.stripSlot;
+    assert.equal(strip.className, 'bab-strip');
+    assert.equal(strip.dataset.part, 'vocals');
+    assert.equal(strip.style.top, '60px');
+    assert.equal(strip.style.height, '90px');
+    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '150px');
+    assert.equal(drumHws.length, 1);
+    const root = player.children[0];
+    assert.equal(root.children[0], strip);
+    assert.deepEqual(root.children.map((c) => c.className), ['bab-strip', 'bab-lane', 'bab-divider', 'bab-lane']);
+    s.unmount();
+    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '');
+});
+
+test('vocals alone: the strip fills, the main highway is hidden and no lane exists', () => {
+    const { player, log, deps, drumHws } = setup();
+    const s = mountStage({ player, song: withDrums, prefs: vocalsOn(false, false), deps });
+    const strip = s.stripSlot;
+    assert.equal(strip.style.top, '60px');
+    assert.equal(strip.style.bottom, '0px');
+    assert.equal(strip.style.height, undefined);
+    assert.ok(log.includes('main.setVisible(false)'));
+    assert.ok(!log.includes('main.setContainer(slot)'));
+    assert.ok(player.classList.contains('bab-main-hidden'));
+    assert.equal(drumHws.length, 0);
+    assert.ok(!log.some((l) => l.startsWith('label')));
+    const root = player.children[0];
+    assert.deepEqual(root.children, [strip]);
+    s.unmount();
+    assert.ok(log.includes('main.setVisible(null)'));
+    assert.ok(!player.classList.contains('bab-main-hidden'));
+    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '');
+    assert.equal(strip.parentNode, null);
+    assert.equal(player.children.length, 0);
+});
+
+test('drums alone with vocals: the main highway takes the drums lane, no second highway, no fret chrome', () => {
+    const { player, log, deps, drumHws } = setup();
+    const s = mountStage({ player, song: withDrums, prefs: vocalsOn(false, true), deps });
+    assert.equal(log.filter((l) => l === 'main.setContainer(slot)').length, 1);
+    assert.equal(drumHws.length, 0);
+    const root = player.children[0];
+    const [strip, lane] = root.children;
+    assert.equal(strip, s.stripSlot);
+    assert.equal(lane.dataset.part, 'drums');
+    assert.equal(lane.style.width, '100%');
+    assert.equal(root.children.length, 2, 'no divider');
+    assert.ok(!lane.children.some((c) => c.className === 'bab-lane-chrome'));
+    assert.ok(!log.includes('drums.target(canvas)'));
+    assert.ok(!log.some((l) => l.startsWith('label')));
+    assert.ok(!log.includes('main.setVisible(false)'));
+    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '150px');
+    s.unmount();
+    assert.equal(player.children.length, 0);
+    assert.equal(player.count(), 0, 'player listeners removed');
+});
+
+test('no vocals: no strip and the plan-2 layout', () => {
+    const { player, log, deps } = setup();
+    const s = mountStage({ player, song: withDrums, prefs: { split: 62 }, deps });
+    assert.equal(s.stripSlot, null);
+    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '');
+    assert.ok(!player.children[0].children.some((c) => c.className === 'bab-strip'));
+    assert.ok(!log.some((l) => l.startsWith('main.setVisible')));
+    s.unmount();
 });

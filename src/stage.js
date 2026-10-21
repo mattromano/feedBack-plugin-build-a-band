@@ -3,7 +3,7 @@
 // is its own createHighway() with the drums renderer, fed by a lane clock.
 // No DOM or browser access at module top level: planStage imports under node.
 import { drumArrIndex } from './arrangements.js';
-import { clampSplit, computeStageLayout } from './layout.js';
+import { clampSplit, computeStageLayout, computeStageRows } from './layout.js';
 import { createLaneClock } from './lane-clock.js';
 import { clampLabelScale, savePrefs } from './prefs.js';
 import { drumsDifficultyId } from './mappings.js';
@@ -20,23 +20,31 @@ const LABEL_STEP = 0.25;
 // WS (ws_highway.py) and the drums renderer draws it on a non-drum part
 // (drums screen.js _drumTabFor), so a drum-tab-only song opens the guitar
 // arrangement the main highway is on (undefined: core's default).
+// `strip` puts the vocal strip on (vocals switched on). `mainPart` is the lane
+// holding the main highway: 'guitar' when guitar is on; 'drums' for drums
+// alone with the strip (the drum chart is already on the main highway);
+// null otherwise (no lane: drums alone without vocals, or vocals alone).
 export function planStage(song, parts = { guitar: { on: true }, drums: { on: true } }) {
     const hasDrumTab = !!(song && (song.hasDrumTab || song.has_drum_tab));
     const drumIndex = drumArrIndex(song && song.arrangements, { hasDrumTab });
     const current = song && song.arrangementIndex;
     const laneArrangement = drumIndex >= 0 ? drumIndex
         : (hasDrumTab && Number.isInteger(current) && current >= 0 ? current : undefined);
-    const plan = (lanes) => ({ lanes, drumIndex, laneArrangement });
+    const strip = !!(parts && parts.vocals && parts.vocals.on === true);
+    const plan = (mainPart, lanes) => ({ strip, mainPart, lanes, drumIndex, laneArrangement });
     const on = (id) => !(parts && parts[id] && parts[id].on === false);
-    if (!on('guitar')) return plan([]);
-    return plan(on('drums') && (drumIndex >= 0 || hasDrumTab) ? ['guitar', 'drums'] : ['guitar']);
+    const drumChart = on('drums') && (drumIndex >= 0 || hasDrumTab);
+    if (on('guitar')) return plan('guitar', drumChart ? ['guitar', 'drums'] : ['guitar']);
+    if (drumChart && strip) return plan('drums', ['drums']);
+    return plan(null, []);
 }
 
 function safe(fn) {
     try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
 }
 
-// mountStage({ player, song, prefs, deps }) -> { unmount(), setSplit(pct) }
+// mountStage({ player, song, prefs, deps }) -> { unmount(), setSplit(pct), stripSlot }
+// stripSlot is the vocal strip's empty container (null without vocals).
 // deps (all optional, default to the window globals):
 //   createHighway, getWsUrl, getDisplayTime, drumsApi, splitscreen,
 //   mainHighway, drumRenderer (factory returning a renderer), savePrefs,
@@ -71,8 +79,9 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         safe(() => drumsApi && drumsApi.setInputTarget(canvas));
         if (drumsApi && typeof drumsApi.setDifficulty === 'function') safe(() => drumsApi.setDifficulty(drumsDiff, canvas));
     }
+    const guitarMain = plan.mainPart === 'guitar';
     let lanes = plan.lanes;
-    if (lanes.includes('drums') && (typeof drumRenderer !== 'function' || typeof makeHighway !== 'function')) {
+    if (guitarMain && lanes.includes('drums') && (typeof drumRenderer !== 'function' || typeof makeHighway !== 'function')) {
         console.warn('[build-a-band] drums plugin or createHighway missing; guitar lane only');
         lanes = ['guitar'];
     }
@@ -89,24 +98,40 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         slot.dataset.part = part;
         slots[part] = slot;
     }
-    root.appendChild(slots.guitar);
+    // Vocal strip slot: first child, full width under the HUD row.
+    const rows = computeStageRows({ strip: plan.strip, lanes });
+    let stripSlot = null;
+    if (rows.strip) {
+        stripSlot = doc.createElement('div');
+        stripSlot.className = 'bab-strip';
+        stripSlot.dataset.part = 'vocals';
+        stripSlot.style.top = rows.strip.topPx + 'px';
+        if (rows.strip.fill) stripSlot.style.bottom = '0px';
+        else stripSlot.style.height = rows.strip.heightPx + 'px';
+        root.appendChild(stripSlot);
+    }
+    if (rows.strip && rows.lanesTopPx !== null) player.style.setProperty('--bab-lanes-top', rows.lanesTopPx + 'px');
+    for (const part of lanes) if (part !== 'drums') root.appendChild(slots[part]);
     let divider = null;
-    if (slots.drums) {
+    if (slots.drums && lanes.length === 2) {
         divider = doc.createElement('div');
         divider.className = 'bab-divider';
         divider.setAttribute('role', 'separator');
         divider.setAttribute('aria-orientation', 'vertical');
         divider.title = 'Drag to resize lanes';
         root.appendChild(divider);
-        root.appendChild(slots.drums);
     }
+    if (slots.drums) root.appendChild(slots.drums);
+    // The slot holding the main highway is see-through (CSS).
+    if (plan.mainPart && slots[plan.mainPart]) slots[plan.mainPart].classList.add('bab-lane-main');
 
     // Fret-number size: band mode has its own (prefs.labelScale). Applied for
     // this session only ({ persist: false }) so core's saved solo-play value is
     // untouched, and the solo value is put back on unmount.
-    const soloLabelScale = safe(() => mainHw.getLabelScale());
+    // Guitar only: the fret numbers belong to the guitar chart.
+    const soloLabelScale = guitarMain ? safe(() => mainHw.getLabelScale()) : undefined;
     let labelScale = clampLabelScale(prefs && prefs.labelScale);
-    safe(() => mainHw.setLabelScale(labelScale, { persist: false }));
+    if (guitarMain) safe(() => mainHw.setLabelScale(labelScale, { persist: false }));
 
     // Guitar lane chrome: fret-number label scale, shown on hover.
     const chrome = doc.createElement('div');
@@ -131,7 +156,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     chrome.append(chromeLabel,
         stepBtn('−', -LABEL_STEP, 'Smaller fret numbers'),
         stepBtn('+', LABEL_STEP, 'Bigger fret numbers'));
-    slots.guitar.appendChild(chrome);
+    if (guitarMain) slots.guitar.appendChild(chrome);
     player.appendChild(root);
 
     // Lanes stop above the footer, as core's own viewport sizing does.
@@ -158,8 +183,16 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     fitFooter();
     applyLayout();
 
-    // 4-5. Main highway into the guitar slot (CSS positions #highway over it).
-    safe(() => mainHw.setContainer(slots.guitar));
+    // 4-5. Main highway into its slot (CSS positions #highway over it). With
+    // no lane (vocals alone) it is hidden: setVisible(false) stops its drawing
+    // and the class hides the last frame it left on the canvas.
+    const mainHidden = !plan.mainPart;
+    if (mainHidden) {
+        player.classList.add('bab-main-hidden');
+        safe(() => mainHw.setVisible(false));
+    } else {
+        safe(() => mainHw.setContainer(slots[plan.mainPart]));
+    }
 
     // The drum canvas core is actually drawing on. A renderer whose context
     // type differs from the canvas's (the drums 3D view is webgl2) makes core
@@ -192,7 +225,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             return t;
         },
     });
-    if (slots.drums) {
+    if (slots.drums && guitarMain) {
         try {
             drumCanvas = doc.createElement('canvas');
             drumCanvas.className = 'bab-drum-canvas';
@@ -274,8 +307,10 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         slots.guitar.classList.toggle('bab-hover', inside);
     }
     function onPointerLeave() { slots.guitar.classList.remove('bab-hover'); }
-    player.addEventListener('pointermove', onPointerMove);
-    player.addEventListener('pointerleave', onPointerLeave);
+    if (guitarMain) {
+        player.addEventListener('pointermove', onPointerMove);
+        player.addEventListener('pointerleave', onPointerLeave);
+    }
 
     function onWindowResize() { fitFooter(); resizeAll(); }
     win.addEventListener('resize', onWindowResize);
@@ -289,6 +324,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
 
     let mounted = true;
     return {
+        stripSlot,
         setSplit(pct) {
             if (!mounted) return;
             split = clampSplit(pct);
@@ -318,9 +354,16 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             safe(() => drumsApi && drumsApi.setInputTarget(null));
             // 4. The solo-play fret-number size, unpersisted (it is already saved).
             if (Number.isFinite(soloLabelScale)) safe(() => mainHw.setLabelScale(soloLabelScale, { persist: false }));
-            // 5-7. Main highway back to viewport sizing.
-            safe(() => mainHw.setContainer(null));
+            // 5-7. Main highway back to viewport sizing (or shown again).
+            if (mainHidden) {
+                safe(() => mainHw.setVisible(null));
+                player.classList.remove('bab-main-hidden');
+            } else {
+                safe(() => mainHw.setContainer(null));
+            }
+            safe(() => player.style.removeProperty('--bab-lanes-top'));
             player.classList.remove('bab-stage');
+            if (stripSlot) safe(() => stripSlot.remove());
             safe(() => root.remove());
             safe(() => mainHw.resize());
         },
