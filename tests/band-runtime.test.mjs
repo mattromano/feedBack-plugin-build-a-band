@@ -202,12 +202,12 @@ test('song:ready for a different song ends the session without mounting', () => 
     rt.dispose();
 });
 
-test('drums only: plays the drum arrangement, mounts nothing, pins the drum difficulty to #highway', () => {
+test('drums only: plays the drum arrangement, mounts the stage (R10), pins the drum difficulty to #highway', () => {
     const { rt, fb, doc, calls, mounts, loadSong, highwayCanvas } = setup();
     rt.startSession({ song: DRUM_ITEM, prefs: prefsWith({ guitar: { on: false }, drums: { difficulty: 'hard' } }) });
     assert.deepEqual(calls.playSong, [['Beat.sloppak', 1]]);
     loadSong(DRUM_ITEM);
-    assert.equal(mounts.length, 0);
+    assert.equal(mounts.length, 1, 'drums alone gets a stage');
     assert.deepEqual(calls.setMastery, [], 'no guitar mastery when guitar is off');
     assert.deepEqual(calls.setDifficulty, [['hard', highwayCanvas]]);
     const fresh = doc.createElement('canvas');
@@ -505,7 +505,8 @@ test('a drum-only pack with default prefs is a drums-only session', () => {
     rt.startSession({ song: kit, prefs: prefsWith() });
     assert.deepEqual(calls.playSong, [['Kit.sloppak', 0]]);
     loadSong(kit);
-    assert.equal(mounts.length, 0, 'no guitar lane for a song with no guitar part');
+    assert.equal(mounts.length, 1, 'drums alone gets a stage');
+    assert.equal(mounts[0].prefs.parts.guitar.on, false, 'no guitar lane for a song with no guitar part');
     assert.deepEqual(calls.setMastery, [], 'no guitar mastery');
     assert.deepEqual(calls.setDifficulty, [['medium', highwayCanvas]]);
     assert.deepEqual(calls.setViz, [], 'a Drums arrangement needs no view switch');
@@ -564,7 +565,7 @@ test('drums only on a drum-tab-only pack installs the drums renderer on song:rea
     assert.deepEqual(calls.playSong, [['deep.feedpak', undefined]], 'any arrangement streams the drum tab');
     assert.deepEqual(installed, [], 'nothing before the band song is ready');
     loadSong(TAB);
-    assert.equal(mounts.length, 0);
+    assert.equal(mounts.length, 1, 'drums alone gets a stage');
     assert.deepEqual(installed, [drumsRenderer], 'installed on song:ready');
     assert.deepEqual(calls.setViz, [], 'never through setViz, which saves the pick');
     assert.equal(storage.getItem('vizSelection'), 'highway_3d');

@@ -29,7 +29,16 @@ test('planStage drums off', () => {
 test('planStage guitar off', () => {
     assert.deepEqual(planStage({ arrangements: [{ name: 'Lead' }, { name: 'Drums' }] },
         { guitar: { on: false }, drums: { on: true } }),
-    { strip: false, mainPart: null, lanes: [], drumIndex: 1, laneArrangement: 1 });
+    { strip: false, mainPart: 'drums', lanes: ['drums'], drumIndex: 1, laneArrangement: 1 });
+});
+
+test('planStage with no playable lane gives no main part and no lanes', () => {
+    const off = { guitar: { on: false }, drums: { on: true }, vocals: { on: false } };
+    const p = planStage({ arrangements: [{ name: 'Lead' }] }, off);
+    assert.deepEqual({ mainPart: p.mainPart, lanes: p.lanes }, { mainPart: null, lanes: [] });
+    const q = planStage({ arrangements: [{ name: 'Lead' }, { name: 'Drums' }] },
+        { guitar: { on: false }, drums: { on: false }, vocals: { on: false } });
+    assert.deepEqual({ mainPart: q.mainPart, lanes: q.lanes }, { mainPart: null, lanes: [] });
 });
 
 test('planStage uses hasDrumTab to find an oddly named drum arrangement', () => {
@@ -78,8 +87,8 @@ test('planStage drums only with vocals puts the main highway in the drums lane',
         { strip: true, mainPart: 'drums', lanes: ['drums'], drumIndex: 1 });
 });
 
-test('planStage drums only without vocals is unchanged', () => {
+test('planStage drums alone gets the drums lane on the main highway', () => {
     const p = planStage({ arrangements: [{ name: 'Lead' }, { name: 'Drums' }] },
         { guitar: { on: false }, drums: { on: true }, vocals: { on: false } });
-    assert.deepEqual({ strip: p.strip, mainPart: p.mainPart, lanes: p.lanes }, { strip: false, mainPart: null, lanes: [] });
+    assert.deepEqual({ strip: p.strip, mainPart: p.mainPart, lanes: p.lanes }, { strip: false, mainPart: 'drums', lanes: ['drums'] });
 });

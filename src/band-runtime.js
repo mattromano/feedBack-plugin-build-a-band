@@ -298,7 +298,7 @@ export function createBandRuntime({
             const song = fb.currentSong;
             if (!player || !song) return;
             const plan = planStage(song, s.prefs.parts);
-            // Drums alone without vocals plays on the main highway: no stage.
+            // Every session with a playable lane or the strip has a stage (R10).
             if (!plan.strip && plan.lanes.length === 0) return;
             if (s.splitWaiting) return; // mounted once splitscreen is down
             unmountStage();

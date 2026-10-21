@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadPrefs, savePrefs, pushRecent } from '../src/prefs.js';
+import { loadPrefs, savePrefs, pushRecent, clampZoom } from '../src/prefs.js';
 
 function stub(initial = {}) {
     const m = new Map(Object.entries(initial));
@@ -105,4 +105,19 @@ test('recentSongs and lastSong are validated', () => {
     assert.equal(p.lastSong, null);
     const ok = loadPrefs(stub({ [KEY]: JSON.stringify({ lastSong: { filename: 'z' } }) }));
     assert.deepEqual(ok.lastSong, { filename: 'z', title: '', artist: '' });
+});
+
+test('zoom defaults to 1 per lane and is clamped', () => {
+    const s = stub();
+    assert.deepEqual(loadPrefs(s).zoom, { guitar: 1, drums: 1 });
+    const saved = savePrefs({ zoom: { drums: 2 } }, s);
+    assert.equal(saved.zoom.drums, 1.3);
+    assert.equal(saved.zoom.guitar, 1);
+    savePrefs({ zoom: { guitar: 0.8 } }, s);
+    assert.deepEqual(loadPrefs(s).zoom, { guitar: 0.8, drums: 1.3 }, 'merged per key');
+    assert.equal(clampZoom(NaN), 1);
+    assert.equal(clampZoom(0.74), 0.74);
+    assert.equal(clampZoom(0.1), 0.7);
+    assert.equal(clampZoom(1.1 + 0.1), 1.2);
+    assert.deepEqual(loadPrefs(stub({ [KEY]: '{"zoom":"big"}' })).zoom, { guitar: 1, drums: 1 });
 });

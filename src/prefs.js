@@ -6,7 +6,7 @@ const KEY = 'build_a_band.prefs.v1';
 
 // labelScale: the guitar lane's fret-number size in band mode, kept apart from
 // core's solo-play `highwayLabelScale` so neither leaks into the other.
-const DEFAULTS = Object.freeze({ split: 62, labelScale: 1 });
+const DEFAULTS = Object.freeze({ split: 62, labelScale: 1, zoom: Object.freeze({ guitar: 1, drums: 1 }) });
 const PART_DEFAULTS = Object.freeze({
     guitar: Object.freeze({ on: true, deviceKey: '', arrangement: 'Lead', difficulty: 'medium' }),
     drums: Object.freeze({ on: true, deviceKey: '', difficulty: 'medium', soundMode: 'song' }),
@@ -18,11 +18,21 @@ const FAIL_MODES = ['nofail', 'fail'];
 const MAX_RECENT = 10;
 export const LABEL_SCALE_MIN = 0.75;
 export const LABEL_SCALE_MAX = 2.5;
+// Per-lane zoom (guitar and drum lanes; the vocal strip has none).
+export const ZOOM_MIN = 0.7;
+export const ZOOM_MAX = 1.3;
+export const ZOOM_STEP = 0.1;
 
 // Same range core's setLabelScale clamps to. Non-numbers fall back to 1.
 export function clampLabelScale(v) {
     if (typeof v !== 'number' || !Number.isFinite(v)) return DEFAULTS.labelScale;
     return Math.max(LABEL_SCALE_MIN, Math.min(LABEL_SCALE_MAX, v));
+}
+
+// Non-numbers fall back to 1; rounded to 2 decimals so 0.1 steps stay exact.
+export function clampZoom(v) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return 1;
+    return Math.round(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v)) * 100) / 100;
 }
 
 function defaultStorage() {
@@ -65,6 +75,11 @@ function normalizeRecent(v) {
     return out;
 }
 
+function normalizeZoom(v) {
+    const z = isObj(v) ? v : DEFAULTS.zoom;
+    return { guitar: clampZoom(z.guitar), drums: clampZoom(z.drums) };
+}
+
 // Validates every field; a bad value falls back to that field's default.
 export function normalizePrefs(raw) {
     const r = isObj(raw) ? raw : {};
@@ -72,6 +87,7 @@ export function normalizePrefs(raw) {
     return {
         split: Number.isFinite(r.split) ? r.split : DEFAULTS.split,
         labelScale: 'labelScale' in r ? clampLabelScale(r.labelScale) : DEFAULTS.labelScale,
+        zoom: normalizeZoom(r.zoom),
         parts: {
             guitar: normalizePart('guitar', parts.guitar),
             drums: normalizePart('drums', parts.drums),
@@ -101,7 +117,7 @@ export function loadPrefs(storage = defaultStorage()) {
 export function savePrefs(patch, storage = defaultStorage()) {
     const cur = loadPrefs(storage);
     const p = isObj(patch) ? patch : {};
-    const merged = { ...cur, ...p, parts: { ...cur.parts } };
+    const merged = { ...cur, ...p, parts: { ...cur.parts }, zoom: { ...cur.zoom, ...(isObj(p.zoom) ? p.zoom : {}) } };
     if (isObj(p.parts)) {
         for (const id of Object.keys(p.parts)) {
             if (isObj(p.parts[id])) merged.parts[id] = { ...cur.parts[id], ...p.parts[id] };

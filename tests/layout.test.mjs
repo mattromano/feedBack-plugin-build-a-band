@@ -31,9 +31,9 @@ test('throws on more than two lanes', () => {
 });
 
 test('stage rows: none, strip over lanes, strip alone', () => {
-    assert.deepEqual(computeStageRows({ strip: false, lanes: ['guitar'] }), { strip: null, lanesTopPx: 0 });
+    assert.deepEqual(computeStageRows({ strip: false, lanes: ['guitar'] }), { strip: null, lanesTopPx: 48 });
     assert.deepEqual(computeStageRows({ strip: true, lanes: ['guitar', 'drums'] }),
-        { strip: { topPx: 60, heightPx: 90, fill: false }, lanesTopPx: 150 });
+        { strip: { topPx: 48, heightPx: 90, fill: false }, lanesTopPx: 138 });
     assert.deepEqual(computeStageRows({ strip: true, lanes: [] }),
-        { strip: { topPx: 60, heightPx: null, fill: true }, lanesTopPx: null });
+        { strip: { topPx: 48, heightPx: null, fill: true }, lanesTopPx: null });
 });
