@@ -65,3 +65,48 @@ test('start loops via schedule until stopped', () => {
     assert.equal(hw.calls.length, 2);
     assert.equal(s.n, 3);
 });
+
+test("getTime throwing doesn't kill the loop", () => {
+    const s = manual();
+    let fail = true;
+    const hw = fakeHw();
+    const clock = createLaneClock({
+        getTime: () => { if (fail) throw new Error('boom'); return 7; },
+        schedule: s.schedule, cancel: s.cancel,
+    });
+    clock.add(hw);
+    clock.start();
+    s.pending();
+    assert.equal(hw.calls.length, 0);
+    assert.equal(s.n, 2);
+    fail = false;
+    s.pending();
+    assert.deepEqual(hw.calls, [7]);
+    assert.equal(s.n, 3);
+});
+
+test('stop() inside a callback does not reschedule', () => {
+    const s = manual();
+    let clock;
+    const hw = fakeHw(() => clock.stop());
+    clock = createLaneClock({ getTime: () => 1, schedule: s.schedule, cancel: s.cancel });
+    clock.add(hw);
+    clock.start();
+    s.pending();
+    assert.equal(s.n, 1);
+    assert.equal(s.pending, null);
+});
+
+test('stop() then start() inside a callback leaves exactly one loop', () => {
+    const s = manual();
+    let clock;
+    let once = true;
+    const hw = fakeHw(() => { if (once) { once = false; clock.stop(); clock.start(); } });
+    clock = createLaneClock({ getTime: () => 1, schedule: s.schedule, cancel: s.cancel });
+    clock.add(hw);
+    clock.start();
+    s.pending();
+    assert.equal(s.n, 2); // only the restart scheduled; old frame did not
+    s.pending();
+    assert.equal(s.n, 3);
+});

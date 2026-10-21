@@ -5,21 +5,28 @@ export function createLaneClock({ getTime, schedule, cancel } = {}) {
     const lanes = new Set();
     let handle = null;
     let running = false;
+    let generation = 0;
 
     const sched = (fn) => (schedule || globalThis.requestAnimationFrame.bind(globalThis))(fn);
     const unsched = (h) => (cancel || globalThis.cancelAnimationFrame.bind(globalThis))(h);
 
     function tick() {
-        const t = getTime();
+        let t;
+        try { t = getTime(); } catch (_) { return; } // skip this tick, keep the loop alive
         for (const hw of lanes) {
             try { hw.setTime(t); } catch (_) { /* one bad lane must not block the rest */ }
         }
     }
 
-    function frame() {
-        if (!running) return;
-        tick();
-        if (running) handle = sched(frame);
+    // A frame only reschedules while it still belongs to the current run
+    // (generation unchanged), so re-entrant stop()/start() can't fork loops.
+    function makeFrame(gen) {
+        return function frame() {
+            if (!running || gen !== generation) return;
+            try { tick(); } finally {
+                if (running && gen === generation) handle = sched(frame);
+            }
+        };
     }
 
     return {
@@ -29,11 +36,13 @@ export function createLaneClock({ getTime, schedule, cancel } = {}) {
         start() {
             if (running) return;
             running = true;
-            handle = sched(frame);
+            generation++;
+            handle = sched(makeFrame(generation));
         },
         stop() {
             if (!running) return;
             running = false;
+            generation++;
             if (handle !== null) unsched(handle);
             handle = null;
         },
