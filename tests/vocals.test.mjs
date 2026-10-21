@@ -165,3 +165,17 @@ test('stopVocals clears everything when setKaraokeMode(false) rejects, with no u
         process.off('unhandledRejection', onUnhandled);
     }
 });
+
+test("a cancelled start doesn't turn karaoke off under a newer start on the same karaoke", async () => {
+    const pending = [];
+    const api = fakeApi({ setKaraokeMode: (on) => (on ? new Promise((r) => pending.push(r)) : Promise.resolve(false)) });
+    let firstCurrent = true;
+    const first = startVocals({ api, slot: {}, deviceId: '', storage: memStorage(), isCurrent: () => firstCurrent });
+    firstCurrent = false;
+    const second = startVocals({ api, slot: {}, deviceId: '', storage: memStorage(), isCurrent: () => true });
+    pending[1](true);
+    pending[0](true);
+    assert.equal(await first, 'cancelled');
+    assert.equal(await second, 'started');
+    assert.ok(!api.calls.some((c) => c[0] === 'setKaraokeMode' && c[1] === false), JSON.stringify(api.calls));
+});

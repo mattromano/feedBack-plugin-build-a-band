@@ -749,3 +749,23 @@ test("hear-myself off that karaoke didn't take: no mic, toast, overrides still c
         rt.dispose();
     }
 });
+
+test('splitscreen still up at song:ready: vocals start once the stage mounts after it is down', async () => {
+    const env = setup();
+    const { rt, calls, mounts, loadSong, timers } = env;
+    const ss = fakeSplitscreen(env);
+    ss.stop = () => { ss.stops++; };
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    ss.active = true;
+    env.fb.emit('splitscreen:panels-changed', {});
+    loadSong(PITCH_ITEM);
+    await flush();
+    assert.equal(mounts.length, 0);
+    assert.ok(!names(calls).includes('setKaraokeMode'), 'nothing before the stage');
+    ss.active = false;
+    timers.fire(50);
+    await flush();
+    assert.equal(mounts.length, 1);
+    assert.deepEqual(calls.karaoke.slice(2), [['mountStrip', mounts[0].stripSlot], ['setKaraokeMode', true], ['startMic']]);
+    rt.dispose();
+});

@@ -396,3 +396,17 @@ test('vocals alone: a mount that throws never leaves the main highway hidden', (
     assert.ok(!player.classList.contains('bab-main-hidden'));
     assert.ok(!log.includes('main.setVisible(false)'));
 });
+
+test('vocals alone: a remount round trip shows the main highway, then hides it again', () => {
+    const { player, log, deps } = setup();
+    const a = mountStage({ player, song: withDrums, prefs: vocalsOn(false, false), deps });
+    a.unmount();
+    assert.ok(!player.classList.contains('bab-main-hidden'));
+    const b = mountStage({ player, song: withDrums, prefs: vocalsOn(false, false), deps });
+    assert.deepEqual(log.filter((l) => l.startsWith('main.setVisible')),
+        ['main.setVisible(false)', 'main.setVisible(null)', 'main.setVisible(false)']);
+    assert.ok(player.classList.contains('bab-main-hidden'));
+    assert.equal(log.at(-1), 'main.setVisible(false)', 'hidden last in the remount');
+    b.unmount();
+    assert.ok(!player.classList.contains('bab-main-hidden'));
+});

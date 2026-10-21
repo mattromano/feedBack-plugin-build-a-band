@@ -36,15 +36,21 @@ export function armVocals(api, vocalsPrefs) {
     return hear || applied;
 }
 
+// The latest start per karaoke API: a cancelled start only turns karaoke off
+// when no newer start has claimed it since.
+const latestStart = new WeakMap();
+
 // After the stage mounts. Re-checks isCurrent() after every await so a session
 // that ended meanwhile never opens (or keeps) the mic.
 export async function startVocals({ api, slot, deviceId, storage, isCurrent }) {
+    const token = {};
+    try { latestStart.set(api, token); } catch (_) { /* not an object */ }
     try {
         api.mountStrip(slot);
         const ok = await api.setKaraokeMode(true);
         if (!isCurrent()) {
             // Teardown's setKaraokeMode(false) can run before this one lands.
-            if (ok) offKaraoke(api);
+            if (ok && latestStart.get(api) === token) offKaraoke(api);
             return 'cancelled';
         }
         if (!ok) return 'no-pitch';

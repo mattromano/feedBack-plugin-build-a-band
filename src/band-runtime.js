@@ -181,7 +181,12 @@ export function createBandRuntime({
         if (session !== s || !s.splitWaiting) return;
         if (!splitActive()) {
             s.splitWaiting = false;
-            if (state.phase === 'playing') EFFECTS.mount(s);
+            if (state.phase === 'playing') {
+                EFFECTS.mount(s);
+                // Splitscreen was still up at song:ready, so vocals had no
+                // strip slot then: start them now the stage is up.
+                if (s.vocals && !s.vocalsStarted && !s.vocalsFailed) EFFECTS.startVocals(s);
+            }
             return;
         }
         if (++s.splitPolls > SPLIT_POLL_MAX) {
@@ -336,7 +341,7 @@ export function createBandRuntime({
         // never opens the mic (startVocals re-checks after every await).
         startVocals(s) {
             if (s.vocalsFailed) { showToast(s, VOCALS_FAILED); return; }
-            if (!s.vocals || !s.karaoke || !stage || !stage.stripSlot) return;
+            if (!s.vocals || s.vocalsStarted || !s.karaoke || !stage || !stage.stripSlot) return;
             s.vocalsStarted = true;
             const isCurrent = () => session === s && state.phase === 'playing';
             startVocals({
