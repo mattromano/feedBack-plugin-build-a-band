@@ -1,6 +1,7 @@
 // Band screen view model and the Go key test. Pure, no DOM: band-screen.js
 // renders whatever this returns.
 import { PART_TYPES, hasChart, songFacts } from './parts.js';
+import { guitarArrIndex } from './mappings.js';
 
 const UNAVAILABLE_NOTE = {
     guitar: 'No guitar part in this song',
@@ -12,13 +13,19 @@ const SOUND_MODES_NOTE = 'Rock Band and My kit only need a drum stem';
 // Guitar scores through note_detect, which the band turns on with an input picked.
 const NOTE_DETECT_OFF_NOTE = 'Turn on Note Detection to score your guitar';
 const PICK_GUITAR_INPUT_NOTE = 'Pick an input to score your guitar';
+// The chartFrom fallback order (parts.js).
+const GUITAR_ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass'];
 
-// bandScreenModel({ prefs, item, vocalsSupported, noteDetectLoaded }) -> { goEnabled, goHint, columns: { guitar, drums, vocals } }
+// bandScreenModel({ prefs, item, vocalsSupported, noteDetectLoaded, pickAvailable })
+//   -> { goEnabled, goHint, pickEnabled, setupHint, columns: { guitar, drums, vocals } }
 // A column is unavailable only when a song is picked and has no chart for it;
 // the stored part settings are never changed here. Vocals is also unavailable
 // (with or without a song) when the Lyrics Karaoke plugin isn't loaded. An
-// available guitar part that is on notes what it needs to score.
-export function bandScreenModel({ prefs, item, vocalsSupported = true, noteDetectLoaded = true }) {
+// available guitar part that is on notes what it needs to score. The guitar
+// column also says which arrangements the song has and the one that will play.
+// Setup shows setupHint (the library pick needs core's hook and a part on);
+// Confirm shows goHint.
+export function bandScreenModel({ prefs, item, vocalsSupported = true, noteDetectLoaded = true, pickAvailable = true }) {
     const parts = (prefs && prefs.parts) || {};
     const columns = {};
     for (const part of PART_TYPES) {
@@ -32,6 +39,14 @@ export function bandScreenModel({ prefs, item, vocalsSupported = true, noteDetec
             // The mode that will play: a song without a drum stem plays Song drums.
             col.soundMode = col.soundModesDisabled ? 'song' : (pp.soundMode || 'song');
         }
+        if (part.id === 'guitar') {
+            const arrs = songFacts(item).arrangements;
+            col.arrangements = {};
+            for (const n of GUITAR_ARRANGEMENTS) col.arrangements[n] = !item || guitarArrIndex(arrs, n) !== undefined;
+            const stored = pp.arrangement || 'Lead';
+            col.arrangement = col.arrangements[stored] ? stored
+                : (GUITAR_ARRANGEMENTS.find((n) => col.arrangements[n]) || stored);
+        }
         if (part.id === 'guitar' && !unavailable && col.on) {
             if (!noteDetectLoaded) col.note = NOTE_DETECT_OFF_NOTE;
             else if (!pp.deviceKey) col.note = PICK_GUITAR_INPUT_NOTE;
@@ -43,7 +58,12 @@ export function bandScreenModel({ prefs, item, vocalsSupported = true, noteDetec
     let goHint = 'Press Space or hit any pad to start';
     if (!item) goHint = 'Pick a song';
     else if (!goEnabled) goHint = 'Turn on a part';
-    return { goEnabled, goHint, columns };
+    const anyOn = ['guitar', 'drums', 'vocals'].some((id) => !!(parts[id] && parts[id].on) && (id !== 'vocals' || vocalsSupported));
+    const pickEnabled = !!pickAvailable && anyOn;
+    let setupHint = '';
+    if (!pickAvailable) setupHint = 'Update feedBack to pick songs here';
+    else if (!pickEnabled) setupHint = 'Turn on a part';
+    return { goEnabled, goHint, pickEnabled, setupHint, columns };
 }
 
 const TEXT_TAGS = ['INPUT', 'TEXTAREA', 'SELECT'];

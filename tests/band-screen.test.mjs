@@ -58,7 +58,6 @@ test('skeleton: columns coloured from the registry, Go disabled until a song is 
         assert.ok(col(id).querySelector('.bab-signal'));
         assert.equal(col(id).querySelector('.bab-toggle').getAttribute('aria-pressed'), 'true');
     }
-    assert.ok(root.querySelector('.bab-picker'));
     assert.equal(root.querySelector('.bab-addslot').disabled, true);
     assert.equal(root.querySelector('.bab-go').disabled, true);
     assert.equal(root.querySelector('.bab-hint').textContent, 'Pick a song');
@@ -161,27 +160,6 @@ test('reopens on the last song through resolveRecent', async () => {
     bs.dispose();
 });
 
-test('song picker is mounted in .bab-picker: picking sets the song, part toggles refresh it', async () => {
-    const { root, col, bs, urls } = setup({ library: [holiday] });
-    const picker = root.querySelector('.bab-picker');
-    const search = picker.querySelector('input.bab-search');
-    assert.ok(search, 'picker mounted');
-    search.value = 'holiday';
-    search.fire('input');
-    await new Promise((r) => setTimeout(r, 300)); // real 250 ms debounce
-    await flush();
-    // Vocals is on (the default), but without karaoke playable leaves vocal pitch out.
-    assert.deepEqual(urls, ['/api/library?q=holiday&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_drums=1']);
-    picker.querySelector('li.bab-row').click();
-    assert.equal(bs.getSong(), holiday);
-    col('drums').querySelector('.bab-toggle').click();
-    await new Promise((r) => setTimeout(r, 300));
-    await flush();
-    assert.equal(urls[1], '/api/library?q=holiday&size=30&arrangements_has=Lead%2CRhythm%2CBass');
-    bs.dispose();
-    assert.equal(picker.children.length, 0, 'picker disposed with the screen');
-});
-
 test('screen:changing away hides the screen before screen:changed arrives', () => {
     const { doc, fb, bs, gos } = setup();
     bs.setSong(holiday);
@@ -198,15 +176,6 @@ test('Space does nothing when the plugin screen is not .active', () => {
     doc.getElementById('plugin-build_a_band').classList.remove('active');
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0);
-    bs.dispose();
-});
-
-test('picking while the search box is empty refreshes the recent list', () => {
-    const { root, bs } = setup();
-    bs.setSong(holiday);
-    const rows = root.querySelector('.bab-picker').querySelectorAll('li.bab-row');
-    assert.equal(rows.length, 1);
-    assert.equal(rows[0].querySelector('.bab-row-title').textContent, 'Holiday');
     bs.dispose();
 });
 
@@ -601,17 +570,6 @@ test('with only vocals on and a pitched song, Go is enabled', () => {
     assert.equal(root.querySelector('.bab-go').disabled, false);
     root.querySelector('.bab-go').click();
     assert.equal(gos.length, 1);
-    bs.dispose();
-});
-
-test('with karaoke and vocals on, the playable search also asks for vocal pitch', async () => {
-    const { root, urls, bs } = setup({ library: [holiday], winExtra: { lyricsKaraoke: karaokeFake() } });
-    const search = root.querySelector('.bab-picker').querySelector('input.bab-search');
-    search.value = 'holiday';
-    search.fire('input');
-    await new Promise((r) => setTimeout(r, 300)); // real 250 ms debounce
-    await flush();
-    assert.deepEqual(urls, ['/api/library?q=holiday&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_drums=1&has_lyrics=pitch']);
     bs.dispose();
 });
 

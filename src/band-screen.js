@@ -4,7 +4,6 @@ import { PART_TYPES } from './parts.js';
 import { pushRecent } from './prefs.js';
 import { songChips, resolveRecent } from './query.js';
 import { bandScreenModel, isGoKey } from './band-model.js';
-import { mountSongPicker } from './song-picker.js';
 import {
     listGuitarInputs, listDrumInputs, listMicInputs, findKit,
     applyGuitarDevice, applyDrumDevice, applyMicDevice,
@@ -195,19 +194,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
             prefs = savePrefs({ lastSong: null });
         }
         render();
-        // Keep the recent list current when it is what the picker shows.
-        const box = $('input.bab-search');
-        if (box && !String(box.value || '').trim()) picker.refresh();
     }
-
-    const picker = mountSongPicker({
-        host: $('.bab-picker'), doc, fetchJson: getJson,
-        getParts: () => (karaokeApi(win) ? prefs.parts
-            : { ...prefs.parts, vocals: { ...prefs.parts.vocals, on: false } }),
-        getRecent: () => prefs.recentSongs,
-        onPick: setSong,
-    });
-    cleanups.push(() => picker.dispose());
 
     // Column controls: on/off toggle and every segment write through savePrefs.
     for (const part of PART_TYPES) {
@@ -220,8 +207,6 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         if (ico) ico.innerHTML = icon(part.icon, { size: 30 });
         listen($('.bab-toggle', col), 'click', () => {
             save({ parts: { [part.id]: { on: !prefs.parts[part.id].on } } });
-            // "Playable by this band" follows the parts switched on.
-            picker.refresh();
             startLight(part.id);
         });
         for (const seg of $$('.bab-seg[data-field]', col)) {

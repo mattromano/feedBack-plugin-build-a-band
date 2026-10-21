@@ -1,21 +1,42 @@
-// Library query builder, song chips and the debounced search controller.
+// The band's library pick chips, song chips and the recent-song lookup.
 import { songFacts, getPart, hasChart } from './parts.js';
 
-export const DEFAULT_FILTERS = Object.freeze({
-    guitar: false, drums: false, vocals: false, drumStem: false, playable: true,
+// The band's chips for the library pick, in order: [id, label].
+export const PICK_FILTERS = Object.freeze([
+    ['playable', 'Playable by band'], ['drumStem', 'Drum stem'], ['drums', 'Drum chart'],
+    ['vocals', 'Vocal pitch'], ['guitar', 'Guitar part'],
+]);
+
+const PART_PARAMS = Object.freeze({
+    guitar: Object.freeze({ arrangements_has: 'Lead,Rhythm,Bass' }),
+    drums: Object.freeze({ has_drums: '1' }),
+    vocals: Object.freeze({ has_lyrics: 'pitch' }),
+});
+const CHIP_PARAMS = Object.freeze({
+    drumStem: Object.freeze({ stems_has: 'drums' }),
+    drums: PART_PARAMS.drums,
+    vocals: PART_PARAMS.vocals,
+    guitar: PART_PARAMS.guitar,
 });
 
-// The router's page-size param is `size` (a `page_size` would be ignored).
-export function buildLibraryQuery({ q = '', filters = DEFAULT_FILTERS, parts = {}, size = 30 } = {}) {
-    const playable = !!filters.playable;
-    const params = new URLSearchParams();
-    params.set('q', String(q).trim());
-    params.set('size', String(size));
-    if (filters.guitar || (playable && parts.guitar && parts.guitar.on)) params.set('arrangements_has', 'Lead,Rhythm,Bass');
-    if (filters.drums || (playable && parts.drums && parts.drums.on)) params.set('has_drums', '1');
-    if (filters.vocals || (playable && parts.vocals && parts.vocals.on)) params.set('has_lyrics', 'pitch');
-    if (filters.drumStem) params.set('stems_has', 'drums');
-    return params.toString();
+// pickFilters({ parts, on }) -> [{ id, label, params, on }] for feedBack.library.pick.
+// `playable` sends the params of every part with on === true (the caller drops
+// vocals when Lyrics Karaoke isn't loaded); `on` is the stored chip flags.
+export function pickFilters({ parts = {}, on = {} } = {}) {
+    const p = parts || {};
+    const flags = on || {};
+    return PICK_FILTERS.map(([id, label]) => {
+        let params;
+        if (id === 'playable') {
+            params = {};
+            for (const part of ['guitar', 'drums', 'vocals']) {
+                if (p[part] && p[part].on === true) Object.assign(params, PART_PARAMS[part]);
+            }
+        } else {
+            params = { ...CHIP_PARAMS[id] };
+        }
+        return { id, label, params, on: !!flags[id] };
+    });
 }
 
 export function songChips(item) {
@@ -27,46 +48,6 @@ export function songChips(item) {
         { id: 'vocalPitch', label: 'Vocal pitch', good: facts.hasVocalPitch },
         { id: 'arrangements', label: names.length ? names.join(' · ') : 'No arrangements', good: names.length > 0 },
     ];
-}
-
-export function createSearchController({
-    fetchJson, onResults, onError, delay = 250, setTimer = setTimeout, clearTimer = clearTimeout,
-}) {
-    let timer = null;
-    let latest = 0;
-    let disposed = false;
-
-    function cancelTimer() {
-        if (timer !== null) { clearTimer(timer); timer = null; }
-    }
-
-    return {
-        search(queryString) {
-            if (disposed) return;
-            cancelTimer();
-            timer = setTimer(async () => {
-                timer = null;
-                const id = ++latest;
-                try {
-                    const json = await fetchJson('/api/library?' + queryString);
-                    if (disposed || id !== latest) return;
-                    onResults((json && json.songs) || []);
-                } catch (err) {
-                    if (disposed || id !== latest) return;
-                    if (onError) onError(err);
-                }
-            }, delay);
-        },
-        // Drops a pending search and ignores one already in flight.
-        cancel() {
-            cancelTimer();
-            latest++;
-        },
-        dispose() {
-            disposed = true;
-            cancelTimer();
-        },
-    };
 }
 
 export async function resolveRecent(entry, fetchJson) {

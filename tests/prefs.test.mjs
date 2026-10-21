@@ -142,3 +142,25 @@ test('micHitDb defaults, clamps and rounds', () => {
     assert.equal(loadPrefs(s).parts.vocals.hearMyself, false, 'other vocals fields untouched');
     assert.equal('micHitDb' in loadPrefs(s).parts.guitar, false);
 });
+
+test('pickFilters defaults', () => {
+    assert.deepEqual(loadPrefs(stub()).pickFilters,
+        { playable: true, drumStem: false, drums: false, vocals: false, guitar: false });
+});
+
+test('bad values fall back', () => {
+    const s = stub({ [KEY]: JSON.stringify({ pickFilters: { playable: 'x', drums: true, bogus: true } }) });
+    const pf = loadPrefs(s).pickFilters;
+    assert.equal(pf.playable, true);
+    assert.equal(pf.drums, true);
+    assert.equal('bogus' in pf, false);
+});
+
+test('savePrefs merges pickFilters', () => {
+    const s = stub();
+    const next = savePrefs({ pickFilters: { drumStem: true } }, s);
+    assert.equal(next.pickFilters.drumStem, true);
+    assert.equal(next.pickFilters.playable, true);
+    assert.equal(loadPrefs(s).pickFilters.playable, true);
+    assert.equal(loadPrefs(s).pickFilters.drumStem, true);
+});

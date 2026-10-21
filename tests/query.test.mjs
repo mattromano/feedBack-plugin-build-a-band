@@ -1,34 +1,48 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULT_FILTERS, buildLibraryQuery, songChips, createSearchController, resolveRecent } from '../src/query.js';
+import * as query from '../src/query.js';
+import { PICK_FILTERS, pickFilters, songChips, resolveRecent } from '../src/query.js';
 
-test('query with no filters', () => {
-    assert.equal(buildLibraryQuery({ q: ' holiday ', filters: { ...DEFAULT_FILTERS, playable: false } }), 'q=holiday&size=30');
+const ALL_OFF = { guitar: { on: false }, drums: { on: false }, vocals: { on: false } };
+const byId = (list) => Object.fromEntries(list.map((f) => [f.id, f]));
+
+test('pickFilters lists the five chips in order', () => {
+    const list = pickFilters();
+    assert.deepEqual(list.map((f) => [f.id, f.label]), PICK_FILTERS.map(([id, label]) => [id, label]));
+    assert.deepEqual(PICK_FILTERS.map(([id, label]) => [id, label]), [
+        ['playable', 'Playable by band'], ['drumStem', 'Drum stem'], ['drums', 'Drum chart'],
+        ['vocals', 'Vocal pitch'], ['guitar', 'Guitar part'],
+    ]);
 });
 
-test('playable by this band follows the parts switched on', () => {
+test('playable follows the parts that are on', () => {
     const parts = { guitar: { on: true }, drums: { on: true }, vocals: { on: false } };
-    assert.equal(buildLibraryQuery({ q: '', parts }), 'q=&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_drums=1');
+    assert.deepEqual(byId(pickFilters({ parts })).playable.params,
+        { arrangements_has: 'Lead,Rhythm,Bass', has_drums: '1' });
+    assert.deepEqual(byId(pickFilters({ parts: ALL_OFF })).playable.params, {});
 });
 
-test('playable by this band includes vocals; the explicit vocals filter still applies', () => {
-    const parts = { guitar: { on: true }, drums: { on: false }, vocals: { on: true } };
-    assert.equal(buildLibraryQuery({ q: '', parts }), 'q=&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_lyrics=pitch');
-    const only = { guitar: { on: false }, drums: { on: false }, vocals: { on: true } };
-    assert.equal(buildLibraryQuery({ q: '', parts: only }), 'q=&size=30&has_lyrics=pitch');
-    const filters = { ...DEFAULT_FILTERS, vocals: true };
-    assert.equal(buildLibraryQuery({ q: '', filters, parts }),
-        'q=&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_lyrics=pitch');
+test("each chip's own params", () => {
+    const f = byId(pickFilters({ parts: ALL_OFF }));
+    assert.deepEqual(f.drumStem.params, { stems_has: 'drums' });
+    assert.deepEqual(f.drums.params, { has_drums: '1' });
+    assert.deepEqual(f.vocals.params, { has_lyrics: 'pitch' });
+    assert.deepEqual(f.guitar.params, { arrangements_has: 'Lead,Rhythm,Bass' });
 });
 
-test('playable with vocals off adds no has_lyrics', () => {
-    const parts = { guitar: { on: true }, drums: { on: false }, vocals: { on: false } };
-    assert.ok(!buildLibraryQuery({ q: '', parts }).includes('has_lyrics'));
+test('on comes from the stored flags', () => {
+    const f = byId(pickFilters({ on: { playable: true, drumStem: 1 } }));
+    assert.equal(f.playable.on, true);
+    assert.equal(f.drumStem.on, true);
+    assert.equal(f.drums.on, false);
+    assert.equal(f.vocals.on, false);
+    assert.equal(f.guitar.on, false);
 });
 
-test('explicit filters add to playable', () => {
-    const filters = { ...DEFAULT_FILTERS, playable: false, vocals: true, drumStem: true };
-    assert.equal(buildLibraryQuery({ q: '', filters }), 'q=&size=30&has_lyrics=pitch&stems_has=drums');
+test('the removed exports are gone', () => {
+    assert.equal(query.buildLibraryQuery, undefined);
+    assert.equal(query.createSearchController, undefined);
+    assert.equal(query.DEFAULT_FILTERS, undefined);
 });
 
 test('songChips', () => {
@@ -43,52 +57,6 @@ test('songChips on an item from an older core', () => {
     const chips = songChips({ arrangements: [{ name: 'Drums' }] });
     assert.equal(chips.find((c) => c.id === 'drumChart').good, true);
     assert.equal(chips.find((c) => c.id === 'vocalPitch').good, false);
-});
-
-function harness() {
-    const timers = [];
-    const calls = [];
-    const results = [];
-    const ctl = createSearchController({
-        fetchJson: (url) => new Promise((resolve) => calls.push({ url, resolve })),
-        onResults: (songs) => results.push(songs),
-        onError: () => {},
-        setTimer: (fn) => { timers.push({ fn, live: true }); return timers.length - 1; },
-        clearTimer: (id) => { if (timers[id]) timers[id].live = false; },
-    });
-    const fire = () => { for (const t of timers) if (t.live) { t.live = false; t.fn(); } };
-    return { ctl, calls, results, fire };
-}
-
-test('search is debounced', () => {
-    const h = harness();
-    h.ctl.search('q=a');
-    h.ctl.search('q=b');
-    h.fire();
-    assert.equal(h.calls.length, 1);
-    assert.equal(h.calls[0].url, '/api/library?q=b');
-});
-
-test('the latest request wins', async () => {
-    const h = harness();
-    h.ctl.search('q=a'); h.fire();
-    h.ctl.search('q=b'); h.fire();
-    h.calls[1].resolve({ songs: ['B'] });
-    h.calls[0].resolve({ songs: ['A'] });
-    await new Promise((r) => setImmediate(r));
-    assert.deepEqual(h.results, [['B']]);
-});
-
-test('dispose drops a pending response', async () => {
-    const h = harness();
-    h.ctl.search('q=a'); h.fire();
-    h.ctl.dispose();
-    h.calls[0].resolve({ songs: ['A'] });
-    await new Promise((r) => setImmediate(r));
-    assert.deepEqual(h.results, []);
-    h.ctl.search('q=c');
-    h.fire();
-    assert.equal(h.calls.length, 1, 'pending timer cancelled / no new request after dispose');
 });
 
 test('resolveRecent finds the song by filename, or null', async () => {

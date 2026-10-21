@@ -124,3 +124,41 @@ test('the drums column says which sound mode will play', () => {
     assert.equal(bandScreenModel({ prefs: kit, item: { ...fullBand, stem_ids: ['drums'] } }).columns.drums.soundMode, 'kit');
     assert.equal(bandScreenModel({ prefs: kit, item: null }).columns.drums.soundMode, 'kit');
 });
+
+test('pickEnabled and setupHint', () => {
+    const allOff = withParts({ guitar: { on: false }, drums: { on: false }, vocals: { on: false } });
+    let m = bandScreenModel({ prefs: allOff, item: null });
+    assert.equal(m.pickEnabled, false);
+    assert.equal(m.setupHint, 'Turn on a part');
+    m = bandScreenModel({ prefs, item: null });
+    assert.equal(m.pickEnabled, true);
+    assert.equal(m.setupHint, '');
+    m = bandScreenModel({ prefs, item: null, pickAvailable: false });
+    assert.equal(m.pickEnabled, false);
+    assert.equal(m.setupHint, 'Update feedBack to pick songs here');
+    const onlyVocals = withParts({ guitar: { on: false }, drums: { on: false }, vocals: { on: true } });
+    m = bandScreenModel({ prefs: onlyVocals, item: null, vocalsSupported: false });
+    assert.equal(m.pickEnabled, false);
+    assert.equal(m.setupHint, 'Turn on a part');
+    assert.equal(bandScreenModel({ prefs: onlyVocals, item: null }).pickEnabled, true);
+});
+
+test('guitar arrangements grey what the song lacks', () => {
+    const p = withParts({ guitar: { arrangement: 'Lead' } });
+    const m = bandScreenModel({ prefs: p, item: { arrangements: [{ name: 'Rhythm' }] } });
+    assert.deepEqual(m.columns.guitar.arrangements, { Lead: false, Rhythm: true, Bass: false });
+    assert.equal(m.columns.guitar.arrangement, 'Rhythm');
+    assert.equal(p.parts.guitar.arrangement, 'Lead');
+    const kept = bandScreenModel({ prefs: withParts({ guitar: { arrangement: 'Bass' } }),
+        item: { arrangements: [{ name: 'Lead' }, { name: 'Bass' }] } });
+    assert.equal(kept.columns.guitar.arrangement, 'Bass');
+    const none = bandScreenModel({ prefs: withParts({ guitar: { arrangement: 'Rhythm' } }),
+        item: { arrangements: [{ name: 'Drums' }] } });
+    assert.equal(none.columns.guitar.arrangement, 'Rhythm');
+});
+
+test('no song: every arrangement available', () => {
+    const m = bandScreenModel({ prefs: withParts({ guitar: { arrangement: 'Bass' } }), item: null });
+    assert.deepEqual(m.columns.guitar.arrangements, { Lead: true, Rhythm: true, Bass: true });
+    assert.equal(m.columns.guitar.arrangement, 'Bass');
+});

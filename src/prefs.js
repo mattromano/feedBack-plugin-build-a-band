@@ -12,6 +12,10 @@ const PART_DEFAULTS = Object.freeze({
     drums: Object.freeze({ on: true, deviceKey: '', difficulty: 'medium', soundMode: 'song' }),
     vocals: Object.freeze({ on: true, deviceId: '', difficulty: 'medium', hearMyself: false, micHitDb: -30 }),
 });
+// The library pick's chips (query.js PICK_FILTERS), remembered from every pick.
+export const PICK_FILTER_DEFAULTS = Object.freeze({
+    playable: true, drumStem: false, drums: false, vocals: false, guitar: false,
+});
 const ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass'];
 const SOUND_MODES = ['song', 'rockband', 'kit'];
 const FAIL_MODES = ['nofail', 'fail'];
@@ -92,6 +96,13 @@ function normalizeZoom(v) {
     return { guitar: clampZoom(z.guitar), drums: clampZoom(z.drums) };
 }
 
+function normalizePickFilters(v) {
+    const r = isObj(v) ? v : {};
+    const out = {};
+    for (const k of Object.keys(PICK_FILTER_DEFAULTS)) out[k] = bool(r[k], PICK_FILTER_DEFAULTS[k]);
+    return out;
+}
+
 // Validates every field; a bad value falls back to that field's default.
 export function normalizePrefs(raw) {
     const r = isObj(raw) ? raw : {};
@@ -109,6 +120,7 @@ export function normalizePrefs(raw) {
         fullScreenStage: bool(r.fullScreenStage, true),
         lastSong: normalizeSong(r.lastSong),
         recentSongs: normalizeRecent(r.recentSongs),
+        pickFilters: normalizePickFilters(r.pickFilters),
     };
 }
 
@@ -129,7 +141,11 @@ export function loadPrefs(storage = defaultStorage()) {
 export function savePrefs(patch, storage = defaultStorage()) {
     const cur = loadPrefs(storage);
     const p = isObj(patch) ? patch : {};
-    const merged = { ...cur, ...p, parts: { ...cur.parts }, zoom: { ...cur.zoom, ...(isObj(p.zoom) ? p.zoom : {}) } };
+    const merged = {
+        ...cur, ...p, parts: { ...cur.parts },
+        zoom: { ...cur.zoom, ...(isObj(p.zoom) ? p.zoom : {}) },
+        pickFilters: { ...cur.pickFilters, ...(isObj(p.pickFilters) ? p.pickFilters : {}) },
+    };
     if (isObj(p.parts)) {
         for (const id of Object.keys(p.parts)) {
             if (isObj(p.parts[id])) merged.parts[id] = { ...cur.parts[id], ...p.parts[id] };
