@@ -350,8 +350,12 @@ export function createBandRuntime({
                 api: s.karaoke, slot: stage.stripSlot, deviceId: s.prefs.parts.vocals.deviceId, storage, isCurrent,
             }).then((result) => {
                 // Karaoke refused a song the library lists with pitch: a failure.
-                if (result === 'no-pitch' && isCurrent()) {
+                if (!isCurrent()) return;
+                if (result === 'no-pitch') {
                     showToast(s, songFacts(s.item).hasVocalPitch ? VOCALS_FAILED : NO_PITCH);
+                } else if (result === 'mic-error') {
+                    // Karaoke no longer prompts for an API start: the band says so.
+                    showToast(s, VOCALS_FAILED);
                 }
             }, (e) => console.warn('[build-a-band] vocals failed to start', e));
         },

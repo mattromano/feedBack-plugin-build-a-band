@@ -672,6 +672,18 @@ test('karaoke mode refused for a song the library lists with pitch: "Vocals coul
     rt.dispose();
 });
 
+test('karaoke\'s mic failing to start (no mic picked, denied) says "Vocals couldn\'t start"', async () => {
+    const { rt, win, calls, loadSong, player } = setup();
+    win.lyricsKaraoke.startMic = () => { calls.karaoke.push(['startMic']); return Promise.resolve('error'); };
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    assert.ok(names(calls).includes('startMic'));
+    const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+    assert.deepEqual(toasts, ["Vocals couldn't start"]);
+    rt.dispose();
+});
+
 test('the stage failing to mount with vocals armed says "Vocals couldn\'t start" and opens no mic', async () => {
     const { rt, calls, loadSong, player } = setup({ mountFails: true });
     const error = console.error;
