@@ -120,6 +120,31 @@
 }
 .bab-screen .bab-seg button:disabled { opacity: 0.3; cursor: not-allowed; }
 .bab-screen .bab-note { min-height: 1.2em; font-size: 11px; color: var(--bab-dim); }
+
+/* Input device pick + silent signal light */
+.bab-screen .bab-device {
+    width: 100%; padding: 7px 8px; font: inherit; font-size: 12px; color: var(--bab-text);
+    background: var(--bab-field); border: 1px solid var(--bab-line); border-radius: 7px;
+}
+.bab-screen .bab-findkit {
+    margin-top: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+    background: transparent; border: 1px dashed var(--bab-c); border-radius: 7px;
+}
+.bab-screen .bab-findkit[hidden] { display: none; }
+.bab-screen .bab-signal { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--bab-dim); }
+.bab-screen .bab-light {
+    --bab-level: 0;
+    position: relative; flex: none; width: 46px; height: 8px; overflow: hidden;
+    border-radius: 4px; background: var(--bab-field); border: 1px solid var(--bab-line);
+}
+.bab-screen .bab-light::after {
+    content: ''; position: absolute; inset: 0 auto 0 0;
+    width: calc(var(--bab-level) * 100%); background: var(--bab-ok);
+}
+.bab-screen .bab-signal.bab-lit,
+.bab-screen .bab-signal.bab-hit { color: var(--bab-text); }
+.bab-screen .bab-signal.bab-hit .bab-light::after { width: 100%; background: var(--bab-c); }
+.bab-screen .bab-signal.bab-warn .bab-signal-label { color: #e0a33d; }
 .bab-screen .bab-addslot {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
     padding: 10px; font-size: 12px; text-align: center; color: var(--bab-dim);
