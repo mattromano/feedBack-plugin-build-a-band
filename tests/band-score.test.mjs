@@ -436,3 +436,20 @@ test('bandFailed is false once dropPart removes every part', () => {
     assert.deepEqual(s.parts, {});
     assert.equal(s.bandFailed, false);
 });
+
+test("dropPart doesn't turn a failed part's ignored deploy into a rescue", () => {
+    const b = createBandScore({ parts: ['guitar', 'drums'], failMode: 'fail' });
+    misses(b, 14);
+    misses(b, 14, 'drums', 1);
+    b.record({ part: 'drums', t: 15, kind: 'deploy' });
+    assert.equal(b.snapshot().parts.guitar.failed, true);
+    b.dropPart('drums');
+    let s = b.snapshot();
+    assert.equal(s.parts.guitar.failed, true);
+    assert.equal(s.parts.guitar.saves, 0);
+    assert.equal(s.bandFailed, true);
+    b.rewindTo(15);
+    s = b.snapshot();
+    assert.equal(s.parts.guitar.failed, true);
+    assert.equal(s.bandFailed, true);
+});

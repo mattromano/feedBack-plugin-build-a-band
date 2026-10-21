@@ -47,10 +47,10 @@ function crowdStep(entry) {
 }
 
 // Any bandmate still playing who deploys brings every dropped part back (R12). A failed part's
-// deploy is ignored entirely. `p` is null for a deploy kept from a part that left the band
-// (dropPart): it was playing when it deployed, so it still rescues, and counts for nobody.
+// deploy is ignored entirely (returns false). `p` is null for a deploy kept from a part that left
+// the band: dropPart keeps only deploys that took effect, so it still rescues, and counts for nobody.
 function applyDeploy(p, state, failMode) {
-    if (p && p.failed) return;
+    if (p && p.failed) return false;
     if (p) p.deploys++;
     if (failMode !== 'fail') return;
     for (const other of state.parts.values()) {
@@ -59,17 +59,16 @@ function applyDeploy(p, state, failMode) {
         other.crowd = CROWD.rescue;
         other.saves++;
     }
+    return true;
 }
 
+// Returns false for an entry that was ignored (only deploys report this; dropPart uses it).
 function apply(entry, state, thresholds, failMode) {
     const p = state.parts.get(entry.part);
-    if (entry.kind === 'deploy') {
-        applyDeploy(p || null, state, failMode);
-        return;
-    }
-    if (!p) return;
+    if (entry.kind === 'deploy') return applyDeploy(p || null, state, failMode);
+    if (!p) return true;
     // A dropped-out part's judgments are ignored entirely (R12).
-    if (p.failed) return;
+    if (p.failed) return true;
     const scored = Math.round(num(entry.points, 0) * num(entry.factor, 1));
     p.score += scored;
     p.multiplier = num(entry.multiplier, 1);
@@ -120,9 +119,12 @@ export function createBandScore({ parts, failMode = 'nofail' }) {
     let entries = [];
     let state = freshState(ids);
 
-    function replay() {
+    // Replays every entry; with `ignored`, collects the entries apply ignored.
+    function replay(ignored) {
         state = freshState(ids);
-        for (const entry of entries) apply(entry, state, thresholds, failMode);
+        for (const entry of entries) {
+            if (apply(entry, state, thresholds, failMode) === false && ignored) ignored.add(entry);
+        }
     }
 
     return {
@@ -138,12 +140,15 @@ export function createBandScore({ parts, failMode = 'nofail' }) {
         },
         // A part that can't play leaves the band: its entries go and the rest
         // replay, so it never pins the band multiplier (plan 4 R4). Idempotent.
-        // Its deploys stay, so rescues it already made aren't undone (R12).
+        // Its deploys that took effect stay, so rescues it already made aren't undone; the ones
+        // ignored because it had failed go, so they never become rescues (R12).
         dropPart(id) {
             if (!ids.includes(id)) return;
+            const ignored = new Set();
+            replay(ignored);
             ids = ids.filter((p) => p !== id);
             thresholds.delete(id);
-            entries = entries.filter((entry) => entry.part !== id || entry.kind === 'deploy');
+            entries = entries.filter((entry) => entry.part !== id || (entry.kind === 'deploy' && !ignored.has(entry)));
             replay();
         },
         syncTotals(part, totals) {
