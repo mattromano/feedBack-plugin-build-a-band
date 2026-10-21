@@ -200,9 +200,26 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     win.addEventListener = (t, f) => winEvents.addEventListener(t, f);
     win.removeEventListener = (t, f) => winEvents.removeEventListener(t, f);
     win.dispatchEvent = (e) => winEvents.dispatchEvent(e);
-    // Core's _confirmDialog: each prompt waits until the test settles it.
+    // Core's _confirmDialog: each prompt waits until the test settles it. As
+    // core's, it appends a .feedBack-modal synchronously; its [data-cancel]
+    // click answers false; any answer removes it.
     const prompts = [];
-    if (confirmDialog) win._confirmDialog = (args) => new Promise((resolve, reject) => { prompts.push({ args, resolve, reject }); });
+    if (confirmDialog) {
+        win._confirmDialog = (args) => new Promise((resolve, reject) => {
+            const modal = doc.createElement('div');
+            modal.className = 'feedBack-modal';
+            const cancel = doc.createElement('button');
+            cancel.setAttribute('data-cancel', '');
+            modal.appendChild(cancel);
+            doc.body.appendChild(modal);
+            const p = { args, modal, settled: false };
+            const done = (f) => (v) => { if (p.settled) return; p.settled = true; modal.remove(); f(v); };
+            p.resolve = done(resolve);
+            p.reject = done(reject);
+            cancel.addEventListener('click', () => p.resolve(false));
+            prompts.push(p);
+        });
+    }
     // Lyrics Karaoke's v1 API, recording [name, arg] into calls.karaoke.
     if (karaoke) {
         const rec = (name, ...args) => { calls.karaoke.push([name, ...args]); calls.karaokeAt.push(++seq); };
@@ -3264,4 +3281,25 @@ test('a loadSettings settling after song:stop sets no mastery', async () => {
     await flush();
     assert.equal(calls.setMastery.length, n);
     rt.dispose();
+});
+
+test('every exit closes the leave prompt through its own cancel', async () => {
+    for (const exit of ['stop', 'dispose', 'newSong']) {
+        const { rt, fb, doc, calls, loadSong, sidebar, navLinks, prompts } = setup();
+        rt.startSession({ song: ITEM, prefs: prefsWith() });
+        loadSong(ITEM);
+        sidebar.fire('click', { target: navLinks.songs });
+        assert.equal(prompts.length, 1);
+        assert.ok(prompts[0].modal.parentNode, 'the prompt shows');
+        if (exit === 'stop') fb.emit('song:stop', {});
+        else if (exit === 'dispose') rt.dispose();
+        else fb.emit('song:loading', { filename: 'Other.sloppak' });
+        assert.equal(prompts[0].modal.parentNode, null, `${exit}: the prompt is gone`);
+        assert.equal(doc.body.querySelector('.feedBack-modal'), null);
+        assert.equal(prompts[0].settled, true, `${exit}: the prompt settled`);
+        await flush();
+        assert.deepEqual(calls.resume, [], `${exit}: nothing resumes`);
+        assert.deepEqual(calls.nav, [], `${exit}: the link is not followed`);
+        rt.dispose();
+    }
 });

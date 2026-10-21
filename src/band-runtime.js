@@ -831,7 +831,20 @@ export function createBandRuntime({
         };
         let answer;
         try { answer = Promise.resolve(win._confirmDialog({ ...LEAVE_PROMPT })); } catch (e) { answer = Promise.reject(e); }
+        // Core appends its modal synchronously. A teardown closes it through
+        // its own Cancel, which also drops the modal's document key listener.
+        const modal = lastModal();
+        overlay.close = () => {
+            const b = modal && modal.parentNode && safe(() => modal.querySelector('[data-cancel]'));
+            if (b) safe(() => b.click());
+        };
         answer.then(settle, () => settle(false));
+    }
+
+    function lastModal() {
+        const kids = doc.body && doc.body.children;
+        const last = kids && kids.length ? kids[kids.length - 1] : null;
+        return last && last.classList && last.classList.contains('feedBack-modal') ? last : null;
     }
 
     // Back to the song (R11): the band guitar mastery first (core's
