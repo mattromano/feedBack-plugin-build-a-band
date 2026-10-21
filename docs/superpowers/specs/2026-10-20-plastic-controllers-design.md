@@ -1,6 +1,6 @@
 # Play with whatever you have: 5-fret controllers and controller drums
 
-Date: 2026-10-20. Status: draft for Matt's review. Builds on the Build-a-Band design (`2026-10-20-build-a-band-design.md`, sections "Parts are instrument + how you play it" and "Later: play with whatever you have"). Nothing here is built until Build-a-Band v1 meets its design.
+Date: 2026-10-20. Status: approved by Matt on 2026-10-20. Builds on the Build-a-Band design (`2026-10-20-build-a-band-design.md`, sections "Parts are instrument + how you play it" and "Later: play with whatever you have"). Nothing here is built until Build-a-Band v1 meets its design.
 
 Visual draft of the highway: `.superpowers/brainstorm/48864-1792556974/content/fivefret-highway-v2.html` in `feedback-upstream/` (Matt picked option A, the classic tilted highway).
 
