@@ -12,6 +12,7 @@ import {
 import { createLevelMeter } from './level-meter.js';
 import { openPadLight } from './pad-light.js';
 import { karaokeApi } from './vocals.js';
+import { icon } from './icons.js';
 
 const SCREEN_ID = 'plugin-build_a_band';
 const SOUND_MODES_NEEDING_STEM = ['rockband', 'kit'];
@@ -185,6 +186,8 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         col.style.setProperty('--bab-c', part.color);
         const name = $('.bab-part-name', col);
         if (name) name.textContent = part.label;
+        const ico = $('.bab-ico', col);
+        if (ico) ico.innerHTML = icon(part.icon, { size: 30 });
         listen($('.bab-toggle', col), 'click', () => {
             save({ parts: { [part.id]: { on: !prefs.parts[part.id].on } } });
             // "Playable by this band" follows the parts switched on.

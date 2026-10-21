@@ -66,6 +66,17 @@ test('skeleton: columns coloured from the registry, Go disabled until a song is 
     bs.dispose();
 });
 
+test('column icons are Lucide SVGs', () => {
+    const { root, bs } = setup();
+    const icos = root.querySelectorAll('.bab-col').map((c) => c.querySelector('.bab-ico'));
+    assert.equal(icos.length, 3);
+    for (const ico of icos) {
+        assert.ok(String(ico.innerHTML).includes('<svg'), 'Lucide SVG');
+        assert.equal(ico.textContent, '', 'no emoji left');
+    }
+    bs.dispose();
+});
+
 test('setSong stores lastSong + recentSongs, renders chips and greys what the song lacks', () => {
     const { root, col, btn, bs, prefs } = setup({ winExtra: { lyricsKaraoke: karaokeFake() } });
     bs.setSong(holiday);
