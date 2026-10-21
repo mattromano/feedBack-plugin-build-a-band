@@ -1130,14 +1130,14 @@ test('Change song, then Use this song on the same song keeps Confirm intact', as
     bs.dispose();
 });
 
-test('a bare item with no title still resolves', async () => {
+test('a title-less item skips the re-resolve', async () => {
     const t = setup({ library: [holiday] });
+    const searches = () => t.urls.filter((u) => u.startsWith('/api/library?q=')).length;
+    const before = searches();
     await pickSong(t, { filename: holiday.filename });
-    assert.ok(t.urls.includes('/api/library?q=greeholi.sloppak&size=30'));
-    assert.equal(t.bs.getSong(), holiday);
-    assert.equal(t.root.querySelector('.bab-title').textContent, 'Holiday');
-    assert.equal(t.root.querySelector('.bab-go').disabled, false);
-    assert.equal(t.prefs().lastSong.title, 'Holiday', 'lastSong stored with its title');
+    assert.equal(t.bs.view(), 'confirm');
+    assert.equal(searches(), before, 'no /api/library?q= re-resolve');
+    assert.equal(t.prefs().lastSong.filename, holiday.filename);
     t.bs.dispose();
 });
 

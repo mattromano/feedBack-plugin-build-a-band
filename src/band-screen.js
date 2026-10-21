@@ -51,8 +51,6 @@ function defaultStorage(win) {
 const fromDom = (field, v) => (field === 'hearMyself' ? v === 'on' : v);
 const toDom = (field, v) => (field === 'hearMyself' ? (v ? 'on' : 'off') : String(v));
 
-const fileBase = (f) => String(f || '').split('/').pop();
-
 function songRef(item) {
     return { filename: item.filename, title: item.title || '', artist: item.artist || '' };
 }
@@ -332,18 +330,16 @@ export function createBandScreen({
             if (song && r.item.filename === song.filename) { setView('confirm'); return; }
             setSong(r.item);
             setView('confirm');
-            // The grid row may be grouped, or bare ({ filename } only): re-fetch the
-            // full row for chips and greying. A bare row searches by file name.
-            const bare = !r.item.title;
-            const ref = { filename: song.filename, title: song.title || fileBase(song.filename) };
-            resolveRecent(ref, getJson).then((it) => {
-                if (!live() || !it || !song || it.filename !== song.filename) return;
-                song = it;
-                lastResolved = true;
-                // A bare pick stored lastSong without a title: store the real one.
-                if (bare) prefs = savePrefs({ lastSong: songRef(it), recentSongs: pushRecent(prefs.recentSongs, songRef(it)) });
-                render();
-            });
+            // The grid row may be grouped: re-fetch the flat row for chips and
+            // greying. The search matches titles, so a title-less item keeps its row.
+            if (song.title) {
+                resolveRecent({ filename: song.filename, title: song.title }, getJson).then((it) => {
+                    if (!live() || !it || !song || it.filename !== song.filename) return;
+                    song = it;
+                    lastResolved = true;
+                    render();
+                });
+            }
         }).catch(failed);
         return true;
     }
