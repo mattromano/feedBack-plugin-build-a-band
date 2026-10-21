@@ -11,15 +11,22 @@ import { createPhraseTracker, createNoodle, findGaps, itemTimes } from './guitar
 import { drumsOverdrive, vocalsOverdrive } from './part-events.js';
 import { OD_CALLOUT } from './hud-model.js';
 
-function safe(fn, fallback = null) {
-    try {
-        return typeof fn === 'function' ? fn() : fallback;
-    } catch (_) {
-        return fallback;
-    }
-}
-
 export function createOverdriveSession({ parts, beats, guitar, getHud, readDrums, readVocals } = {}) {
+    // A reader that throws falls back silently after one warning per tag
+    // ('drums', 'vocals', 'hud'), so a broken source shows once, not per tick.
+    const warned = new Set();
+    function safe(fn, fallback = null, tag = null) {
+        try {
+            return typeof fn === 'function' ? fn() : fallback;
+        } catch (e) {
+            if (tag && !warned.has(tag)) {
+                warned.add(tag);
+                console.warn('[build-a-band] overdrive', tag, e);
+            }
+            return fallback;
+        }
+    }
+
     const playing = new Set(Array.isArray(parts) ? parts : []);
     // Guitar overdrive needs both a guitar part in the band and its chart.
     const g = playing.has('guitar') && guitar && typeof guitar === 'object' ? (() => {
@@ -33,19 +40,25 @@ export function createOverdriveSession({ parts, beats, guitar, getHud, readDrums
     let calledGaps = new Set(); // gap indexes whose "Noodle it up!" was called out
     const wasReady = new Map(); // part -> ready at the last tick
 
-    const hud = () => safe(getHud);
+    const hud = () => safe(getHud, null, 'hud');
     const hudCall = (method, ...args) => {
         const h = hud();
-        if (h && typeof h[method] === 'function') safe(() => h[method](...args));
+        if (h && typeof h[method] === 'function') safe(() => h[method](...args), null, 'hud');
     };
 
     // The mirrored meters; null when the reader is missing, throws or has no state.
+    // Drums ready is the engine's canActivate when it gives one; otherwise the
+    // fill rule, with an epsilon for the engine's float drift.
     const mirrored = {
         drums: () => {
-            const od = drumsOverdrive(safe(readDrums));
-            return od && { ...od, ready: od.fill >= OVERDRIVE.deployMin && !od.active };
+            const od = drumsOverdrive(safe(readDrums, null, 'drums'));
+            if (!od) return null;
+            const ready = typeof od.canActivate === 'boolean'
+                ? od.canActivate
+                : od.fill >= OVERDRIVE.deployMin - 1e-9 && !od.active;
+            return { fill: od.fill, active: od.active, ready };
         },
-        vocals: () => vocalsOverdrive(safe(readVocals)),
+        vocals: () => vocalsOverdrive(safe(readVocals, null, 'vocals')),
     };
 
     function draw(part, state) {

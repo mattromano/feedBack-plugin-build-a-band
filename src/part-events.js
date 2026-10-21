@@ -57,11 +57,13 @@ export function vocalsTotals(detail) {
     };
 }
 
-// The drums meter from getInstanceState(canvas).starPower.
+// The drums meter from getInstanceState(canvas).starPower; canActivate kept when it's a boolean.
 export function drumsOverdrive(state) {
     const sp = isObject(state) ? state.starPower : null;
     if (!isObject(sp)) return null;
-    return { fill: clamp01(or(sp.amount, 0)), active: !!sp.active };
+    const od = { fill: clamp01(or(sp.amount, 0)), active: !!sp.active };
+    if (typeof sp.canActivate === 'boolean') od.canActivate = sp.canActivate;
+    return od;
 }
 
 // The vocals meter from karaoke's getOverdrive().

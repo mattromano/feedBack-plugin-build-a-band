@@ -86,3 +86,13 @@ test('drumsOverdrive / vocalsOverdrive', () => {
     assert.deepEqual(vocalsOverdrive({ fill: -1, active: true, ready: false }), { fill: 0, active: true, ready: false });
     assert.equal(vocalsOverdrive(null), null);
 });
+
+test('drumsOverdrive keeps canActivate', () => {
+    assert.deepEqual(drumsOverdrive({ starPower: { amount: 0.5, active: false, canActivate: false } }),
+        { fill: 0.5, active: false, canActivate: false });
+    assert.deepEqual(drumsOverdrive({ starPower: { amount: 0.3, active: false, canActivate: true } }),
+        { fill: 0.3, active: false, canActivate: true });
+    // Not a boolean: left out, so the session falls back to the fill rule.
+    assert.deepEqual(drumsOverdrive({ starPower: { amount: 0.3, active: false, canActivate: 1 } }),
+        { fill: 0.3, active: false });
+});

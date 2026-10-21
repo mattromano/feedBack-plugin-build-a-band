@@ -148,7 +148,8 @@ test('drums and vocals mirror their engines', () => {
     assert.deepEqual(od.snapshot(1.2).vocals, { fill: 0.5, active: false, ready: true });
 });
 
-test('missing sources and charts are harmless', () => {
+test('missing sources and charts are harmless', (t) => {
+    t.mock.method(console, 'warn', () => {});   // the throwing readers warn once each
     const boom = () => { throw new Error('x'); };
     for (const [readDrums, readVocals] of [[() => null, () => null], [boom, boom], [undefined, undefined]]) {
         const { od, hud } = setup({ guitar: null, beats: [], readDrums, readVocals });
@@ -173,7 +174,8 @@ test('missing sources and charts are harmless', () => {
     assert.doesNotThrow(() => setup({ getHud: () => { throw new Error('x'); } }).od.tick(12, 12));
 });
 
-test('a reader that fails keeps the bar as last written', () => {
+test('a reader that fails keeps the bar as last written', (t) => {
+    t.mock.method(console, 'warn', () => {});
     let fail = false;
     const { od, hud } = setup({ readDrums: () => { if (fail) throw new Error('x'); return { starPower: { amount: 0.3, active: false } }; } });
     od.tick(1, 1);
@@ -254,4 +256,34 @@ test('loop wrap reopens phrases from the loop start', () => {
     hitAll(od, 0, 4);
     od.tick(5.5, 6);
     assert.equal(od.snapshot(6).guitar.fill, 0.5);
+});
+
+test('drums at 0.4999999999 fill are ready', () => {
+    const { od, hud } = setup({ readDrums: () => ({ starPower: { amount: 0.4999999999, active: false } }) });
+    od.tick(1, 1);
+    assert.ok(has(hud, 'setReady', 'drums', true));
+});
+
+test("drums ready follows the engine's canActivate when it gives one", () => {
+    let sp = { amount: 0.75, active: false, canActivate: false };
+    const { od, hud } = setup({ readDrums: () => ({ starPower: sp }) });
+    od.tick(1, 1);
+    assert.ok(has(hud, 'setReady', 'drums', false));
+    assert.ok(!has(hud, 'setReady', 'drums', true));
+    sp = { amount: 0.2, active: false, canActivate: true };
+    od.tick(1.1, 1.1);
+    assert.ok(has(hud, 'setReady', 'drums', true));
+});
+
+test('a throwing reader warns once', (t) => {
+    const warns = [];
+    t.mock.method(console, 'warn', (...args) => { warns.push(args); });
+    const { od } = setup({ readDrums: () => { throw new Error('drums boom'); } });
+    od.tick(1, 1);
+    od.tick(1.1, 1.1);
+    od.tick(1.2, 1.2);
+    assert.equal(warns.length, 1);
+    assert.equal(warns[0][0], '[build-a-band] overdrive');
+    assert.equal(warns[0][1], 'drums');
+    assert.match(String(warns[0][2] && warns[0][2].message), /drums boom/);
 });
