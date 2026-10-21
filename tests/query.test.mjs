@@ -20,6 +20,13 @@ test('playable follows the parts that are on', () => {
     assert.deepEqual(byId(pickFilters({ parts })).playable.params,
         { arrangements_has: 'Lead,Rhythm,Bass', has_drums: '1' });
     assert.deepEqual(byId(pickFilters({ parts: ALL_OFF })).playable.params, {});
+    const vocalsOnly = { guitar: { on: false }, drums: { on: false }, vocals: { on: true } };
+    assert.deepEqual(byId(pickFilters({ parts: vocalsOnly })).playable.params, { has_lyrics: 'pitch' });
+    const all = { guitar: { on: true }, drums: { on: true }, vocals: { on: true } };
+    assert.deepEqual(byId(pickFilters({ parts: all })).playable.params,
+        { arrangements_has: 'Lead,Rhythm,Bass', has_drums: '1', has_lyrics: 'pitch' });
+    // on must be strictly true: a truthy 1 is not a part that's on.
+    assert.deepEqual(byId(pickFilters({ parts: { guitar: { on: 1 } } })).playable.params, {});
 });
 
 test("each chip's own params", () => {
