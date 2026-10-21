@@ -268,7 +268,104 @@ No new code. Proves the tool end to end on real packs and real charts. Never tou
 
 ## Review
 
-(Filled in when built: trial table and chosen thresholds from Task 4, real-data check results from Task 5–6, changes from the plan.)
+Built 2026-10-21 on `feature/five-fret-library`, branched from `feature/five-fret-charts` at d4e7483, in `.worktrees/core-p4` and pushed to origin. It is not merged. The work was done task by task, with a reviewer after each task and a final whole-branch review.
+
+**Commits:**
+- 8bcfe8b chorus: per-part search, levels and role-aware stem fetch
+- e67dbea pack helpers
+- 888f2c4 + 4b60ce2 alignment and validation (the rate-scan fix)
+- f90cec6 thresholds
+- dbef736 `--parts`
+- fac5061 final-review fixes
+
+**Tests:** core venv, full suite: 3144 passed, 8 skipped (3132 / 8 before the final fixes). The audio venv runs the five-fret, drums-library and drumjoin files: 92 passed. The spec gate is OK, with `lib/fivefretjoin.py` added to `READERS`.
+
+### Task 4 trial: thresholds
+
+**Set:** 21 songs, 41 (pack, part) pairs. 11 are local `.sng` joins with full Rock Band stems; 10 are random Chorus joins whose cached chart has guitar or bass. No chart had a rhythm part. Six packs have only a `full` stem.
+
+**Cases:**
+- **A:** reuse the pack's drum warp, with the BCR1 clamp.
+- **B:** fresh alignment.
+- **C:** A shifted by one beat either way.
+- **D:** another song's chart.
+
+| | min_within_30ms | max_abs_median_ms | max_drift_span_ms | min_beat_margin |
+|---|---|---|---|---|
+| guitar (and rhythm) | 0.35 | 25 | 40 | 0.05 |
+| bass | 0.45 | 25 | 40 | 0.05 |
+
+**Why these values:**
+- The beat margin is on. Within-30 ms alone lets one-beat shifts through: carsbye guitar C− scores 0.787, against 0.811 for its A.
+- The within-30 ms cuts sit halfway between the worst passing A and the best wrong-chart row: guitar 0.36 vs 0.334, bass 0.476 vs 0.436.
+- Median and drift don't separate right placements from wrong ones, so they keep the drum values.
+- None of the 123 C and D rows passes.
+
+**Pass rates:**
+- A: guitar 9/21 and bass 9/20.
+- B: guitar 5/14 with real chart audio and 4/7 synthetic; bass 4/10 real and 7/10 synthetic.
+- B success is 20/41 (49%), **below the 70% bar**. Where A passes, B passes 18/18 and lands within 30 ms of A. B isn't landing in the wrong place; the strict thresholds reject about half of all real pairs. Thresholds were not widened.
+- Mix-only packs can't tell a one-beat shift from the right placement, so they get flagged.
+- **Headroom over the closest wrong chart is thin** (0.016 for guitar, 0.014 for bass). On dense, steady parts, expect an occasional wrong-chart pass.
+
+**Detector limit:** the onset detector finds almost nothing in sustained distorted guitar. Several rejections come from that (within-30 ms ≤ 0.23 even when A and B agree), not from bad placement.
+
+### Task 6: real-data check
+
+The check ran on scratch `cp -c` copies with `--local`, offline. Matt's library stat values were the same before and after.
+
+Of the five planned packs only oasislive passed, so three trial A-passers were added: Paramore That's What You Get, Counting Crows Accidentally in Love, Don't Look Back in Anger.
+
+**Results:**
+- **4 packs joined (7 parts, all from the reused drum warp):**
+  - oasislive guitar + bass
+  - Paramore guitar + bass
+  - Counting Crows guitar + bass
+  - Don't Look Back guitar
+- **5 packs flagged:**
+  - paramise: guitar beat margin 0.031
+  - sum41fat: within 0.25 / 0.37
+  - oasissome (the directory copy)
+  - Handle This
+  - Don't Look Back bass
+- **2 no-chart:** Oasis Whatever, and Handle This bass (its chart is guitar-only).
+
+**Checks that held:**
+- The dry run changed no bytes.
+- Each written pack got exactly one byte-identical backup.
+- `validate.py` exits 0. The exception is Counting Crows, which fails on a pre-existing `lyrics_source: xml` manifest error that the original pack has too.
+- `load_song` and `extract_meta` list `guitar:chart` / `bass:chart`.
+- Rerun, `--redo` and `--upgrade` write nothing.
+
+**Paramore guitar:** only 1 of its first 10 notes falls within 30 ms of a guitar-stem onset. The final review traced this to the onset detector on a sustained distorted intro, not to placement: the warp is within about 3 ms by envelope correlation with the chart's own `guitar.opus`.
+
+### Changes from the plan
+- **Rulings applied:** the Builder-check rulings, plus:
+  - `chorus.stem_roles(part, chart_has_rhythm)`. `fetch` takes every file that matches any role.
+  - `reusable_warp(sp, cand_ids)` uses the pack's own drum source only, and `--drums-state` is dropped.
+  - BCR1's "drummed span" is the candidate chart's first to last drum hit. Notes before the first hit are checked on their own only when there are at least 8 of them.
+- **Added (not in the plan):**
+  - Fresh alignment has a tempo-ratio scan (0.97–1.03, warp path only). Without it, a 2% tempo difference broke global offset on dense guitar charts.
+  - A reused part whose stems weren't fetched (chart-only fetch) gets its stems fetched, then a second `join_parts` for the parts that failed.
+- **From the final review:**
+  - A song is backed up only just before an actual write (a `before_write` hook in `write_five_fret`), not before each attempt. The first build backed up songs that `--redo` then didn't write.
+  - A failing candidate no longer aborts the song.
+  - A malformed reused warp falls back to fresh alignment.
+  - The old part file is unlinked only when it is inside the pack and nothing else references it.
+  - Each part's payload is validated on its own.
+  - `--retry` matches per-part statuses.
+  - Reason texts say "onset", not "drum onset".
+
+### Left for later
+- Online reuse: a first, chart-only pass that skips fresh synthetic alignment (`fresh=False`).
+- Atomic writes for directory packs.
+- The drums path's own backup-before-attempt and the `write_drums` unlink without a containment check (same patterns, outside this plan).
+- Minor reporting wrinkles in retry state merging.
+
+### Matt's commands (he runs them himself)
+1. Dry run: `~/drums-work/.venv/bin/python scripts/drums_library.py ~/Desktop/rocksmith/dlc/sloppak --parts guitar,rhythm,bass --local ~/Desktop/clone_hero_songs --backup-dir ~/Desktop/rocksmith/sloppak-backup-5fret --workers 6`, then read `~/drums-work/library/five_fret_state.csv`.
+2. The same with `--write`, once the backup dir exists and holds a placeholder (so its emptiness check passes). A backup is made only for songs that actually get a part.
+3. On the first **online** run, check that Chorus results with guitar / bass parts are found. If none ever are, check the instrument names in `chorus.PART_INSTRUMENTS` against a live response.
 
 ## Builder-check rulings (binding; they override the tasks above where they differ)
 
