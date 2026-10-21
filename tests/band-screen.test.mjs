@@ -768,3 +768,16 @@ test("a throwing karaoke detector doesn't stop the vocals meter", async () => {
     assert.equal(block.querySelector('.bab-michit-light').classList.contains('bab-hit'), false);
     bs.dispose();
 });
+
+test('a song without a drum stem shows Song drums pressed and keeps the stored mode', () => {
+    const stored = { parts: { drums: { soundMode: 'kit' } } };
+    const { col, btn, bs, prefs } = setup({ stored });
+    bs.setSong(holiday);
+    assert.equal(btn(col('drums'), 'soundMode', 'song').getAttribute('aria-pressed'), 'true');
+    assert.equal(btn(col('drums'), 'soundMode', 'kit').getAttribute('aria-pressed'), 'false');
+    assert.equal(prefs().parts.drums.soundMode, 'kit');
+    bs.setSong({ ...holiday, stem_ids: ['drums'] });
+    assert.equal(btn(col('drums'), 'soundMode', 'kit').getAttribute('aria-pressed'), 'true');
+    assert.equal(btn(col('drums'), 'soundMode', 'kit').disabled, false);
+    bs.dispose();
+});

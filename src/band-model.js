@@ -29,6 +29,8 @@ export function bandScreenModel({ prefs, item, vocalsSupported = true, noteDetec
         if (part.id === 'drums') {
             col.soundModesDisabled = !!item && !songFacts(item).stemIds.includes('drums');
             if (!unavailable && col.soundModesDisabled) col.note = SOUND_MODES_NOTE;
+            // The mode that will play: a song without a drum stem plays Song drums.
+            col.soundMode = col.soundModesDisabled ? 'song' : (pp.soundMode || 'song');
         }
         if (part.id === 'guitar' && !unavailable && col.on) {
             if (!noteDetectLoaded) col.note = NOTE_DETECT_OFF_NOTE;

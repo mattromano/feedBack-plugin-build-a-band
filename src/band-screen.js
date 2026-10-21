@@ -143,7 +143,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
             for (const seg of $$('.bab-seg[data-field]', col)) {
                 const field = seg.getAttribute('data-field');
                 const off = field === 'soundMode' && c.soundModesDisabled ? SOUND_MODES_NEEDING_STEM : [];
-                renderSeg(seg, toDom(field, pp[field]), off);
+                renderSeg(seg, toDom(field, field === 'soundMode' ? c.soundMode : pp[field]), off);
             }
             $('.bab-note', col).textContent = [c.note, inputNote[part.id]].filter(Boolean).join(' \u00b7 ');
         }

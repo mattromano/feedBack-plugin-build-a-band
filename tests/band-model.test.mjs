@@ -117,3 +117,10 @@ test('guitar column says how to get guitar scored', () => {
     const noGuitar = { arrangements: [{ name: 'Drums' }] };
     assert.equal(bandScreenModel({ prefs, item: noGuitar, noteDetectLoaded: false }).columns.guitar.note, 'No guitar part in this song');
 });
+
+test('the drums column says which sound mode will play', () => {
+    const kit = withParts({ drums: { soundMode: 'kit' } });
+    assert.equal(bandScreenModel({ prefs: kit, item: { ...fullBand, stem_ids: ['guitar'] } }).columns.drums.soundMode, 'song');
+    assert.equal(bandScreenModel({ prefs: kit, item: { ...fullBand, stem_ids: ['drums'] } }).columns.drums.soundMode, 'kit');
+    assert.equal(bandScreenModel({ prefs: kit, item: null }).columns.drums.soundMode, 'kit');
+});
