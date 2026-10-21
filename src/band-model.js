@@ -1,6 +1,7 @@
 // Band screen view model and the Go key test. Pure, no DOM: band-screen.js
 // renders whatever this returns.
-import { PART_TYPES, hasChart, songFacts } from './parts.js';
+import { PART_TYPES, hasChart, songFacts, fiveFretPartFor } from './parts.js';
+import { stemIdFor } from './stem-claims.js';
 import { guitarArrIndex } from './mappings.js';
 
 const UNAVAILABLE_NOTE = {
@@ -25,7 +26,10 @@ const GUITAR_ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass'];
 // column also says which arrangements the song has and the one that will play.
 // Setup shows setupHint (the library pick needs core's hook and a part on);
 // Confirm shows goHint.
-export function bandScreenModel({ prefs, item, vocalsSupported = true, noteDetectLoaded = true, pickAvailable = true }) {
+export function bandScreenModel({
+    prefs, item, vocalsSupported = true, noteDetectLoaded = true, pickAvailable = true,
+    fiveFretLoaded = false, controllerStatus = { available: false, reason: null, connected: new Set() }, showAuto = false,
+}) {
     const parts = (prefs && prefs.parts) || {};
     const columns = {};
     for (const part of PART_TYPES) {
@@ -55,17 +59,72 @@ export function bandScreenModel({ prefs, item, vocalsSupported = true, noteDetec
         }
         columns[part.id] = col;
     }
+    const controllers = controllerRows({ prefs, item, fiveFretLoaded, controllerStatus, showAuto });
     const playable = (c) => c.on && !c.unavailable;
-    const goEnabled = !!item && ['guitar', 'drums', 'vocals'].some((id) => playable(columns[id]));
+    const controllerPlays = (c) => c.on && !c.unavailable;
+    const goEnabled = !!item && (['guitar', 'drums', 'vocals'].some((id) => playable(columns[id]))
+        || controllers.some(controllerPlays));
     let goHint = 'Press Space or hit any pad to start';
     if (!item) goHint = 'Pick a song';
     else if (!goEnabled) goHint = 'Turn on a part';
     const anyOn = ['guitar', 'drums', 'vocals'].some((id) => !!(parts[id] && parts[id].on) && (id !== 'vocals' || vocalsSupported));
-    const pickEnabled = !!pickAvailable && anyOn;
+    // A controller counts for the pick once it is on, connected and its plugin is there.
+    const anyController = controllers.some((c) => c.on && c.connected && c.available);
+    const pickEnabled = !!pickAvailable && (anyOn || anyController);
     let setupHint = '';
     if (!pickAvailable) setupHint = 'Update feedBack to pick songs here';
     else if (!pickEnabled) setupHint = 'Turn on a part';
-    return { goEnabled, goHint, pickEnabled, setupHint, columns };
+    return { goEnabled, goHint, pickEnabled, setupHint, columns, controllers };
+}
+
+const FIVE_FRET_NOTES = {
+    disconnected: 'Not connected',
+    noChart: 'No 5-fret chart for this song',
+    noPlugin: 'Install the 5-Fret plugin to play on a controller',
+};
+const FIVE_FRET_INSTRUMENTS = ['guitar', 'rhythm', 'bass'];
+
+// One row per joined controller, in join order. `parts[p]` is what the song has for p
+// (a real chart beats an auto one; auto counts only with showAuto) and who else holds p;
+// `part` is the one that will play (the stored part when the song has it, else a fallback).
+function controllerRows({ prefs, item, fiveFretLoaded, controllerStatus, showAuto }) {
+    const list = ((prefs && prefs.controllers) || []).filter(Boolean);
+    const status = controllerStatus || {};
+    const connected = status.connected instanceof Set ? status.connected : new Set(status.connected || []);
+    const available = !!fiveFretLoaded && status.available !== false;
+    const facts = item ? songFacts(item).fiveFret.filter((p) => showAuto || p.kind !== 'auto') : null;
+    const effective = (c) => {
+        if (!item) return c.part;
+        const hit = fiveFretPartFor(item, c, { showAuto });
+        return hit ? hit.instrument : null;
+    };
+    return list.map((c) => {
+        const part = effective(c);
+        const isConnected = connected.has(c.key);
+        const parts = {};
+        for (const inst of FIVE_FRET_INSTRUMENTS) {
+            const mine = facts ? facts.filter((p) => p.instrument === inst) : null;
+            const kind = !mine || !mine.length ? null : (mine.some((p) => p.kind !== 'auto') ? 'chart' : 'auto');
+            parts[inst] = {
+                has: !mine || mine.length > 0,
+                kind,
+                takenBy: list.filter((o) => o !== c && o.on !== false && effective(o) === inst).map((o) => o.name),
+            };
+        }
+        const stemId = item && part ? stemIdFor('five_fret', { part }, songFacts(item).stemIds) : null;
+        const partAudioDisabled = !!item && !!part && !stemId;
+        let note = '';
+        if (!available) note = (!fiveFretLoaded ? '' : status.reason) || FIVE_FRET_NOTES.noPlugin;
+        else if (!isConnected) note = FIVE_FRET_NOTES.disconnected;
+        else if (item && !part) note = FIVE_FRET_NOTES.noChart;
+        else if (partAudioDisabled) note = 'Part audio needs a ' + part + ' stem';
+        const unavailable = !available || !isConnected || (!!item && !part);
+        return {
+            key: c.key, id: c.id, name: c.name, on: c.on !== false, available, connected: isConnected, unavailable, note,
+            part: part || c.part, parts, partAudio: c.partAudio, partAudioDisabled,
+            difficulty: c.difficulty, lefty: !!c.lefty,
+        };
+    });
 }
 
 const TEXT_TAGS = ['INPUT', 'TEXTAREA', 'SELECT'];

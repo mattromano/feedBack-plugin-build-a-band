@@ -176,3 +176,93 @@ test('a five_fret_only pack leaves the guitar column unavailable with no arrange
     assert.equal(col.unavailable, true);
     assert.deepEqual(col.arrangements, { Lead: false, Rhythm: false, Bass: false });
 });
+
+// ---- controller players ----
+const ctl = (o) => ({ key: 'pad#1', id: 'ctl1', name: 'Xbox', playsAs: 'five_fret', part: 'guitar',
+    difficulty: 'medium', lefty: false, partAudio: 'rockband', on: true, ...o });
+const ctlPrefs = (controllers, fixedOn = false) => normalizePrefs({
+    parts: { guitar: { on: fixedOn }, drums: { on: fixedOn }, vocals: { on: fixedOn } }, controllers,
+});
+const status = (...keys) => ({ available: true, reason: null, connected: new Set(keys) });
+const song = { arrangements: [], five_fret_parts: ['guitar:chart', 'bass:auto'], stem_ids: ['guitar', 'bass'] };
+const model = (controllers, extra = {}) => bandScreenModel({
+    prefs: ctlPrefs(controllers), item: song, fiveFretLoaded: true, controllerStatus: status('pad#1'), ...extra,
+});
+
+test('a joined connected controller makes Go possible with every fixed part off', () => {
+    const m = model([ctl()]);
+    assert.equal(m.goEnabled, true);
+    assert.equal(m.pickEnabled, true);
+    assert.equal(m.controllers[0].connected, true);
+    assert.equal(m.controllers[0].unavailable, false);
+    assert.equal(model([]).goEnabled, false);
+});
+
+test('a band of controllers only can Go and open the song pick', () => {
+    const m = bandScreenModel({ prefs: ctlPrefs([ctl(), ctl({ key: 'pad#2', id: 'ctl2', part: 'bass' })]),
+        item: null, fiveFretLoaded: true, controllerStatus: status('pad#1', 'pad#2') });
+    assert.equal(m.pickEnabled, true);
+    assert.equal(m.goEnabled, false, 'no song yet');
+    assert.equal(model([ctl()]).goEnabled, true);
+});
+
+test('a disconnected controller: not connected, not counted', () => {
+    const m = model([ctl()], { controllerStatus: status() });
+    assert.equal(m.controllers[0].connected, false);
+    assert.equal(m.controllers[0].unavailable, true);
+    assert.equal(m.controllers[0].note, 'Not connected');
+    assert.equal(m.goEnabled, false);
+    assert.equal(m.pickEnabled, false);
+    // an off controller is not counted either
+    assert.equal(model([ctl({ on: false })]).goEnabled, false);
+});
+
+test('stored Rhythm on a song with Lead and Bass shows Lead selected', () => {
+    const m = model([ctl({ part: 'rhythm' })], { showAuto: true });
+    assert.equal(m.controllers[0].part, 'guitar');
+    assert.equal(m.controllers[0].unavailable, false);
+    // the stored part is not rewritten
+    assert.equal(ctlPrefs([ctl({ part: 'rhythm' })]).controllers[0].part, 'rhythm');
+});
+
+test('showAuto off: an auto-only part is not offered', () => {
+    const m = model([ctl({ part: 'bass' })]);
+    assert.equal(m.controllers[0].part, 'guitar', 'bass is auto-only, so Lead');
+    assert.deepEqual(m.controllers[0].parts.bass, { has: false, kind: null, takenBy: [] });
+    const auto = model([ctl({ part: 'bass' })], { item: { five_fret_parts: ['bass:auto'], stem_ids: [] } });
+    assert.equal(auto.controllers[0].unavailable, true);
+    assert.equal(auto.goEnabled, false);
+    assert.equal(model([ctl({ part: 'bass' })], { showAuto: true }).controllers[0].part, 'bass');
+});
+
+test('no 5-fret part: the row is unavailable with its note', () => {
+    const m = model([ctl()], { item: { arrangements: [{ name: 'Lead' }] } });
+    assert.equal(m.controllers[0].unavailable, true);
+    assert.equal(m.controllers[0].note, 'No 5-fret chart for this song');
+    assert.equal(m.goEnabled, false);
+    const noPlugin = model([ctl()], { fiveFretLoaded: false });
+    assert.equal(noPlugin.controllers[0].note, 'Install the 5-Fret plugin to play on a controller');
+    assert.equal(noPlugin.goEnabled, false);
+});
+
+test('parts show real/auto and who else holds them', () => {
+    const two = [ctl({ name: 'Xbox' }), ctl({ key: 'pad#2', id: 'ctl2', name: 'Guitar', part: 'bass' })];
+    const m = model(two, { controllerStatus: status('pad#1', 'pad#2'), showAuto: true });
+    assert.deepEqual(m.controllers[0].parts, {
+        guitar: { has: true, kind: 'chart', takenBy: [] },
+        rhythm: { has: false, kind: null, takenBy: [] },
+        bass: { has: true, kind: 'auto', takenBy: ['Guitar'] },
+    });
+    assert.deepEqual(m.controllers[1].parts.guitar.takenBy, ['Xbox']);
+    assert.deepEqual(m.controllers[1].parts.bass.takenBy, []);
+});
+
+test('part audio greyed without the part\'s stem', () => {
+    const m = model([ctl(), ctl({ key: 'pad#2', id: 'ctl2', part: 'bass' })], { controllerStatus: status('pad#1', 'pad#2'), showAuto: true,
+        item: { five_fret_parts: ['guitar:chart', 'bass:chart'], stem_ids: ['guitar'] } });
+    assert.equal(m.controllers[0].partAudioDisabled, false);
+    assert.equal(m.controllers[0].note, '');
+    assert.equal(m.controllers[1].partAudioDisabled, true);
+    assert.equal(m.controllers[1].note, 'Part audio needs a bass stem');
+    assert.equal(m.controllers[0].partAudio, 'rockband');
+});
