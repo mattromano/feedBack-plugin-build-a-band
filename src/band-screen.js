@@ -4,6 +4,7 @@ import { PART_TYPES } from './parts.js';
 import { pushRecent } from './prefs.js';
 import { songChips, resolveRecent } from './query.js';
 import { bandScreenModel, isGoKey } from './band-model.js';
+import { mountSongPicker } from './song-picker.js';
 
 const SCREEN_ID = 'plugin-build_a_band';
 const SOUND_MODES_NEEDING_STEM = ['rockband', 'kit'];
@@ -106,6 +107,14 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         render();
     }
 
+    const picker = mountSongPicker({
+        host: $('.bab-picker'), doc, fetchJson: getJson,
+        getParts: () => prefs.parts,
+        getRecent: () => prefs.recentSongs,
+        onPick: setSong,
+    });
+    cleanups.push(() => picker.dispose());
+
     // Column controls: on/off toggle and every segment write through savePrefs.
     for (const part of PART_TYPES) {
         const col = $(`.bab-col[data-part="${part.id}"]`);
@@ -115,6 +124,8 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         if (name) name.textContent = part.label;
         listen($('.bab-toggle', col), 'click', () => {
             save({ parts: { [part.id]: { on: !prefs.parts[part.id].on } } });
+            // "Playable by this band" follows the parts switched on.
+            picker.refresh();
         });
         for (const seg of $$('.bab-seg[data-field]', col)) {
             const field = seg.getAttribute('data-field');

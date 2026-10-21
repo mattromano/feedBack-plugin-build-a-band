@@ -42,6 +42,44 @@
 .bab-screen .bab-chip.bab-good::before { content: '\25CF\00A0'; }
 
 .bab-screen .bab-picker { margin-bottom: 22px; }
+.bab-screen .bab-picker-body {
+    display: flex; flex-direction: column; gap: 10px; padding: 14px;
+    background: var(--bab-panel); border: 1px solid var(--bab-line); border-radius: 14px;
+}
+.bab-screen .bab-search {
+    width: 100%; padding: 9px 12px; font: inherit; color: var(--bab-text);
+    background: var(--bab-field); border: 1px solid var(--bab-line); border-radius: 8px;
+}
+.bab-screen .bab-search:focus { outline: none; border-color: #4aa3ff; }
+.bab-screen .bab-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.bab-screen .bab-filter {
+    padding: 4px 11px; font-size: 12px; cursor: pointer; color: var(--bab-dim);
+    background: var(--bab-field); border: 1px solid var(--bab-line); border-radius: 999px;
+}
+.bab-screen .bab-filter[aria-pressed="true"] {
+    color: #fff; border-color: #4aa3ff; background: color-mix(in srgb, #4aa3ff 22%, var(--bab-field));
+}
+.bab-screen .bab-results-label {
+    font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--bab-dim);
+}
+.bab-screen .bab-results-label:empty { display: none; }
+.bab-screen .bab-results {
+    list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.bab-screen .bab-results:empty { display: none; }
+.bab-screen .bab-row {
+    display: flex; align-items: center; gap: 12px; padding: 7px 10px;
+    border-radius: 8px; cursor: pointer;
+}
+.bab-screen .bab-row:hover { background: rgba(255, 255, 255, 0.05); }
+.bab-screen .bab-row-text { display: flex; flex-direction: column; min-width: 0; }
+.bab-screen .bab-row-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bab-screen .bab-row-artist { font-size: 12px; color: var(--bab-dim); }
+.bab-screen .bab-row .bab-chips { flex-wrap: nowrap; overflow: hidden; }
+.bab-screen .bab-row .bab-chip { font-size: 11px; padding: 2px 7px; }
+.bab-screen .bab-row-missing { margin-left: auto; font-size: 12px; color: #e0533d; }
+.bab-screen .bab-results-msg { padding: 7px 10px; color: var(--bab-dim); }
 
 /* Part columns */
 .bab-screen .bab-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 120px; gap: 14px; }

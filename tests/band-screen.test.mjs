@@ -146,3 +146,23 @@ test('reopens on the last song through resolveRecent', async () => {
     assert.equal(root.querySelector('.bab-title').textContent, 'Holiday');
     bs.dispose();
 });
+
+test('song picker is mounted in .bab-picker: picking sets the song, part toggles refresh it', async () => {
+    const { root, col, bs, urls } = setup({ library: [holiday] });
+    const picker = root.querySelector('.bab-picker');
+    const search = picker.querySelector('input.bab-search');
+    assert.ok(search, 'picker mounted');
+    search.value = 'holiday';
+    search.fire('input');
+    await new Promise((r) => setTimeout(r, 300)); // real 250 ms debounce
+    await flush();
+    assert.deepEqual(urls, ['/api/library?q=holiday&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_drums=1&has_lyrics=pitch']);
+    picker.querySelector('li.bab-row').click();
+    assert.equal(bs.getSong(), holiday);
+    col('vocals').querySelector('.bab-toggle').click();
+    await new Promise((r) => setTimeout(r, 300));
+    await flush();
+    assert.equal(urls[1], '/api/library?q=holiday&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_drums=1');
+    bs.dispose();
+    assert.equal(picker.children.length, 0, 'picker disposed with the screen');
+});
