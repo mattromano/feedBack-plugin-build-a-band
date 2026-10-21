@@ -293,7 +293,7 @@ test('fail on: an empty crowd drops the part; its notes stop scoring', () => {
 test("a bandmate's deploy rescues with a partly refilled meter", () => {
     const b = createBandScore({ parts: ['guitar', 'drums'], failMode: 'fail' });
     misses(b, 14);
-    b.record({ part: 'drums', t: 9, kind: 'deploy' });
+    b.record({ part: 'drums', t: 15, kind: 'deploy' });
     const s = b.snapshot();
     assert.equal(s.parts.guitar.failed, false);
     assert.equal(s.parts.guitar.crowd, 0.4);
@@ -314,7 +314,7 @@ test("a failed part's deploy rescues nobody", () => {
     const s = b.snapshot();
     assert.equal(s.parts.guitar.failed, true);
     assert.equal(s.parts.drums.failed, true);
-    assert.equal(s.parts.guitar.deploys, 1);
+    assert.equal(s.parts.guitar.deploys, 0, "a failed part's deploy is ignored entirely");
     assert.equal(s.parts.guitar.saves, 0);
     assert.equal(s.parts.drums.saves, 0);
     assert.equal(s.bandFailed, true);
@@ -367,4 +367,72 @@ test('dropPart replays fail state: dropping the only survivor leaves the band fa
     assert.equal(s.parts.guitar.failed, true);
     assert.equal(s.parts.guitar.drops, 1);
     assert.equal(s.bandFailed, true);
+});
+
+test('a failed part loses its streak and multiplier, so a rescue restarts it at ×1', () => {
+    const b = createBandScore({ parts: ['guitar', 'drums'], failMode: 'fail' });
+    b.record(e({ part: 'drums', t: 0, kind: 'hit', points: 10, multiplier: 4, streak: 40 }));
+    for (let i = 0; i < 14; i++) b.record(e({ part: 'guitar', t: 1 + i, kind: 'miss', multiplier: 2, streak: 50 }));
+    let s = b.snapshot();
+    assert.equal(s.parts.guitar.failed, true);
+    assert.equal(s.parts.guitar.streak, 0);
+    assert.equal(s.parts.guitar.multiplier, 1);
+    assert.equal(s.parts.guitar.bestStreak, 50);
+    b.syncTotals('guitar', { multiplier: 3, streak: 30, stars: null });
+    s = b.snapshot();
+    assert.equal(s.parts.guitar.streak, 0, 'syncTotals keeps a failed part at streak 0');
+    assert.equal(s.parts.guitar.multiplier, 1, 'and ×1');
+    b.record({ part: 'drums', t: 15, kind: 'deploy' });
+    s = b.snapshot();
+    assert.equal(s.parts.guitar.failed, false);
+    assert.equal(s.parts.guitar.streak, 0);
+    assert.equal(s.parts.guitar.multiplier, 1);
+    assert.equal(s.bandMultiplier, 1);
+    b.rewindTo(15);
+    s = b.snapshot();
+    assert.equal(s.parts.guitar.streak, 0);
+    assert.equal(s.parts.guitar.multiplier, 1);
+});
+
+test("dropPart keeps a dropped part's rescues: the rescued part keeps its score", () => {
+    const b = createBandScore({ parts: ['guitar', 'drums'], failMode: 'fail' });
+    misses(b, 14);
+    b.record({ part: 'drums', t: 15, kind: 'deploy' });
+    for (let i = 0; i < 5; i++) b.record(e({ part: 'guitar', t: 16 + i, kind: 'hit', points: 100 }));
+    assert.equal(b.snapshot().parts.guitar.score, 500);
+    b.dropPart('drums');
+    let s = b.snapshot();
+    assert.deepEqual(Object.keys(s.parts), ['guitar']);
+    assert.equal(s.parts.guitar.failed, false);
+    assert.equal(s.parts.guitar.score, 500);
+    assert.equal(s.parts.guitar.saves, 1);
+    assert.equal(s.parts.guitar.deploys, 0, "the dropped part's deploy counts for nobody");
+    assert.equal(s.bandFailed, false);
+    b.rewindTo(19);
+    s = b.snapshot();
+    assert.equal(s.parts.guitar.failed, false);
+    assert.equal(s.parts.guitar.score, 400);
+});
+
+test("no fail: a dropped part's deploy rescues nothing and counts for nobody", () => {
+    const b = createBandScore({ parts: ['guitar', 'drums'] });
+    misses(b, 14);
+    b.record({ part: 'drums', t: 15, kind: 'deploy' });
+    b.dropPart('drums');
+    const s = b.snapshot();
+    assert.equal(s.parts.guitar.crowd, 0);
+    assert.equal(s.parts.guitar.saves, 0);
+    assert.equal(s.parts.guitar.deploys, 0);
+});
+
+test('bandFailed is false once dropPart removes every part', () => {
+    const b = createBandScore({ parts: ['guitar', 'drums'], failMode: 'fail' });
+    misses(b, 14);
+    misses(b, 14, 'drums', 1);
+    assert.equal(b.snapshot().bandFailed, true);
+    b.dropPart('guitar');
+    b.dropPart('drums');
+    const s = b.snapshot();
+    assert.deepEqual(s.parts, {});
+    assert.equal(s.bandFailed, false);
 });

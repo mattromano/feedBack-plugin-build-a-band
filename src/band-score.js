@@ -46,10 +46,13 @@ function crowdStep(entry) {
     }
 }
 
-// Any bandmate still playing who deploys brings every dropped part back (R12).
+// Any bandmate still playing who deploys brings every dropped part back (R12). A failed part's
+// deploy is ignored entirely. `p` is null for a deploy kept from a part that left the band
+// (dropPart): it was playing when it deployed, so it still rescues, and counts for nobody.
 function applyDeploy(p, state, failMode) {
-    p.deploys++;
-    if (failMode !== 'fail' || p.failed) return;
+    if (p && p.failed) return;
+    if (p) p.deploys++;
+    if (failMode !== 'fail') return;
     for (const other of state.parts.values()) {
         if (!other.failed) continue;
         other.failed = false;
@@ -60,11 +63,11 @@ function applyDeploy(p, state, failMode) {
 
 function apply(entry, state, thresholds, failMode) {
     const p = state.parts.get(entry.part);
-    if (!p) return;
     if (entry.kind === 'deploy') {
-        applyDeploy(p, state, failMode);
+        applyDeploy(p || null, state, failMode);
         return;
     }
+    if (!p) return;
     // A dropped-out part's judgments are ignored entirely (R12).
     if (p.failed) return;
     const scored = Math.round(num(entry.points, 0) * num(entry.factor, 1));
@@ -91,6 +94,9 @@ function apply(entry, state, thresholds, failMode) {
     if (failMode === 'fail' && p.crowd === 0) {
         p.failed = true;
         p.drops++;
+        // A rescued part restarts at ×1.
+        p.streak = 0;
+        p.multiplier = 1;
     }
     const n = bandMultiplier(state);
     if (scored > 0) {
@@ -132,18 +138,20 @@ export function createBandScore({ parts, failMode = 'nofail' }) {
         },
         // A part that can't play leaves the band: its entries go and the rest
         // replay, so it never pins the band multiplier (plan 4 R4). Idempotent.
+        // Its deploys stay, so rescues it already made aren't undone (R12).
         dropPart(id) {
             if (!ids.includes(id)) return;
             ids = ids.filter((p) => p !== id);
             thresholds.delete(id);
-            entries = entries.filter((entry) => entry.part !== id);
+            entries = entries.filter((entry) => entry.part !== id || entry.kind === 'deploy');
             replay();
         },
         syncTotals(part, totals) {
             const p = state.parts.get(part);
             if (!p) return;
-            p.multiplier = totals ? num(totals.multiplier, 1) : 1;
-            p.streak = totals ? num(totals.streak, 0) : 0;
+            // A failed part stays at streak 0, ×1 (R12).
+            p.multiplier = totals && !p.failed ? num(totals.multiplier, 1) : 1;
+            p.streak = totals && !p.failed ? num(totals.streak, 0) : 0;
             p.stars = totals ? clampStars(totals.stars) : null;
         },
         setStarThresholds(part, th) {
