@@ -19,9 +19,13 @@ test('songFacts reads library items and currentSong', () => {
 
 test('hasChart', () => {
     const g = getPart('guitar'), d = getPart('drums'), v = getPart('vocals');
+    const drumsChart = (x) => d.chartFrom(x);
     assert.equal(hasChart(g, { arrangements: [{ name: 'Lead' }] }), true);
     assert.equal(hasChart(g, { arrangements: [{ name: 'Drums' }] }), false);
     assert.equal(hasChart(d, { arrangements: [{ name: 'Drums' }] }), true);
     assert.equal(hasChart(d, { has_drum_tab: true, arrangements: [{ name: 'Lead' }] }), true);
+    assert.equal(hasChart(d, { has_drum_tab: true, arrangements: [{ name: 'Lead' }, { name: 'Kit' }] }), true);
+    assert.equal(drumsChart({ has_drum_tab: true, arrangements: [{ name: 'Lead' }, { name: 'Kit' }] }), 1);
+    assert.equal(drumsChart({ hasDrumTab: true, arrangements: [{ name: 'Lead' }, { name: 'Kit' }] }), 1);
     assert.equal(hasChart(v, { has_vocal_pitch: false }), false);
 });

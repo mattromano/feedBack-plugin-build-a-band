@@ -15,7 +15,8 @@ const LABEL_STEP = 0.25;
 // stage (a drums-only session plays the drum arrangement on the main
 // highway); drums gets a lane when it is on and the song has a drum chart.
 export function planStage(song, parts = { guitar: { on: true }, drums: { on: true } }) {
-    const drumIndex = findDrumArrangement(song && song.arrangements);
+    const drumIndex = findDrumArrangement(song && song.arrangements,
+        { hasDrumTab: !!(song && (song.hasDrumTab || song.has_drum_tab)) });
     const on = (id) => !(parts && parts[id] && parts[id].on === false);
     if (!on('guitar')) return { lanes: [], drumIndex };
     return { lanes: on('drums') && drumIndex >= 0 ? ['guitar', 'drums'] : ['guitar'], drumIndex };

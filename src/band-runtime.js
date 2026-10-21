@@ -186,7 +186,7 @@ export function createBandRuntime({
             if (isOn(s.prefs, 'guitar')) {
                 arrIndex = guitarArrIndex(arrs, s.prefs.parts.guitar.arrangement);
             } else if (isOn(s.prefs, 'drums')) {
-                const i = findDrumArrangement(arrs);
+                const i = findDrumArrangement(arrs, { hasDrumTab: songFacts(s.item).hasDrumTab });
                 arrIndex = i >= 0 ? i : undefined;
             }
             safe(() => fb.setReturnScreen(BAND_SCREEN));

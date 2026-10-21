@@ -31,3 +31,10 @@ test('planStage guitar off', () => {
         { guitar: { on: false }, drums: { on: true } }),
     { lanes: [], drumIndex: 1 });
 });
+
+test('planStage uses hasDrumTab to find an oddly named drum arrangement', () => {
+    const arrangements = [{ name: 'Lead' }, { name: 'Kit' }];
+    assert.deepEqual(planStage({ arrangements }).drumIndex, -1);
+    assert.deepEqual(planStage({ arrangements, hasDrumTab: true }),
+        { lanes: ['guitar', 'drums'], drumIndex: 1 });
+});

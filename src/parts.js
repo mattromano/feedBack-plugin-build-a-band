@@ -36,7 +36,7 @@ export const PART_TYPES = Object.freeze([
         color: '#e0533d', difficulties: DIFFICULTIES, extras: ['soundMode'],
         chartFrom(itemOrSong) {
             const { arrangements, hasDrumTab } = songFacts(itemOrSong);
-            const i = findDrumArrangement(arrangements);
+            const i = findDrumArrangement(arrangements, { hasDrumTab });
             if (i >= 0) return i;
             return hasDrumTab ? true : -1;
         },
