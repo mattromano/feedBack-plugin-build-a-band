@@ -264,3 +264,36 @@ test('mappers are cached per key', async () => {
     await flush();
     assert.deepEqual(t.api.mapperCalls, ['Xbox#1']);
 });
+
+test('a mirrored Start right after a joined slot pressed Start is not a second join', async () => {
+    const t = setup([pad(0, 'Xbox', 1), pad(1, 'Xbox', 2)]);
+    t.m.start([]);
+    await flush();
+    t.input.press(0, BTN.start, true, 10.0);
+    t.input.send('Xbox#1', BTN.start, false, 10.1);
+    t.input.send('Xbox#1', BTN.start, true, 20.000);
+    t.input.press(1, BTN.start, true, 20.020);
+    assert.deepEqual(t.log.primary, ['Xbox#1']);
+    assert.deepEqual(t.log.join.map((j) => j.controllerKey), ['Xbox#1']);
+});
+
+test('a refresh while createMapper is pending does not drop the mapper', async () => {
+    const input = fakeInput();
+    input.pads = [pad(0, 'Xbox', 1)];
+    let release;
+    const gate = new Promise((r) => { release = r; });
+    const api = {
+        listControllers: async () => input.pads.map((p) => ({ ...p })),
+        createMapper: async () => { await gate; return { map: (ev) => (ev.index === 0 ? [{ action: 'green', value: 1 }] : []) }; },
+    };
+    const lights = [];
+    const m = createJoinManager({ gamepadInput: input, kinds: { five_fret: { api: () => api } }, setTimer() {}, clearTimer() {}, onLight: (k, l) => lights.push({ ...l }) });
+    m.start(['Xbox#1']);
+    await flush();
+    input.change();
+    await flush();
+    release();
+    await flush();
+    input.send('Xbox#1', 0, true);
+    assert.equal(lights.at(-1).green, true);
+});

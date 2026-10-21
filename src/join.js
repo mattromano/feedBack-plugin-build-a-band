@@ -7,7 +7,7 @@
 // the mappers are cached: input that arrives before a mapper resolves is ignored.
 //
 // Watch/handle event times (`t`) are seconds, as core reports them.
-import { CONTROLLER_KINDS, kindFor as defaultKindFor } from './controller-model.js';
+import { CONTROLLER_KINDS } from './controller-model.js';
 
 export const OWNER = 'build_a_band';
 export const LEAVE_HOLD_MS = 1000;
@@ -27,11 +27,14 @@ export function createJoinManager({
     const emit = { join: onJoin || noop, leave: onLeave || noop, primary: onPrimary || noop, light: onLight || noop, change: onChange || noop };
 
     let running = false;
-    let seq = 0;                       // invalidates in-flight refreshes across stop/start
+    let seq = 0;                       // newest refresh wins
+    let runGen = 0;                    // bumped only by stop: invalidates in-flight mappers
     let unwatch = null;
     let unchange = null;
     let joined = new Set();
     let entries = [];                  // cached controller list
+    const byKey = new Map();           // controllerKey -> entry (rebuilt per refresh)
+    const byPad = new Map();           // slot index -> entry
     let connected = new Set();
     let needsSetup = [];
     const mappers = new Map();         // key -> mapper
@@ -52,19 +55,19 @@ export function createJoinManager({
         const k = kinds && kinds.five_fret;
         try { return (k && k.api && k.api()) || null; } catch (_) { return null; }
     };
-    const entryByKey = (key) => entries.find((e) => e.controllerKey === key) || null;
-    const entryByPad = (index) => entries.find((e) => e.index === index) || null;
+    const entryByKey = (key) => byKey.get(key) || null;
+    const entryByPad = (index) => byPad.get(index) || null;
 
     function ensureMapper(key) {
         if (mappers.has(key) || pending.has(key)) return;
         const api = apiFor(key);
         if (!api || typeof api.createMapper !== 'function') return;
         pending.add(key);
-        const mine = seq;
+        const mine = runGen;
         (async () => {
             try {
                 const m = await api.createMapper(key);
-                if (m && mine === seq && running) mappers.set(key, m);
+                if (m && mine === runGen && running) mappers.set(key, m);
             } catch (_) { /* no mapper: stays ignored */ }
             pending.delete(key);
         })();
@@ -129,7 +132,12 @@ export function createJoinManager({
             const { action, value } = out[i];
             const on = value > 0;
             if (action === 'pause') {
-                if (on) emit.primary(key);
+                if (on) {
+                    // Record the press so a mirrored twin slot's Start right after is not a join.
+                    const e = entryByKey(key);
+                    if (e && ev.t !== undefined) recentStart.set(e.id, { pad: e.index, t: ev.t });
+                    emit.primary(key);
+                }
             } else if (FRETS.includes(action)) {
                 setLit(key, action, on);
                 changed = true;
@@ -170,6 +178,9 @@ export function createJoinManager({
         const list = await loadList();
         if (!running || mine !== seq) return;
         entries = list;
+        byKey.clear();
+        byPad.clear();
+        for (const e of list) { byKey.set(e.controllerKey, e); byPad.set(e.index, e); }
         connected = new Set();
         needsSetup = [];
         for (const e of list) {
@@ -196,6 +207,8 @@ export function createJoinManager({
         for (let i = 0; i < out.length; i++) {
             if (out[i].action !== 'pause' || !(out[i].value > 0)) continue;
             const prev = recentStart.get(e.id);
+            // Core polls slots in ascending order within one tick, so the lowest slot's press
+            // arrives first and wins.
             if (prev && prev.pad !== ev.pad && ev.t - prev.t >= 0 && ev.t - prev.t <= MIRROR_WINDOW_S) return;
             recentStart.set(e.id, { pad: ev.pad, t: ev.t });
             if (joined.has(key)) { claimKey(key); return; }
@@ -213,6 +226,7 @@ export function createJoinManager({
     function stopRunning() {
         running = false;
         seq++;
+        runGen++;
         if (unwatch) { try { unwatch(); } catch (_) { /* ignore */ } unwatch = null; }
         if (unchange) { try { unchange(); } catch (_) { /* ignore */ } unchange = null; }
         for (const key of [...claims.keys()]) release(key);
