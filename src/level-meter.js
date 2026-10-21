@@ -73,7 +73,8 @@ export function createLevelMeter({ deviceId, via, mediaDevices, AudioContext, on
             ctx.createMediaStreamSource(stream).connect(analyser);
             const buf = new Float32Array(analyser.fftSize);
             onState('live');
-            const interval = frameSize ? frameSize / ctx.sampleRate : 0;
+            // No usable sampleRate: no pacing, read every frame (still with ctx.currentTime).
+            const interval = frameSize && Number.isFinite(frameSize / ctx.sampleRate) ? frameSize / ctx.sampleRate : 0;
             let lastAt = -Infinity;
             const tick = () => {
                 frame = null;

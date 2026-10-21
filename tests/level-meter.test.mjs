@@ -50,8 +50,15 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function setup({ gum, via = 'browser', frameSize } = {}) {
+function setup({ gum, via = 'browser', frameSize, sampleRate } = {}) {
     const audio = fakeAudio();
+    // sampleRate given (even undefined): the context reports that instead of 48000.
+    if (arguments[0] && 'sampleRate' in arguments[0]) {
+        const Base = audio.FakeAudioContext;
+        audio.FakeAudioContext = class extends Base {
+            constructor() { super(); this.sampleRate = sampleRate; }
+        };
+    }
     const timers = makeTimers();
     const levels = [];
     const states = [];
@@ -178,5 +185,15 @@ test('without frameSize the analyser and reading rate are unchanged', async () =
     assert.equal(ctx.analysers[0].fftSize, 1024);
     for (let f = 0; f < 4; f++) { ctx.currentTime = f / 60; t.timers.run(); }
     assert.deepEqual(t.levels, [0.5, 0.5, 0.5, 0.5]);
+    t.meter.stop();
+});
+
+test('frameSize with no sampleRate still reads every frame', async () => {
+    const t = setup({ frameSize: 2048, sampleRate: undefined });
+    await flush();
+    const ctx = t.contexts[0];
+    for (let f = 0; f < 4; f++) { ctx.currentTime = f / 60; t.timers.run(); }
+    assert.equal(t.levels.length, 4, 'one reading per frame');
+    assert.deepEqual(t.levels.map((l) => l[1]), [0, 1 / 60, 2 / 60, 3 / 60], 'each reading carries the ctx time');
     t.meter.stop();
 });
