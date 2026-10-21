@@ -168,6 +168,8 @@ export function createBandRuntime({
             // Karaoke whose HUD stayed hidden for the replay.
             vocalsKept: null,
             countInOverride: false,
+            // The band turned note_detect's detection on (restored at teardown).
+            ndEnabled: false,
         };
     }
 
@@ -285,6 +287,27 @@ export function createBandRuntime({
         const v = s.score && s.score.snapshot().parts.vocals;
         if (!v || v.hits + v.misses + v.overhits > 0) return;
         dropPart(s, 'vocals');
+    }
+
+    // Guitar scores through note_detect's detection. With a guitar input
+    // picked and detection off, the band turns it on (input analysis: its
+    // processor outputs silence) and teardown turns it off again, silently so
+    // its summary never shows. A user who had it on keeps it on.
+    function enableGuitarDetect(s) {
+        const nd = win.noteDetect;
+        if (s.ndEnabled || !s.scoreParts.includes('guitar') || !s.prefs.parts.guitar.deviceKey) return;
+        if (!nd || typeof nd.enable !== 'function' || typeof nd.isEnabled !== 'function') return;
+        if (safe(() => nd.isEnabled()) !== false) return;
+        s.ndEnabled = true;
+        safe(() => Promise.resolve(nd.enable())
+            .catch((e) => console.warn('[build-a-band] note detection failed to start', e)));
+    }
+
+    function restoreGuitarDetect(s) {
+        if (!s.ndEnabled) return;
+        s.ndEnabled = false;
+        const nd = win.noteDetect;
+        if (nd && typeof nd.disable === 'function') safe(() => nd.disable({ silent: true }));
     }
 
     // The drums plugin is loaded (its API or its renderer is there).
@@ -521,6 +544,7 @@ export function createBandRuntime({
             mountHud(s, song);
             startCountIn(s);
             applyHides(s);
+            enableGuitarDetect(s);
         },
         applyDifficulties(s) {
             if (isOn(s.prefs, 'guitar')) {
@@ -626,6 +650,8 @@ export function createBandRuntime({
             if (s.hud) { const hud = s.hud; s.hud = null; safe(() => hud.destroy()); }
             if (s.countIn) { const c = s.countIn; s.countIn = null; safe(() => c.destroy()); }
             safe(() => doc.body.classList.remove(BAND_SONG_CLASS));
+            // Detection off before note_detect's HUD comes back.
+            restoreGuitarDetect(s);
             if (!s.keepHides) undoHides(s);
             if (s.countInOverride) {
                 s.countInOverride = false;

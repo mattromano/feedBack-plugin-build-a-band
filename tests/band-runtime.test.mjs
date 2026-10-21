@@ -53,7 +53,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
-        karaoke: [], karaokeAt: [], playSongAt: [], hides: [], countIn: [], countInAt: [] };
+        karaoke: [], karaokeAt: [], playSongAt: [], hides: [], countIn: [], countInAt: [], nd: [] };
     // Shared sequence counter: orders karaoke calls against playSong and unmount.
     let seq = 0;
     const doc = makeDoc();
@@ -108,7 +108,14 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
             clearDifficulty: (c) => calls.clearDifficulty.push(c),
             setScoreHudHidden: (c, v) => { calls.hides.push(['drums', c, v]); return true; },
         },
-        noteDetect: { setScoreHudHidden: (v) => { calls.hides.push(['nd', v]); return true; } },
+        noteDetect: {
+            setScoreHudHidden: (v) => { calls.hides.push(['nd', v]); return true; },
+            // Detection on/off, recorded into calls.nd.
+            enabled: false,
+            isEnabled() { return this.enabled; },
+            enable() { calls.nd.push(['enable']); this.enabled = true; return Promise.resolve(true); },
+            disable(o) { calls.nd.push(['disable', o]); this.enabled = false; },
+        },
         feedBackScorecard: { setHudHidden: (v) => { calls.hides.push(['scorecard', v]); return true; } },
         slopsmithSplitscreen: { isActive: () => ssActive, start: () => { calls.splitStart++; }, stop() { ssActive = false; } },
     };
@@ -1548,5 +1555,85 @@ test("a replay that doesn't arm karaoke again gives karaoke's HUD back", async (
     rt.again();
     assert.deepEqual(calls.hides.filter((h) => h[0] === 'karaoke').at(-1), ['karaoke', false]);
     win.lyricsKaraoke = karaoke;
+    rt.dispose();
+});
+
+// ── Guitar scoring needs note_detect's detection on (final review M7) ──
+
+const GUITARIST = { deviceKey: 'usb-guitar' };
+
+test('a guitar input turns note_detect detection on at mount and silently off at teardown', () => {
+    const { rt, fb, calls, loadSong } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: GUITARIST }) });
+    assert.deepEqual(calls.nd, [], 'nothing before the stage mounts');
+    loadSong(ITEM);
+    assert.deepEqual(calls.nd, [['enable']]);
+    const hiddenFirst = calls.hides.findIndex((h) => h[0] === 'nd' && h[1] === true);
+    assert.ok(hiddenFirst >= 0, 'its HUD is hidden');
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.nd, [['enable'], ['disable', { silent: true }]], 'silent: never its summary');
+    rt.dispose();
+    assert.equal(calls.nd.length, 2);
+});
+
+test('no guitar input picked: note_detect is never enabled', () => {
+    const { rt, fb, calls, loadSong } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.nd, []);
+    rt.dispose();
+});
+
+test('note_detect already on: left on, never disabled by the band', () => {
+    const { rt, fb, win, calls, loadSong } = setup();
+    win.noteDetect.enabled = true;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: GUITARIST }) });
+    loadSong(ITEM);
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.nd, []);
+    assert.equal(win.noteDetect.enabled, true);
+    rt.dispose();
+});
+
+test('guitar not playing: note_detect is never enabled', () => {
+    const { rt, fb, calls, loadSong } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith({ guitar: { on: false, deviceKey: 'usb-guitar' } }) });
+    loadSong(DRUM_ITEM);
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.nd, []);
+    rt.dispose();
+});
+
+test('a splitscreen remount does not enable twice; Play again enables once per session', () => {
+    const env = setup();
+    const { rt, fb, calls, loadSong, timers } = env;
+    const ss = fakeSplitscreen(env);
+    rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: GUITARIST }) });
+    loadSong(ITEM);
+    ss.start();
+    timers.fire(50);
+    assert.deepEqual(calls.nd, [['enable']]);
+    fb.emit('song:ended', {});
+    rt.again();
+    loadSong(ITEM);
+    assert.deepEqual(calls.nd, [['enable'], ['disable', { silent: true }], ['enable']]);
+    rt.dispose();
+    assert.deepEqual(calls.nd.at(-1), ['disable', { silent: true }]);
+});
+
+test('an enable that rejects is only warned about', async () => {
+    const { rt, win, loadSong } = setup();
+    win.noteDetect.enable = () => Promise.reject(new Error('no mic'));
+    const warns = [];
+    const warn = console.warn;
+    console.warn = (...a) => warns.push(a);
+    try {
+        rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: GUITARIST }) });
+        loadSong(ITEM);
+        await flush();
+    } finally { console.warn = warn; }
+    assert.equal(rt.phase(), 'playing');
+    assert.ok(warns.length >= 1);
     rt.dispose();
 });

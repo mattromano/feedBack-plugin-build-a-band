@@ -507,7 +507,8 @@ test('blank-id audio inputs ask for microphone access in the column note', async
     const { col, bs } = setup({ winExtra: d.winExtra });
     await flush();
     await flush();
-    assert.equal(col('guitar').querySelector('.bab-note').textContent, 'Allow microphone access to list inputs');
+    assert.equal(col('guitar').querySelector('.bab-note').textContent,
+        'Pick an input to score your guitar \u00b7 Allow microphone access to list inputs');
     assert.ok(col('vocals').querySelector('.bab-note').textContent.endsWith('Allow microphone access to list inputs'));
     assert.equal(col('drums').querySelector('.bab-note').textContent, '');
     assert.equal(col('guitar').querySelector('select').querySelectorAll('option').length, 1, 'placeholder only');
@@ -620,4 +621,13 @@ test('without karaoke, only vocals on leaves Go disabled', () => {
     assert.equal(root.querySelector('.bab-go').disabled, true);
     assert.equal(root.querySelector('.bab-hint').textContent, 'Turn on a part');
     bs.dispose();
+});
+
+test('the guitar column note: Note Detection missing, then no input picked', async () => {
+    const a = setup();
+    assert.equal(a.col('guitar').querySelector('.bab-note').textContent, 'Turn on Note Detection to score your guitar');
+    a.bs.dispose();
+    const b = setup({ winExtra: { noteDetect: {} } });
+    assert.equal(b.col('guitar').querySelector('.bab-note').textContent, 'Pick an input to score your guitar');
+    b.bs.dispose();
 });

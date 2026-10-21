@@ -101,7 +101,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
 
     function render() {
         if (disposed) return;
-        const model = bandScreenModel({ prefs, item: song, vocalsSupported: !!karaokeApi(win) });
+        const model = bandScreenModel({ prefs, item: song, vocalsSupported: !!karaokeApi(win), noteDetectLoaded: !!win.noteDetect });
         renderSong();
         for (const part of PART_TYPES) {
             const col = $(`.bab-col[data-part="${part.id}"]`);

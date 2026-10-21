@@ -28,7 +28,7 @@ test('full band song', () => {
     assert.equal(m.columns.vocals.unavailable, false);
     assert.equal(m.columns.drums.soundModesDisabled, false);
     assert.equal(m.columns.vocals.note, '');
-    assert.equal(m.columns.guitar.note, '');
+    assert.equal(m.columns.guitar.note, 'Pick an input to score your guitar', 'no guitar input in the default prefs');
     assert.equal(m.columns.drums.note, '');
 });
 
@@ -103,4 +103,17 @@ test('isGoKey', () => {
     assert.equal(isGoKey({ code: 'Space', repeat: true }, null), false);
     assert.equal(isGoKey({ code: 'Enter' }, null), false);
     assert.equal(isGoKey({ code: 'Space' }, { tagName: 'DIV', isContentEditable: true }), false);
+});
+
+test('guitar column says how to get guitar scored', () => {
+    const picked = withParts({ guitar: { on: true, deviceKey: 'usb-guitar' } });
+    assert.equal(bandScreenModel({ prefs: picked, item: fullBand, noteDetectLoaded: true }).columns.guitar.note, '');
+    assert.equal(bandScreenModel({ prefs, item: fullBand, noteDetectLoaded: true }).columns.guitar.note,
+        'Pick an input to score your guitar');
+    assert.equal(bandScreenModel({ prefs: picked, item: fullBand, noteDetectLoaded: false }).columns.guitar.note,
+        'Turn on Note Detection to score your guitar');
+    const off = withParts({ guitar: { on: false } });
+    assert.equal(bandScreenModel({ prefs: off, item: fullBand, noteDetectLoaded: false }).columns.guitar.note, '', 'an off part needs no hint');
+    const noGuitar = { arrangements: [{ name: 'Drums' }] };
+    assert.equal(bandScreenModel({ prefs, item: noGuitar, noteDetectLoaded: false }).columns.guitar.note, 'No guitar part in this song');
 });
