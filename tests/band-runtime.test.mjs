@@ -93,6 +93,8 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         holdAutoExit: () => { calls.hold++; return () => { calls.release++; }; },
         setSongCountInOverride: (v) => { calls.countIn.push(v); calls.countInAt.push(++seq); },
         getDisplayTime: () => clock.t,
+        // Core's transport flag (window.feedBack.isPlaying): the song plays.
+        isPlaying: true,
     };
     // Core's capability host, recording [name, request] into calls.caps. Nothing plays:
     // stems mutes are only recorded, and playback pause answers with pauseStatus.
@@ -1927,8 +1929,8 @@ test("a bandmate's overdrive rescues them", async () => {
     assert.equal(mounts[0].lanes.guitar.classList.contains('bab-failed'), false);
     assert.equal(rt.snapshot().parts.guitar.crowd, 0.4);
     assert.equal(partCallout(player, 'guitar'), 'SAVED!');
+    await flush();   // the restore follows the mute's answer
     assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
-    await flush();
     assert.deepEqual(capCalls(calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }]);
     rt.dispose();
 });
@@ -2016,9 +2018,9 @@ test('a seek back before the drop restores the player silently', async () => {
     fb.emit('song:seek', { from: 20, to: 0.5 });
     assert.equal(rt.snapshot().parts.guitar.failed, false);
     assert.equal(mounts[0].lanes.guitar.classList.contains('bab-failed'), false);
-    assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
     assert.notEqual(partCallout(player, 'guitar'), 'SAVED!');
-    await flush();
+    await flush();   // the restore follows the mute's answer
+    assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
     assert.equal(capCalls(calls, 'release').length, 1);
     // Dropping again after the rewind claims and mutes again.
     dropGuitar(env, 21);
@@ -2172,5 +2174,180 @@ test("a dropped guitar's noodle never deploys", () => {
     assert.equal(rt.overdrive().guitar.active, false, 'the bar is not spent');
     assert.equal(rt.snapshot().parts.guitar.deploys, 0);
     assert.equal(rt.snapshot().parts.guitar.failed, true);
+    rt.dispose();
+});
+
+// ── Final review fixes (plan 5) ──
+
+// Fix 4: deploy handlers.
+test('karaoke od-activate without a vocals part records and calls out nothing', () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, player } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    fb.emit('karaoke:od-activate', { fill: 0.5, t: 16 });
+    const parts = rt.snapshot().parts;
+    assert.deepEqual(Object.keys(parts), ['guitar', 'drums']);
+    assert.equal(parts.guitar.failed, true, 'a karaoke deploy outside the band rescues nobody');
+    assert.equal(parts.drums.deploys, 0);
+    assert.ok(!player.querySelectorAll('.bab-callout').some((c) => c.textContent === 'OVERDRIVE!'));
+    rt.dispose();
+});
+
+test('with no overdrive session, a drums deploy still rescues', (t) => {
+    t.mock.method(console, 'warn', () => {});   // createOverdriveSession's throw is logged
+    for (const by of ['drums', 'vocals']) {
+        const env = setup();
+        const { rt, fb, loadSong, mounts } = env;
+        // Malformed beats: createOverdriveSession throws, so the band has no overdrive.
+        env.chart.beats = new Proxy([], { get() { throw new Error('bad beats'); } });
+        rt.startSession({ song: FULL_ITEM, prefs: failPrefs({ vocals: SINGER }) });
+        loadSong(FULL_ITEM);
+        assert.equal(rt.overdrive(), null, `${by}: no overdrive session`);
+        dropGuitar(env);
+        assert.equal(rt.snapshot().parts.guitar.failed, true, by);
+        if (by === 'drums') fb.emit('drums:sp-activate', { canvas: mounts[0].drumCanvas, spActive: true, spAmount: 0.5 });
+        else fb.emit('karaoke:od-activate', { fill: 0.5, t: 16 });
+        assert.equal(rt.snapshot().parts[by].deploys, 1, by);
+        assert.equal(rt.snapshot().parts.guitar.failed, false, `${by}: rescued`);
+        rt.dispose();
+    }
+});
+
+// Fix 5: each part's stem claim operations run in order. Stems mutes answer
+// only when the test resolves them; everything else answers at once.
+function holdMutes(env) {
+    const held = [];
+    const answer = env.fb.capabilities.dispatch;
+    env.fb.capabilities.dispatch = (req) => {
+        if (req.capability !== 'stems' || req.command !== 'mute') return answer(req);
+        env.calls.caps.push(['dispatch', req]);
+        return new Promise((r) => held.push(() => r({ outcome: 'handled', status: 'applied' })));
+    };
+    return held;
+}
+const capKinds = (calls) => calls.caps.map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
+
+test('fail → rescue while the mute is pending: restore is dispatched after the mute resolves', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls } = env;
+    const held = holdMutes(env);
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    assert.equal(held.length, 1, 'the mute is in flight');
+    fb.emit('drums:sp-activate', { canvas: mounts[0].drumCanvas, spActive: true, spAmount: 0.5 });
+    assert.equal(rt.snapshot().parts.guitar.failed, false);
+    await flush();
+    assert.deepEqual(stemsCommand(calls, 'restore'), [], 'the restore waits for the mute');
+    assert.deepEqual(capCalls(calls, 'release'), []);
+    held[0]();
+    await flush();
+    assert.deepEqual(capKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    rt.dispose();
+});
+
+test('teardown while the mute is pending still restores and releases after it', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, calls } = env;
+    const held = holdMutes(env);
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    fb.emit('song:stop', {});
+    assert.equal(rt.phase(), 'idle');
+    await flush();
+    assert.deepEqual(stemsCommand(calls, 'restore'), []);
+    held[0]();
+    await flush();
+    assert.deepEqual(capKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    rt.dispose();
+});
+
+test("Play again while the mute is pending: the replay's mute follows the old restore and release", async () => {
+    const env = setup();
+    const { rt, fb, loadSong, calls } = env;
+    const held = holdMutes(env);
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    fb.emit('song:ended', {});
+    rt.again();
+    loadSong(DRUM_ITEM);
+    assert.equal(rt.phase(), 'playing');
+    dropGuitar(env, 30);
+    await flush();
+    assert.deepEqual(capKinds(calls), ['claim', 'dispatch:mute'], 'everything waits for the first mute');
+    held[0]();
+    await flush();
+    assert.deepEqual(capKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release', 'claim', 'dispatch:mute']);
+    held[1]();
+    rt.dispose();
+    await flush();
+    assert.deepEqual(capKinds(calls).slice(-2), ['dispatch:restore', 'release']);
+});
+
+// Parked T11 M3.
+test('dispose() mid-song after a drop restores and releases', async () => {
+    const env = setup();
+    const { rt, loadSong, calls } = env;
+    rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
+    loadSong(DRUM_ITEM);
+    dropGuitar(env);
+    rt.dispose();
+    await flush();
+    assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
+    assert.deepEqual(capCalls(calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }]);
+    assert.deepEqual(capKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+});
+
+// Fix 6 (controller ruling): guitar onsets never deploy while the song is paused.
+test('onsets while paused never deploy', () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, fireWin, at } = env;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    loadSong(ITEM);
+    fb.isPlaying = false;
+    deployGuitar(env);
+    assert.equal(rt.snapshot().parts.guitar.deploys, 0);
+    assert.equal(rt.overdrive().guitar.active, false, 'the bar is not spent');
+    // Playing again: the gap's deploy is still there.
+    fb.isPlaying = true;
+    for (const t of [12, 12.5, 13]) {
+        at(t);
+        fireWin('notedetect:onset', { t, midi: null, confidence: null, level: 0.3, source: 'level', isDefault: true });
+    }
+    assert.equal(rt.snapshot().parts.guitar.deploys, 1);
+    rt.dispose();
+});
+
+test("without core's isPlaying, onsets deploy only while chart time advances", () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, fireWin, at, chart, clock } = env;
+    delete fb.isPlaying;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    loadSong(ITEM);
+    for (let i = 0; i < 9; i++) {
+        at(i);
+        fireWin('notedetect:hit', guitarHit({ noteTime: i, points: 100 }));
+    }
+    at(6);
+    env.timers.fire(100);
+    at(10);
+    env.timers.fire(100);
+    assert.equal(rt.overdrive().guitar.ready, true);
+    // Paused at chart time 10: the highway clock stands still.
+    for (const t of [10.5, 11, 11.5]) {
+        clock.t = t;
+        fireWin('notedetect:onset', { t, midi: null, confidence: null, level: 0.3, source: 'level', isDefault: true });
+    }
+    assert.equal(chart.t, 10);
+    assert.equal(rt.snapshot().parts.guitar.deploys, 0);
+    for (const t of [12, 12.5, 13]) {
+        at(t);
+        fireWin('notedetect:onset', { t, midi: null, confidence: null, level: 0.3, source: 'level', isDefault: true });
+    }
+    assert.equal(rt.snapshot().parts.guitar.deploys, 1);
     rt.dispose();
 });

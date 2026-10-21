@@ -118,6 +118,10 @@ export function createBandRuntime({
     const seenGuitar = new WeakSet();
     // notedetect:onset arrives twice the same way.
     const seenOnset = new WeakSet();
+    // Each part's stem claim operations, in order (fix 5): a restore or release
+    // always follows the mute it undoes, even across Play again (claim ids are
+    // per part, not per session). part -> { promise, done }.
+    const stemOps = new Map();
 
     function sliderMastery() {
         const slider = doc.getElementById('mastery-slider');
@@ -182,6 +186,8 @@ export function createBandRuntime({
             // Overdrive (plan 5): the per-song session and its tick.
             od: null,
             odTimer: null,
+            // Chart time at the last OD tick or onset check (the paused fallback).
+            lastChartT: null,
             // Drums stars over the full chart (M6, R20): the largest thresholds seen.
             drumsThresholds: null,
             // Fail mode (plan 5 R12, R13): the parts shown dropped out, the parts
@@ -387,19 +393,33 @@ export function createBandRuntime({
         return Array.isArray(list) ? list.map((st) => st && st.id).filter((id) => typeof id === 'string') : [];
     }
 
+    // Runs `op` now when the part has nothing in flight (so a mute's claim and
+    // dispatch stay synchronous), else after the previous op settles.
+    function queueStemOp(part, op) {
+        const prev = stemOps.get(part);
+        const p = prev && !prev.done ? prev.promise.then(op, op) : new Promise((r) => r(op()));
+        const entry = { promise: p, done: false };
+        stemOps.set(part, entry);
+        const settle = () => {
+            entry.done = true;
+            if (stemOps.get(part) === entry) stemOps.delete(part);
+        };
+        p.then(settle, settle);
+    }
+
     function muteFailedStem(s, id) {
         const stemId = stemIdFor(id, s.prefs.parts[id], songStemIds());
         const caps = fb.capabilities;
         if (!stemId || !caps) return;
         s.stemClaims.add(id);
-        safe(() => muteStem({ caps, part: id, stemId }));
+        safe(() => queueStemOp(id, () => muteStem({ caps, part: id, stemId })));
     }
 
     function restoreFailedStem(s, id) {
         if (!s.stemClaims.has(id)) return;
         s.stemClaims.delete(id);
         const caps = fb.capabilities;
-        safe(() => restoreStem({ caps, part: id }));
+        safe(() => queueStemOp(id, () => restoreStem({ caps, part: id })));
     }
 
     // Fail mode (R12, R13): brings the lanes and stem claims in line with the
@@ -466,9 +486,9 @@ export function createBandRuntime({
     function odTick(s) {
         s.odTimer = null;
         if (session !== s || state.phase !== 'playing' || !s.od) return;
-        const hw = win.highway;
         const t = displayTime(s);
-        const chartT = hw && typeof hw.getTime === 'function' ? safe(() => hw.getTime()) : undefined;
+        const chartT = chartNow();
+        if (Number.isFinite(chartT)) s.lastChartT = chartT;
         const od = s.od;
         safe(() => od.tick(Number.isFinite(chartT) ? chartT : t, t));
         syncDrumsThresholds(s);
@@ -966,17 +986,20 @@ export function createBandRuntime({
     // Deploys (R18): drums star power on the band's drum canvas, karaoke's overdrive.
     // A dropped-out part's deploy is recorded but ignored by the ledger (R12), so its
     // greyed lane gets no OVERDRIVE! callout.
+    // The deploy is recorded even with no overdrive session (its data failed to
+    // build), so fail mode can still rescue; only the callout needs s.od.
+    // Karaoke runs outside the band too: its deploy counts only with a vocals part.
     handlers['drums:sp-activate'] = (e) => {
         const s = scoring();
         const d = e && e.detail;
-        if (!s || !s.od || !d || !d.canvas || d.canvas !== bandDrumCanvas(s)) return;
-        if (!s.failed.has('drums')) s.od.deployed('drums');
+        if (!s || !d || !d.canvas || d.canvas !== bandDrumCanvas(s)) return;
+        if (s.od && !s.failed.has('drums')) { const od = s.od; safe(() => od.deployed('drums')); }
         record(s, { part: 'drums', t: displayTime(s), kind: 'deploy' });
     };
     handlers['karaoke:od-activate'] = () => {
         const s = scoring();
-        if (!s || !s.od) return;
-        if (!s.failed.has('vocals')) s.od.deployed('vocals');
+        if (!s || !s.scoreParts.includes('vocals')) return;
+        if (s.od && !s.failed.has('vocals')) { const od = s.od; safe(() => od.deployed('vocals')); }
         record(s, { part: 'vocals', t: displayTime(s), kind: 'deploy' });
     };
     handlers['karaoke:phrase'] = (e) => {
@@ -1026,8 +1049,27 @@ export function createBandRuntime({
         record(s, { ...entry, factor: od ? od.factorFor('guitar', entry.t) : 1 });
         if (od && !failed) safe(() => od.guitarJudgment(entry.noteTime, entry.kind === 'hit', entry.t));
     }
+    // Whether the song is paused (fix 6). Core's own transport flag,
+    // window.feedBack.isPlaying, when it's a boolean: core's transport sets it in
+    // both the browser (<audio>) and the desktop native engine paths. Otherwise
+    // the chart clock: paused when highway.getTime() hasn't advanced since the
+    // previous check (an onset or an OD tick).
+    function songPaused(s) {
+        const chartT = chartNow();
+        const stalled = Number.isFinite(chartT) && Number.isFinite(s.lastChartT) && !(chartT > s.lastChartT);
+        if (Number.isFinite(chartT)) s.lastChartT = chartT;
+        if (typeof fb.isPlaying === 'boolean') return !fb.isPlaying;
+        return stalled;
+    }
+
+    function chartNow() {
+        const hw = win.highway;
+        return hw && typeof hw.getTime === 'function' ? safe(() => hw.getTime()) : undefined;
+    }
+
     // Noodle it up (R9, R10): an onset that deploys is the guitar's deploy entry.
-    // A dropped-out guitar never spends its bar (its deploy would be ignored, R12).
+    // A dropped-out guitar never spends its bar (its deploy would be ignored, R12),
+    // and a paused song never deploys (fix 6).
     function onOnset(e) {
         const s = scoring();
         const d = e && e.detail;
@@ -1035,6 +1077,7 @@ export function createBandRuntime({
         seenOnset.add(d);
         const t = onsetTime(d);
         if (!s.od || s.failed.has('guitar') || !Number.isFinite(t)) return;
+        if (songPaused(s)) return;
         const od = s.od;
         if (safe(() => od.onset(t, displayTime(s))) === true) record(s, { part: 'guitar', t: displayTime(s), kind: 'deploy' });
     }
