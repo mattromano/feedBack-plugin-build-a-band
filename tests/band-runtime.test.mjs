@@ -3,7 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createBandRuntime } from '../src/band-runtime.js';
-import { makeDoc, flush } from './fake-dom.mjs';
+import { readFileSync } from 'node:fs';
+import { createBandScreen } from '../src/band-screen.js';
+import { makeDoc, parseHtml, flush } from './fake-dom.mjs';
 import { starsFromScore } from '../src/yarg-rules.js';
 
 function memStorage(init = {}) {
@@ -51,7 +53,8 @@ const DRUM_ITEM = { filename: 'Beat.sloppak', arrangements: [{ index: 0, name: '
 
 function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 },
     karaoke = true, karaokePitch = true, mountFails = false, drumLane = true,
-    stems = ['guitar', 'drums'], caps = true, pauseStatus = 'paused', overlayApi = true, confirmDialog = true } = {}) {
+    stems = ['guitar', 'drums'], caps = true, pauseStatus = 'paused', overlayApi = true, confirmDialog = true,
+    onShowBandScreen } = {}) {
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
@@ -271,7 +274,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     const timers = manualTimers();
     const fetchJson = async (url) => { calls.fetch.push(url); return settings; };
     const makeRuntime = () => createBandRuntime({ win, doc, mountStage, loadPrefs: () => prefsWith(), storage, fetchJson,
-        setTimer: timers.setTimer, clearTimer: timers.clearTimer });
+        setTimer: timers.setTimer, clearTimer: timers.clearTimer, onShowBandScreen });
     const rt = makeRuntime();
 
     // Core's playSong side: loading, then the song becomes current and is ready.
@@ -3351,4 +3354,139 @@ test('a held M opens the sidebar once', () => {
     keyWin('KeyM', 'm', { repeat: false });
     assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'a fresh press closes it');
     rt.dispose();
+});
+
+// ── Plan 8 Task 5: Next song goes straight to the library pick ──────────
+// ITEM's session driven to the results; the next test step calls rt.next().
+function toResults(env) {
+    env.rt.startSession({ song: ITEM, prefs: prefsWith() });
+    env.loadSong(ITEM);
+    env.fb.emit('song:ended', {});
+    assert.equal(env.rt.phase(), 'ending');
+}
+
+test('Next song calls onShowBandScreen once, after the band screen is shown', () => {
+    const order = [];
+    const env = setup({ onShowBandScreen: () => order.push('hook') });
+    env.win.showScreen = (id) => { env.calls.showScreen.push(id); order.push(`show:${id}`); };
+    toResults(env);
+    env.rt.next();
+    assert.deepEqual(order, ['show:plugin-build_a_band', 'hook']);
+    env.rt.next();
+    assert.equal(order.length, 2, 'idle: a second next() does nothing');
+    env.rt.dispose();
+});
+
+test('the band screen already active still calls onShowBandScreen', () => {
+    let n = 0;
+    const env = setup({ onShowBandScreen: () => { n++; } });
+    env.bandScreen.classList.add('active');
+    toResults(env);
+    env.rt.next();
+    assert.deepEqual(env.calls.showScreen, [], 'no second showScreen');
+    assert.equal(n, 1);
+    env.rt.dispose();
+});
+
+test('Play again and leaving never call onShowBandScreen', async () => {
+    let n = 0;
+    const env = setup({ onShowBandScreen: () => { n++; } });
+    toResults(env);
+    env.rt.again();
+    await flush();
+    assert.equal(n, 0, 'Play again');
+    env.rt.dispose();
+    const e2 = setup({ onShowBandScreen: () => { n++; } });
+    toResults(e2);
+    e2.fb.emit('screen:changing', { id: 'v3-songs' });
+    e2.fb.emit('song:loading', { filename: 'other.psarc' });
+    assert.equal(n, 0, 'leaving');
+    e2.rt.dispose();
+});
+
+test("a throwing onShowBandScreen doesn't break Next song", () => {
+    const env = setup({ onShowBandScreen: () => { throw new Error('boom'); } });
+    toResults(env);
+    env.rt.next();
+    assert.equal(env.rt.phase(), 'idle');
+    assert.equal(env.calls.release, 1, 'releaseExit still ran');
+    assert.deepEqual(env.calls.showScreen, ['plugin-build_a_band']);
+    env.rt.dispose();
+});
+
+// The real end-of-song sequence with the real band screen: results, Next song
+// (the runtime's ending.next), teardown, core switching screens, the band
+// screen showing. Core's showScreen emits screen:changing at once and
+// screen:changed after an await; the pick must open exactly once, whatever
+// hide() runs on the way.
+const BAND_HTML = readFileSync(new URL('../screen.html', import.meta.url), 'utf8');
+
+function endToEnd({ activeAtNext = false, extraHides = [] } = {}) {
+    const picks = [];
+    let bs = null;
+    const env = setup({ onShowBandScreen: () => { if (bs && typeof bs.nextSong === 'function') bs.nextSong(); } });
+    parseHtml(BAND_HTML, env.doc, env.bandScreen);
+    if (activeAtNext) env.bandScreen.classList.add('active');
+    bs = createBandScreen({
+        root: env.doc.getElementById('build-a-band-root'), doc: env.doc, win: env.win,
+        storage: env.storage, loadPrefs: () => prefsWith(), savePrefs: (p) => p, deviceMemo: {},
+        fetchJson: async () => ({ songs: [] }), onGo: () => false,
+        library: { pick(opts) { picks.push(opts); return new Promise(() => {}); } },
+    });
+    // Core's showScreen: changing now, .active flips, changed after an await.
+    env.win.showScreen = (id) => {
+        env.calls.showScreen.push(id);
+        env.fb.emit('screen:changing', { id, from: 'player' });
+        env.bandScreen.classList.add('active');
+        return Promise.resolve().then(() => env.fb.emit('screen:changed', { id, from: 'player' }));
+    };
+    return { ...env, bs, picks };
+}
+
+test('end of song: Next song opens the library pick once, though hide() runs on the way', async () => {
+    const t = endToEnd();
+    toResults(t);
+    // Core's exit and the teardown leave other screens' changing events first.
+    t.fb.emit('screen:changing', { id: 'player', from: 'v3-songs' });
+    t.rt.next();
+    assert.equal(t.bs.view(), 'confirm');
+    assert.equal(t.picks.length, 0, 'waits for the band screen to show');
+    // A late leaving event for the player before the band screen's own changed.
+    t.fb.emit('screen:changed', { id: 'player', from: 'v3-songs' });
+    await flush();
+    await flush();
+    assert.equal(t.picks.length, 1, 'opened exactly once');
+    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    await flush();
+    assert.equal(t.picks.length, 1, 'a repeated show does not reopen it');
+    t.bs.dispose();
+    t.rt.dispose();
+});
+
+test('end of song: the band screen already visible opens the pick once, now', async () => {
+    const t = endToEnd({ activeAtNext: true });
+    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'v3-songs' });
+    assert.equal(t.bs.isVisible(), true);
+    toResults(t);
+    t.rt.next();
+    assert.equal(t.picks.length, 1);
+    await flush();
+    await flush();
+    assert.equal(t.picks.length, 1, 'the later screen:changed does not reopen it');
+    t.bs.dispose();
+    t.rt.dispose();
+});
+
+test('end of song: leaving to another screen before the band screen shows drops the pick', async () => {
+    const t = endToEnd();
+    toResults(t);
+    t.win.showScreen = (id) => { t.calls.showScreen.push(id); };
+    t.rt.next();
+    t.fb.emit('screen:changing', { id: 'v3-settings', from: 'player' });
+    t.bandScreen.classList.add('active');
+    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'v3-settings' });
+    await flush();
+    assert.equal(t.picks.length, 0);
+    t.bs.dispose();
+    t.rt.dispose();
 });

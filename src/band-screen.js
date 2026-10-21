@@ -547,7 +547,11 @@ export function createBandScreen({
 
     function hide() {
         visible = false;
-        pendingPick = false; // a Next song pick is only for the very next show
+        // A Next song pick is only for the very next show, so leaving drops it. But
+        // Next song's own screen switch emits events for other screens while the
+        // band screen is already (or still) active: only a hide that finds the band
+        // screen inactive means the user really went elsewhere.
+        if (!isActive()) pendingPick = false;
         showGen++;
         stopLights();
     }

@@ -94,7 +94,9 @@ function withoutVocals(prefs) {
     return { ...prefs, parts: { ...prefs.parts, vocals: { ...vocals, on: false } } };
 }
 
-// createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer, deviceMemo })
+// createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer, deviceMemo, onShowBandScreen })
+//   onShowBandScreen: optional; called after Next song returns to the band screen
+//   (never for Play again or leaving), so the band screen can open its song pick.
 //   deviceMemo: the inputs last handed to note_detect / drums (devices.js),
 //   shared with the band screen so a Go doesn't re-apply a device just picked.
 //   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase(),
@@ -107,7 +109,7 @@ function withoutVocals(prefs) {
 // back to idle, when playSong throws or rejects.
 export function createBandRuntime({
     win, doc, mountStage, loadPrefs, storage = win.localStorage, fetchJson,
-    setTimer = win.setTimeout, clearTimer = win.clearTimeout, deviceMemo = {},
+    setTimer = win.setTimeout, clearTimer = win.clearTimeout, deviceMemo = {}, onShowBandScreen,
 }) {
     const fb = win.feedBack;
     const getJson = fetchJson || ((url) => win.fetch(url).then((r) => r.json()));
@@ -1203,8 +1205,10 @@ export function createBandRuntime({
         },
         showBandScreen() {
             const el = doc.getElementById(BAND_SCREEN);
-            if (el && el.classList.contains('active')) return;
-            if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN));
+            if (!(el && el.classList.contains('active')) && typeof win.showScreen === 'function') {
+                safe(() => win.showScreen(BAND_SCREEN));
+            }
+            safe(() => onShowBandScreen && onShowBandScreen());
         },
         // Play again: teardown left the plugins' displays hidden, so the
         // replayed session takes them over (no flash of their own HUDs).

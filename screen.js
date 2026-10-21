@@ -20,7 +20,13 @@ function init() {
     // Inputs already handed to note_detect / drums, shared by the band screen
     // (device picks) and the runtime (Go), so neither re-applies the other's.
     const deviceMemo = {};
-    const runtime = createBandRuntime({ win: window, doc: document, mountStage, loadPrefs, deviceMemo });
+    const runtime = createBandRuntime({ win: window, doc: document, mountStage, loadPrefs, deviceMemo,
+        // Next song: the band screen opens the library pick (nextSong picks now or on its next show).
+        onShowBandScreen: () => {
+            const bs = window.__buildABandScreen;
+            if (bs && typeof bs.nextSong === 'function') bs.nextSong();
+        },
+    });
     window.__buildABandRuntime = runtime;
 
     const prevScreen = window.__buildABandScreen;
