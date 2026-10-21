@@ -75,7 +75,8 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         on: (ev, fn) => bus.addEventListener(ev, fn),
         off: (ev, fn) => bus.removeEventListener(ev, fn),
         emit: (ev, detail) => bus.dispatchEvent(new CustomEvent(ev, { detail })),
-        setReturnScreen: (id) => calls.setReturnScreen.push(id),
+        _nextReturnScreen: null,
+        setReturnScreen: (id) => { calls.setReturnScreen.push(id); fb._nextReturnScreen = id; },
         holdAutoExit: () => { calls.hold++; return () => { calls.release++; }; },
     };
     let ssActive = false;
@@ -269,16 +270,157 @@ test('mastery falls back to /api/settings when the slider is missing', async () 
     rt.dispose();
 });
 
-test('splitscreen coming up ends the session; a name change does not', () => {
-    const { rt, fb, mounts, loadSong, setSplit } = setup();
+// Splitscreen's real start/stop shape: start() flips active and announces
+// panels-changed while still _starting, so stop() then only defers (persists
+// 'false' and stops once start finishes, without another event).
+function fakeSplitscreen(env) {
+    const ss = { active: false, starting: false, stopAfterStart: false, starts: 0, stops: 0 };
+    ss.isActive = () => ss.active;
+    ss.stop = () => {
+        ss.stops++;
+        if (ss.starting) { env.storage.setItem('splitscreenActive', 'false'); ss.stopAfterStart = true; return; }
+        if (!ss.active) return;
+        env.storage.setItem('splitscreenActive', 'false');
+        ss.active = false;
+    };
+    ss.start = () => {
+        ss.starts++;
+        ss.starting = true;
+        ss.active = true;
+        env.fb.emit('splitscreen:panels-changed', {});
+        ss.starting = false;
+        if (ss.stopAfterStart) { ss.stopAfterStart = false; ss.active = false; }
+    };
+    env.win.slopsmithSplitscreen = ss;
+    return ss;
+}
+
+test('a saved splitscreen pref does not auto-start splitscreen on the band song', () => {
+    const env = setup({ storageInit: { splitscreenActive: 'true' } });
+    const { rt, win, storage, mounts, loadSong } = env;
+    const ss = fakeSplitscreen(env);
+    const play = win.playSong;
+    let wasActive = null;
+    // Splitscreen's playSong wrapper reads the stored pref, then starts on ready.
+    win.playSong = (f, a) => { wasActive = storage.getItem('splitscreenActive') === 'true'; return play(f, a); };
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM);
-    fb.emit('splitscreen:panels-changed', {});
+    if (wasActive) ss.start();
+    assert.equal(wasActive, false);
+    assert.equal(ss.starts, 0);
+    assert.equal(rt.phase(), 'playing');
+    assert.equal(mounts.length, 1);
     assert.equal(mounts[0].unmounted, 0);
-    setSplit(true);
-    fb.emit('splitscreen:panels-changed', {});
-    assert.equal(mounts[0].unmounted, 1);
+    assert.equal(rt.isMounted(), true);
+    env.fb.emit('song:stop', {});
+    assert.equal(storage.getItem('splitscreenActive'), 'true', 'the saved pref comes back at teardown');
+    rt.dispose();
+});
+
+test('Always Split starting after mount is stopped and the stage remounted', () => {
+    const env = setup();
+    const { rt, mounts, loadSong, timers } = env;
+    const ss = fakeSplitscreen(env);
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    ss.start();
+    assert.equal(ss.stops, 1);
+    assert.equal(rt.phase(), 'playing');
+    assert.equal(mounts[0].unmounted, 1, 'the stage yields while splitscreen is up');
+    timers.fire(50);
+    assert.equal(mounts.length, 2, 'remounted once splitscreen is down');
+    assert.equal(mounts[1].unmounted, 0);
+    assert.equal(rt.isMounted(), true);
+    env.fb.emit('splitscreen:panels-changed', {}); // inactive: a rename etc.
+    assert.equal(rt.phase(), 'playing');
+    rt.dispose();
+});
+
+test('splitscreen starting before song:ready delays the mount until it is down', () => {
+    const env = setup();
+    const { rt, mounts, loadSong, timers } = env;
+    const ss = fakeSplitscreen(env);
+    // Stays up a while: active until the stop is honoured on a later tick.
+    ss.stop = () => { ss.stops++; };
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    ss.active = true;
+    env.fb.emit('splitscreen:panels-changed', {});
+    env.fb.emit('splitscreen:panels-changed', {}); // same start, announced again
+    assert.equal(ss.stops, 1);
+    loadSong(ITEM);
+    assert.equal(mounts.length, 0, 'no mount while splitscreen is up');
+    timers.fire(50);
+    assert.equal(mounts.length, 0);
+    ss.active = false;
+    timers.fire(50);
+    assert.equal(mounts.length, 1);
+    assert.equal(rt.phase(), 'playing');
+    rt.dispose();
+});
+
+test('splitscreen starting a third time in one session ends it with a warning', () => {
+    const env = setup();
+    const { rt, mounts, loadSong, timers } = env;
+    const ss = fakeSplitscreen(env);
+    const warns = [];
+    const warn = console.warn;
+    console.warn = (...a) => warns.push(a.join(' '));
+    try {
+        rt.startSession({ song: ITEM, prefs: prefsWith() });
+        loadSong(ITEM);
+        ss.start(); timers.fire(50);
+        ss.start(); timers.fire(50);
+        assert.equal(rt.phase(), 'playing');
+        assert.equal(mounts.length, 3);
+        ss.start();
+    } finally {
+        console.warn = warn;
+    }
     assert.equal(rt.phase(), 'idle');
+    assert.ok(mounts.every((m) => m.unmounted === 1));
+    assert.ok(warns.some((w) => /splitscreen keeps starting/.test(w)));
+    rt.dispose();
+});
+
+test('mastery is restored from the slider as it is at teardown', () => {
+    const { rt, fb, doc, calls, loadSong } = setup({ slider: '80' });
+    rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: { difficulty: 'easy' } }) });
+    loadSong(ITEM);
+    doc.getElementById('mastery-slider').value = '40'; // the user moved it mid-song
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.setMastery, [0.25, 0.4]);
+    rt.dispose();
+});
+
+test('a missing master_difficulty restores full mastery', async () => {
+    const { rt, fb, calls, loadSong } = setup({ slider: null, settings: {} });
+    rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: { difficulty: 'hard' } }) });
+    await flush();
+    loadSong(ITEM);
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.setMastery, [0.75, 1]);
+    rt.dispose();
+});
+
+test('a late playSong rejection does not tear down a playing session', async () => {
+    const { rt, win, fb, calls, mounts, loadSong } = setup();
+    let reject;
+    win.playSong = (f, i) => { calls.playSong.push([f, i]); return new Promise((_, r) => { reject = r; }); };
+    const started = rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    reject(new Error('late failure'));
+    await assert.rejects(started, /late failure/);
+    assert.equal(rt.phase(), 'playing');
+    assert.equal(mounts[0].unmounted, 0);
+    assert.equal(fb._nextReturnScreen, 'plugin-build_a_band', 'a started song keeps its origin');
+    rt.dispose();
+});
+
+test('a failed Go clears the return screen it set', async () => {
+    const { rt, win, fb } = setup();
+    win.playSong = () => Promise.reject(new Error('load failed'));
+    await assert.rejects(rt.startSession({ song: ITEM, prefs: prefsWith() }), /load failed/);
+    assert.equal(fb._nextReturnScreen, null);
     rt.dispose();
 });
 

@@ -17,6 +17,11 @@ const EXIT_WAIT_MS = 1500;
 const TOAST_MS = 4000;
 const ONE_DIFFICULTY = 'This chart has one difficulty';
 const STEM_SOUND_MODES = ['rockband', 'kit'];
+// Splitscreen coming up mid-session is stopped and the stage remounted once it
+// is down; the third time in one session ends the session (no stop/start loop).
+const SPLIT_MAX_STARTS = 3;
+const SPLIT_POLL_MS = 50;
+const SPLIT_POLL_MAX = 100;
 
 function safe(fn) {
     try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
@@ -55,6 +60,11 @@ export function createBandRuntime({
     let release = null;
     let exitTimer = null;
 
+    function sliderMastery() {
+        const slider = doc.getElementById('mastery-slider');
+        return slider ? masteryFromPct(parseFloat(slider.value)) : null;
+    }
+
     function newSession(item, prefs) {
         return {
             item, prefs,
@@ -67,6 +77,11 @@ export function createBandRuntime({
             toastTimer: null,
             canvasListener: false,
             played: null,
+            setReturn: false,
+            splitStarts: 0,
+            splitWaiting: false,
+            splitTimer: null,
+            splitPolls: 0,
         };
     }
 
@@ -93,6 +108,47 @@ export function createBandRuntime({
         }, TOAST_MS);
     }
 
+    const splitscreen = () => win.slopsmithSplitscreen;
+    function splitActive() {
+        const ss = splitscreen();
+        try { return !!(ss && typeof ss.isActive === 'function' && ss.isActive()); } catch (_) { return false; }
+    }
+
+    // Splitscreen came up during the session (its playSong wrapper on Always
+    // Split, or a start after mount). Stop it, as the user toggling it off
+    // would, and remount the stage once it is down: stopSplitScreen restores
+    // #highway, so the stage's sizing and drum lane must be re-established.
+    function onSplitStarted(s) {
+        if (s.splitWaiting) return; // the same start announcing again
+        s.splitStarts++;
+        if (s.splitStarts >= SPLIT_MAX_STARTS) {
+            console.warn('[build-a-band] splitscreen keeps starting; ending the band session');
+            dispatch({ type: 'left' });
+            return;
+        }
+        s.splitWaiting = true;
+        s.splitPolls = 0;
+        unmountStage();
+        const ss = splitscreen();
+        safe(() => ss && typeof ss.stop === 'function' && ss.stop());
+        waitForSplitDown(s);
+    }
+
+    function waitForSplitDown(s) {
+        if (session !== s || !s.splitWaiting) return;
+        if (!splitActive()) {
+            s.splitWaiting = false;
+            if (state.phase === 'playing') EFFECTS.mount(s);
+            return;
+        }
+        if (++s.splitPolls > SPLIT_POLL_MAX) {
+            console.warn('[build-a-band] splitscreen did not stop; ending the band session');
+            dispatch({ type: 'left' });
+            return;
+        }
+        s.splitTimer = setTimer(() => { s.splitTimer = null; waitForSplitDown(s); }, SPLIT_POLL_MS);
+    }
+
     // Drums-only: the main highway shows the drum chart, so the band drum
     // difficulty goes on #highway and follows a canvas replacement.
     function onCanvasReplaced(e) {
@@ -113,14 +169,14 @@ export function createBandRuntime({
     const EFFECTS = {
         saveRestorePoint(s) {
             s.savedSplit = safe(() => storage.getItem(SPLIT_KEY)) ?? null;
-            const slider = doc.getElementById('mastery-slider');
-            s.savedMastery = slider ? masteryFromPct(parseFloat(slider.value)) : null;
+            s.savedMastery = sliderMastery();
             if (s.savedMastery !== null) return;
             Promise.resolve()
                 .then(() => getJson('/api/settings'))
                 .then((settings) => {
                     if (s.savedMastery !== null) return;
-                    s.savedMastery = masteryFromPct(settings && settings.master_difficulty);
+                    // No saved master_difficulty means core's default, full mastery.
+                    s.savedMastery = masteryFromPct(settings && settings.master_difficulty) ?? 1;
                 })
                 .catch(() => { /* keep null: nothing to restore */ });
         },
@@ -134,6 +190,10 @@ export function createBandRuntime({
                 arrIndex = i >= 0 ? i : undefined;
             }
             safe(() => fb.setReturnScreen(BAND_SCREEN));
+            s.setReturn = true;
+            // Splitscreen's playSong wrapper auto-starts from this pref; a band
+            // session runs without it (teardown puts the saved value back).
+            safe(() => storage.setItem(SPLIT_KEY, 'false'));
             try {
                 s.played = Promise.resolve(win.playSong(encodeURIComponent(s.item.filename), arrIndex));
             } catch (e) {
@@ -144,6 +204,7 @@ export function createBandRuntime({
             const player = doc.getElementById('player');
             const song = fb.currentSong;
             if (!player || !song || planStage(song, s.prefs.parts).lanes.length === 0) return;
+            if (s.splitWaiting) return; // mounted once splitscreen is down
             unmountStage();
             try {
                 stage = mountStage({ player, song, prefs: s.prefs });
@@ -193,8 +254,10 @@ export function createBandRuntime({
                     for (const c of canvases) safe(() => api.clearDifficulty(c));
                 }
             }
-            // 3. The user's mastery, unpersisted (window.setMastery would save it).
-            if (s.savedMastery !== null) safe(() => win.highway.setMastery(s.savedMastery));
+            // 3. The user's mastery, unpersisted (window.setMastery would save
+            // it): the slider's current value, else the one saved at Go.
+            const mastery = sliderMastery() ?? s.savedMastery;
+            if (mastery !== null) safe(() => win.highway.setMastery(mastery));
             // 4. The user's splitscreen pref, without starting splitscreen.
             safe(() => {
                 if (s.savedSplit === null) storage.removeItem(SPLIT_KEY);
@@ -204,6 +267,8 @@ export function createBandRuntime({
             if (s.toastTimer !== null) { clearTimer(s.toastTimer); s.toastTimer = null; }
             if (s.toast) { safe(() => s.toast.remove()); s.toast = null; }
             if (s.canvasListener) { safe(() => fb.off('highway:canvas-replaced', onCanvasReplaced)); s.canvasListener = false; }
+            if (s.splitTimer !== null) { clearTimer(s.splitTimer); s.splitTimer = null; }
+            s.splitWaiting = false;
             s.drumCanvas = null;
         },
         releaseExit() {
@@ -240,8 +305,13 @@ export function createBandRuntime({
         dispatch({ type: 'go', filename: song.filename });
         if (state.phase === 'idle') return false;
         return (s.played || Promise.resolve()).then(() => true, (e) => {
-            // The song never started: undo this session, then report it.
-            if (session === s) dispatch({ type: 'left' });
+            // The song never started: undo this session, then report it. A
+            // late rejection never tears down a session that is playing.
+            if (session === s && state.phase === 'armed') {
+                dispatch({ type: 'left' });
+                // Our one-shot return override must not steer the next song.
+                if (s.setReturn && fb._nextReturnScreen === BAND_SCREEN) fb._nextReturnScreen = null;
+            }
             throw e;
         });
     }
@@ -260,13 +330,13 @@ export function createBandRuntime({
             const d = (e && e.detail) || {};
             if (d.from === 'player' && d.id !== 'player') dispatch({ type: 'left' });
         },
-        // Band mode and splitscreen never run at once: splitscreen coming up
-        // ends the session.
+        // Band mode and splitscreen never run at once. Armed or playing,
+        // splitscreen is stopped and the stage comes back; while ending, the
+        // session simply ends.
         'splitscreen:panels-changed': () => {
-            const ss = win.slopsmithSplitscreen;
-            let on = false;
-            try { on = !!(ss && typeof ss.isActive === 'function' && ss.isActive()); } catch (_) { /* ignore */ }
-            if (on) dispatch({ type: 'left' });
+            if (!splitActive()) return;
+            if (session && (state.phase === 'armed' || state.phase === 'playing')) onSplitStarted(session);
+            else dispatch({ type: 'left' });
         },
     };
     for (const [ev, fn] of Object.entries(handlers)) fb.on(ev, fn);

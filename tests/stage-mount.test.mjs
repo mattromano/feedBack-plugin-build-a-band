@@ -177,7 +177,12 @@ test('divider drag resizes live and saves the clamped split on release', () => {
 test('drum lane failure falls back to guitar only and still tears down', () => {
     const { win, player, log, deps } = setup();
     deps.drumRenderer = () => { throw new Error('boom'); };
-    const s = mountStage({ player, song: withDrums, prefs: {}, deps });
+    const errors = [];
+    const error = console.error;
+    console.error = (...a) => errors.push(a);
+    let s;
+    try { s = mountStage({ player, song: withDrums, prefs: {}, deps }); } finally { console.error = error; }
+    assert.match(String(errors[0] && errors[0][0]), /drum lane failed to start/);
     const root = player.children[0];
     assert.equal(root.children.length, 1);
     assert.equal(root.children[0].style.width, '100%');
