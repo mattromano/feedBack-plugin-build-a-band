@@ -302,3 +302,56 @@ test('destroy removes everything', () => {
     hud.destroy();
     hud.update(snap({ score: 5 }));
 });
+
+const CTL_PREFS = {
+    ...PREFS,
+    controllers: [
+        { id: 'ctl1', key: 'a#1', name: 'Guitar Hero', part: 'bass', difficulty: 'expert', on: true, sourceKind: 'auto' },
+        { id: 'ctl2', key: 'a#2', name: 'Xbox pad', part: 'guitar', difficulty: 'easy', on: true, sourceKind: 'chart' },
+    ],
+};
+
+function ctlSetup() {
+    const doc = makeDoc();
+    const player = makeEl('div', doc);
+    doc.body.appendChild(player);
+    const slots = { guitar: makeEl('div', doc), ctl1: makeEl('div', doc), ctl2: makeEl('div', doc) };
+    for (const s of Object.values(slots)) player.appendChild(s);
+    const stage = { laneSlot: (p) => slots[p] || null, stripSlot: null };
+    const parts = ['guitar', 'ctl1', 'ctl2'];
+    const hud = createBandHud({ doc, player, stage, parts, prefs: CTL_PREFS, song: {}, oneLevel: false });
+    return { player, slots, hud, partHud: (p) => player.querySelector(`.bab-part-hud[data-part="${p}"]`) };
+}
+
+test('controller lane tag and colour', () => {
+    const { partHud, slots, hud } = ctlSetup();
+    assert.equal(partHud('ctl1').parentNode, slots.ctl1);
+    assert.equal(partHud('ctl1').querySelector('.bab-tag').textContent, 'Bass (5-Fret) · Expert · Guitar Hero · AUTO CHART');
+    assert.equal(partHud('ctl2').querySelector('.bab-tag').textContent, 'Lead (5-Fret) · Easy · Xbox pad');
+    assert.equal(partHud('ctl1').style.props['--bab-c'], '#2ecc40');
+    assert.ok(partHud('ctl1').querySelector('.bab-tag').innerHTML.includes('<svg'), 'tag icon');
+    hud.destroy();
+});
+
+test('controller streak callouts every 50', () => {
+    const { partHud, hud } = ctlSetup();
+    const s = (n) => ({
+        score: 0, bonus: 0, bandMultiplier: 1, stars: null,
+        parts: { guitar: part(), ctl1: part({ streak: n }), ctl2: part() },
+    });
+    hud.update(s(49));
+    hud.update(s(50));
+    assert.equal(partHud('ctl1').querySelector('.bab-callout').textContent, '50 NOTE STREAK!');
+    assert.equal(partHud('ctl2').querySelector('.bab-callout').textContent, '');
+    hud.destroy();
+});
+
+test('fixed-part labels unchanged', () => {
+    const { partHud, hud } = ctlSetup();
+    assert.equal(partHud('guitar').querySelector('.bab-tag').textContent, 'Lead · Hard');
+    hud.destroy();
+    const v = setup({ parts: ['guitar', 'drums', 'vocals'], strip: true });
+    assert.equal(v.partHud('vocals').querySelector('.bab-tag').textContent, 'Vocals · Medium');
+    assert.equal(v.partHud('drums').querySelector('.bab-tag').textContent, 'Drums · Expert');
+    v.hud.destroy();
+});

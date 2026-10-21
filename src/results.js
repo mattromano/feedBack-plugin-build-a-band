@@ -1,10 +1,12 @@
 // What the results screen shows (plan 4 R17): pure, from a band score snapshot. No DOM.
 import { PART_TYPES } from './parts.js';
+import { playerStyle } from './players.js';
 import { starDisplay } from './stars.js';
 import { formatScore, difficultyLabel } from './hud-model.js';
+import { isControllerId } from './controller-model.js';
 
 const NAMES = { drums: 'Drums', vocals: 'Vocals' };
-const FALLBACK_AWARDS = { guitar: 'Riff keeper', drums: 'Held it down', vocals: 'Big voice' };
+const FALLBACK_AWARDS = { guitar: 'Riff keeper', drums: 'Held it down', vocals: 'Big voice', five_fret: 'Held the frets' };
 // Flawless and Most accurate both need this many judgments.
 const ACCURACY_MIN_JUDGED = 20;
 const STREAK_AWARD_MIN = 10;
@@ -21,7 +23,7 @@ function notesHit(p) {
     return formatScore(num(p.hits)) + ' / ' + formatScore(num(p.hits) + num(p.misses));
 }
 
-function baseStats(id, p, drumsExtra) {
+function baseStats(id, p, drumsExtra, sourceKind) {
     const score = ['Score', formatScore(num(p.score))];
     if (id === 'vocals') {
         // Ratings are karaoke's own strings, ordered by mean phrase accuracy (R3, R17).
@@ -33,6 +35,10 @@ function baseStats(id, p, drumsExtra) {
             ['Best run', formatScore(num(p.bestStreak)) + ' phrases']];
     }
     const stats = [score, ['Best streak', formatScore(num(p.bestStreak))], ['Notes hit', notesHit(p)]];
+    if (isControllerId(id)) {
+        stats.push(['Overstrums', formatScore(num(p.overhits))]);
+        if (sourceKind === 'auto') stats.push(['Chart', 'Auto']);
+    }
     if (id === 'guitar') stats.push(['Band bonus', formatScore(num(p.bonus))]);
     if (id === 'drums') {
         stats.push(['Overhits', formatScore(num(p.overhits))]);
@@ -44,8 +50,8 @@ function baseStats(id, p, drumsExtra) {
 }
 
 // Plan 5 R22: every card adds its overdrive and drop-out counts, only when above 0.
-function partStats(id, p, drumsExtra) {
-    const stats = baseStats(id, p, drumsExtra);
+function partStats(id, p, drumsExtra, sourceKind) {
+    const stats = baseStats(id, p, drumsExtra, sourceKind);
     if (num(p.deploys) > 0) stats.push(['Overdrives', formatScore(num(p.deploys))]);
     if (num(p.drops) > 0) stats.push(['Dropped out', formatScore(num(p.drops))]);
     return stats;
@@ -77,14 +83,14 @@ export function pickAwards(cards) {
         if (c === streakCard) return 'Best streak in the band';
         if (c === accurateCard) return 'Most accurate';
         // A part that scored nothing gets no award (plan 7 R17).
-        return num(c.score) > 0 ? FALLBACK_AWARDS[c.part] || '' : '';
+        return num(c.score) > 0 ? FALLBACK_AWARDS[c.kind || c.part] || '' : '';
     });
 }
 
 // resultsModel({ snapshot, prefs, song: {title, artist}, oneLevel, drumsExtra: {phrasesHit, phrasesTotal} | null,
-//   failed }) -> { stars, starDisplay, score, title, subtitle, failed, heading, cards }
+//   failed, controllerInfo: { [id]: { sourceKind } } }) -> { stars, starDisplay, score, title, subtitle, failed, heading, cards }
 // One card per part that is on and in the snapshot, in part order (guitar, drums, vocals).
-export function resultsModel({ snapshot, prefs, song, oneLevel, drumsExtra, failed = false }) {
+export function resultsModel({ snapshot, prefs, song, oneLevel, drumsExtra, failed = false, controllerInfo = {} }) {
     const snap = snapshot || {};
     const parts = snap.parts || {};
     const pp = (prefs && prefs.parts) || {};
@@ -108,6 +114,31 @@ export function resultsModel({ snapshot, prefs, song, oneLevel, drumsExtra, fail
             score: num(p.score),
             bestStreak: num(p.bestStreak),
             stats: partStats(id, p, drumsExtra),
+            award: '',
+        });
+    }
+    // Then one card per controller player in the snapshot, in join order.
+    const info = controllerInfo || {};
+    for (const c of Array.isArray(prefs && prefs.controllers) ? prefs.controllers : []) {
+        const p = c && parts[c.id];
+        if (!p || c.on === false) continue;
+        const sourceKind = info[c.id] && info[c.id].sourceKind;
+        const style = playerStyle(c.id, prefs);
+        const accuracy = Number.isFinite(p.accuracy) ? p.accuracy : null;
+        cards.push({
+            part: c.id,
+            kind: c.playsAs || 'five_fret',
+            name: style.name,
+            subname: typeof c.name === 'string' ? c.name : '',
+            difficulty: difficultyLabel(c.difficulty),
+            color: style.color,
+            icon: style.icon,
+            accuracy,
+            accuracyPct: accuracy === null ? null : Math.round(accuracy * 100),
+            judged: num(p.hits) + num(p.misses),
+            score: num(p.score),
+            bestStreak: num(p.bestStreak),
+            stats: partStats(c.id, p, drumsExtra, sourceKind),
             award: '',
         });
     }

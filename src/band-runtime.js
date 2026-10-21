@@ -465,6 +465,20 @@ export function createBandRuntime({
         return { phrasesHit: sp.phrasesHit, phrasesTotal: sp.phrasesTotal };
     }
 
+    // Each controller player's chart source for the results, read from its lane's
+    // engine state now (the lane may be gone: the prefs' value is the fallback).
+    function controllerInfo(s) {
+        const info = {};
+        for (const id of s.scoreParts) {
+            if (!isControllerId(id)) continue;
+            const st = safe(() => lanes.laneState(s, id));
+            const c = s.prefs.controllers.find((x) => x.id === id);
+            const sourceKind = (st && typeof st.sourceKind === 'string' && st.sourceKind) || (c && c.sourceKind) || '';
+            info[id] = { sourceKind };
+        }
+        return info;
+    }
+
     // The session whose judgments score: playing, with a ledger.
     function scoring() {
         const s = session;
@@ -1232,6 +1246,7 @@ export function createBandRuntime({
                 oneLevel: !(s.readyDetail && s.readyDetail.hasPhraseData),
                 drumsExtra: drumsStarPower(s),
                 failed: s.bandFailed,
+                controllerInfo: controllerInfo(s),
             }));
             s.results = model ? safe(() => showResultsScreen({
                 doc, win, host: player, model,

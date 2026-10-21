@@ -626,6 +626,7 @@ body.bab-band-song #count-in-overlay { display: none !important; }
 #player .bab-card-icon { display: inline-flex; color: var(--bab-c, #8d8ca0); }
 #player .bab-card-name { margin: 0; flex: 1; min-width: 0; font: 700 17px/1.2 'Unbounded', system-ui, sans-serif; }
 #player .bab-card-diff { font-size: 12px; color: #8d8ca0; }
+#player .bab-card-sub { margin: -4px 0 6px; font-size: 12px; color: #8d8ca0; overflow-wrap: anywhere; }
 #player .bab-card-pct {
     font: 800 40px/1.1 'Unbounded', system-ui, sans-serif; color: var(--bab-c, #ecebf2);
     font-variant-numeric: tabular-nums;

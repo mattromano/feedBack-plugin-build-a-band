@@ -164,3 +164,63 @@ test('band failed heading and overdrive stats', () => {
         snapshot: { ...SNAPSHOT, parts: { vocals: part({ deploys: 1, drops: 3 }) } } }).cards[0];
     assert.deepEqual(v.stats.slice(-2), [['Overdrives', '1'], ['Dropped out', '3']]);
 });
+
+const CTLS = [
+    { id: 'ctl1', key: 'a#1', name: 'Guitar Hero', part: 'bass', difficulty: 'expert', on: true },
+    { id: 'ctl2', key: 'a#2', name: 'Xbox pad', part: 'bass', difficulty: 'easy', on: true },
+];
+const ctlPrefs = (on) => ({ ...prefsOn(on), controllers: CTLS });
+const ctlSnap = (extra = {}) => ({
+    ...SNAPSHOT,
+    parts: {
+        ...SNAPSHOT.parts,
+        ctl1: part({ score: 5000, hits: 40, misses: 10, overhits: 4, bestStreak: 12, accuracy: 0.8, deploys: 2, drops: 1 }),
+        ctl2: part({ score: 3000, hits: 20, misses: 20, overhits: 0, bestStreak: 5, accuracy: 0.5 }),
+        ...extra,
+    },
+});
+
+test('a card per controller, named by part, with overstrums and Auto chart', () => {
+    const m = resultsModel({
+        snapshot: ctlSnap(), prefs: ctlPrefs(), song: {}, oneLevel: false, drumsExtra: null,
+        controllerInfo: { ctl1: { sourceKind: 'auto' }, ctl2: { sourceKind: 'chart' } },
+    });
+    assert.deepEqual(m.cards.map((c) => c.part), ['guitar', 'drums', 'vocals', 'ctl1', 'ctl2']);
+    const c = m.cards[3];
+    assert.equal(c.kind, 'five_fret');
+    assert.equal(c.name, 'Bass (5-Fret)');
+    assert.equal(c.subname, 'Guitar Hero');
+    assert.equal(c.difficulty, 'Expert');
+    assert.equal(c.color, '#2ecc40');
+    assert.equal(c.icon, 'gamepad-2');
+    assert.equal(c.accuracyPct, 80);
+    assert.deepEqual(c.stats, [
+        ['Score', '5,000'], ['Best streak', '12'], ['Notes hit', '40 / 50'], ['Overstrums', '4'],
+        ['Chart', 'Auto'], ['Overdrives', '2'], ['Dropped out', '1'],
+    ]);
+    assert.ok(!m.cards[4].stats.some(([l]) => l === 'Chart'), 'a real chart shows no Chart row');
+    assert.equal(m.cards[0].subname, undefined, 'fixed cards are unchanged');
+});
+
+test('two players on one part get two cards', () => {
+    const m = resultsModel({ snapshot: ctlSnap(), prefs: ctlPrefs({}), song: {}, oneLevel: false, drumsExtra: null });
+    assert.deepEqual(m.cards.map((c) => c.part), ['ctl1', 'ctl2']);
+    assert.deepEqual(m.cards.map((c) => c.name), ['Bass (5-Fret)', 'Bass (5-Fret)']);
+    assert.deepEqual(m.cards.map((c) => c.subname), ['Guitar Hero', 'Xbox pad']);
+});
+
+test('a controller missing from the snapshot, or sitting out, has no card', () => {
+    const snap = ctlSnap();
+    delete snap.parts.ctl2;
+    const m = resultsModel({ snapshot: snap, prefs: ctlPrefs({}), song: {}, oneLevel: false, drumsExtra: null });
+    assert.deepEqual(m.cards.map((c) => c.part), ['ctl1']);
+});
+
+test('awards weigh controller cards', () => {
+    const m = resultsModel({ snapshot: ctlSnap(), prefs: ctlPrefs({}), song: {}, oneLevel: false, drumsExtra: null });
+    // ctl1 has the unique best streak (12 >= 10) and ctl2 has no accuracy award: fallback by kind.
+    assert.equal(m.cards[0].award, 'Best streak in the band');
+    assert.equal(m.cards[1].award, 'Held the frets');
+    const awards = pickAwards([{ part: 'ctl1', kind: 'five_fret', score: 10, bestStreak: 0, judged: 0, accuracy: null }]);
+    assert.deepEqual(awards, ['Held the frets']);
+});

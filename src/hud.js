@@ -4,25 +4,15 @@
 // Every element is built once and cached; update() runs on ledger changes only and
 // writes a value to the DOM only when it changed. No DOM queries after build.
 import { icon } from './icons.js';
-import { getPart } from './parts.js';
+import { playerStyle } from './players.js';
 import { CROWD } from './band-score.js';
 import { starDisplay } from './stars.js';
 import {
-    formatScore, difficultyLabel, crowdZone, glowLevel, GLOW_MIN, streakCallout, bandMultiplierText,
+    formatScore, crowdZone, glowLevel, GLOW_MIN, streakCallout, bandMultiplierText,
 } from './hud-model.js';
 
 const STAR_COUNT = 5;
 const ZONES = ['red', 'yellow', 'green'];
-
-function partLabel(part, prefs, oneLevel) {
-    const p = (prefs && prefs.parts && prefs.parts[part]) || {};
-    if (part === 'guitar') {
-        const name = typeof p.arrangement === 'string' && p.arrangement ? p.arrangement : 'Lead';
-        return [name, oneLevel ? 'One level' : difficultyLabel(p.difficulty)].filter(Boolean).join(' · ');
-    }
-    const type = getPart(part);
-    return [type ? type.label : part, difficultyLabel(p.difficulty)].filter(Boolean).join(' · ');
-}
 
 // Restarts a CSS animation class. The forced reflow only happens on a callout or a
 // broken streak, never per frame.
@@ -82,16 +72,17 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
     for (const part of Array.isArray(parts) ? parts : []) {
         const host = part === 'vocals' ? stage && stage.stripSlot : stage && stage.laneSlot && stage.laneSlot(part);
         if (!host || huds.has(part)) continue;
-        const type = getPart(part);
+        const ctl = ((prefs && prefs.controllers) || []).find((c) => c && c.id === part);
+        const style = playerStyle(part, prefs, { oneLevel, sourceKind: ctl && ctl.sourceKind });
         const root = el('div', 'bab-part-hud');
         root.setAttribute('data-part', part);
-        if (type) root.style.setProperty('--bab-c', type.color);
+        if (style.color) root.style.setProperty('--bab-c', style.color);
         const glow = el('div', 'bab-glow', root);
         glow.style.setProperty('--bab-glow', String(GLOW_MIN));
         const lane = el('div', 'bab-lanehud', root);
         const tag = el('span', 'bab-tag', lane);
-        tag.innerHTML = icon(type ? type.icon : '', { size: 14 });
-        el('span', 'bab-tag-text', tag).textContent = partLabel(part, prefs, oneLevel);
+        tag.innerHTML = icon(style.icon, { size: 14 });
+        el('span', 'bab-tag-text', tag).textContent = style.tag;
         const od = el('span', 'bab-od', lane);
         const odFill = el('i', '', od);
         odFill.style.width = '0%';
@@ -107,7 +98,7 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
         const callout = el('div', 'bab-callout', root);
         callout.setAttribute('role', 'status');
         host.appendChild(root);
-        huds.set(part, { root, host, glow, odFill, mult, marker, callout });
+        huds.set(part, { calloutKind: style.calloutKind, root, host, glow, odFill, mult, marker, callout });
     }
 
     let prev = null;
@@ -145,7 +136,7 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
             if (!before || silent) continue;
             const was = Number.isFinite(before.streak) ? before.streak : 0;
             if (was > 0 && streak === 0) restart(h.glow, 'bab-glow-miss');
-            const line = streakCallout(part, was, streak);
+            const line = streakCallout(h.calloutKind, was, streak);
             if (line) show(h, line);
         }
         prev = {};

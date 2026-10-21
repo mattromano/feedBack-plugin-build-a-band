@@ -26,15 +26,17 @@ export function glowLevel(streak) {
     return Math.round((GLOW_MIN + (1 - GLOW_MIN) * Math.min(1, s / GLOW_STREAK)) * 1000) / 1000;
 }
 
-// R7: guitar and drums call out every 50 notes, vocals every 5 phrases. Fires when
+// R7: guitar, drums and controller lanes call out every 50 notes, vocals every 5 phrases. Fires when
 // the streak rises into a new multiple (so a jump past one still calls it out).
 const CALLOUTS = {
     guitar: { every: 50, unit: 'NOTE' },
     drums: { every: 50, unit: 'NOTE' },
+    five_fret: { every: 50, unit: 'NOTE' },
     vocals: { every: 5, unit: 'PHRASE' },
 };
-export function streakCallout(part, prev, next) {
-    const rule = Object.prototype.hasOwnProperty.call(CALLOUTS, part) ? CALLOUTS[part] : null;
+// `calloutKind` is the player's kind (playerStyle's calloutKind): guitar, drums, vocals or five_fret.
+export function streakCallout(calloutKind, prev, next) {
+    const rule = Object.prototype.hasOwnProperty.call(CALLOUTS, calloutKind) ? CALLOUTS[calloutKind] : null;
     if (!rule || !Number.isFinite(next) || !(next > 0)) return null;
     const before = Number.isFinite(prev) ? Math.max(0, prev) : 0;
     if (!(next > before)) return null;
