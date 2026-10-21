@@ -709,7 +709,78 @@ No new code. Silent unless Matt says otherwise.
 
 ## Review
 
-(Filled in after the build.)
+### Part A review (2026-10-21)
+
+**Branch:** `feature/drums-gamepad` in drums, pushed. Base `b685572` (`feature/build-a-band-stage`), head `faea382`. Not merged; the coordinating session merges.
+
+| Task | Commits | Tests |
+|---|---|---|
+| A0 | worktree `.worktrees/drums-gamepad` | baseline 188/188 |
+| A1 | `502e434` profiles, mapper and setup recorder | 198/198 |
+| A2 | `86547e7` gamepad source | 213/213 |
+| A3 | `b9d3833`, then fix `5989543` | 246/246 |
+| A4 | `48ecd05`, then fix `f7a2f50` | 266/266 |
+| Final | `faea382` CHANGELOG and NOTICE | 266/266 |
+
+**How it was reviewed:**
+- Each task had a spec and quality review. A3 and A4 each needed one fix round, followed by a scoped re-review.
+- The final whole-branch review found no Critical or Important issues. Its verdict was "ready to merge".
+
+**Task A5:**
+- Step 1, the catch-up merge, was a no-op: `origin/feature/build-a-band-stage` had nothing new.
+- Steps 2–5 were **not run**. Installing into `/Applications/feedback.app` was blocked by the session's permission classifier. The app was not running, the installed drums plugin is 4.5.3, and the installed core has `gamepad-input`.
+- Steps 2–5 are left to the coordinator's combined real-app check. Step 4 (playing with sound) stays Matt's.
+
+**Rulings made while building:**
+- **PR-1.** A pinned source is wanted from `setController` until `clearController` or destroy, even when paused, loading, or with the Controllers card open. Only the free source follows `_padWant` and the card. This applies builder ruling 1 to A3 and A4.
+- **PR-2.** `createSource` gains `onBackHold`. It fires for button 8 held for `BACK_HOLD_MS = 1000`, on standard-mapped pads in pinned mode only.
+  - A pinned lane's Start emits `drums:band-pause`; its Back hold emits `drums:band-back-hold`, with `{ controllerKey, canvas }`.
+  - The free source's Start calls a guarded `togglePlay`.
+  - Kits that aren't standard-mapped have no Back hold, the same as Plan 3's five-fret rule.
+- **PR-3.** `listControllers()` and `createMapper()` return Promises and load `gamepad.js` lazily.
+- **PR-4.** `_shouldRecordBestOnly` takes `controllerPinned`, so only band-pinned lanes skip bests. Free-pad runs in the normal player still record bests.
+- **PR-5.** The setup recorder ignores a second new control in the same poll (ruling 13), as well as controls that are already bound.
+- **A3-R1 (deviates from Decisions 3, 5 and 8 as written).**
+  - The free controller drives pro cymbals and offset on unpinned views only when no band pin exists **and** it has made a pad hit in the current chart ("engaged").
+  - Engagement survives a pause. A new chart, unplugging while parked, or destroy clears it.
+  - Why: as written, an idle Xbox pad claimed during play turned pro cymbals off for a MIDI drummer. A parked pad also leaked into band MIDI lanes and later songs.
+  - Cost: the engaging hit on a pro chart rebuilds the session. A late first hit (playhead already past its note) can be lost, at most one note per song.
+- **A3-R2.**
+  - The pin follows `highway:canvas-replaced`.
+  - A paused pinned lane ignores pad hits and Y: no sound, no score.
+  - Controller numbering matches core.
+  - Small guards were added.
+- **A4.** The card claims every free pad while it is open, so core's gamepad menu navigation is suspended on the Drums screen. Five-fret's controls screen does the same.
+
+**Deferred minors** (the final review said none block a merge):
+- `setOffset` doesn't clamp. Every writer and reader clamps.
+- Engagement edge cases:
+  - a split panel's new chart clears engagement;
+  - a pad disconnected while claimed and then parked stays engaged until the next chart;
+  - setting a pin doesn't clear engagement.
+- The name number comes from a local count until core's `list().controllerKey` (Plan 3 Task 1) lands.
+- No unit tests for the 3D status message and the 3D Apply button (no THREE in node).
+- Some source test gaps: the pinned key mismatch, and no `onChange` on its own claim.
+
+**For Part B** (from the final review):
+- Release Build-a-Band's own join claim, so the pinned source can claim on core's `release` event.
+- Always call `clearController`, and clear `setInputTarget`, when a band session ends. A leftover pin disables the normal player's free source.
+- Start toggles: every press emits `band-pause`.
+- Dispatch handlers by `detail.canvas`, which follows a canvas replace.
+- Take `kind` from `listControllers()`.
+- Feature-check `gamepadInput` before offering drums controllers.
+
+**The real-app check must cover:**
+- With an Xbox pad: `claimCount` is 1 while playing and 0 when paused or after leaving, and the menus work after a pause.
+- LT and RT give one hit per pull.
+- With no controller: MIDI and keyboard play as before, `claimCount` stays 0, and nothing is logged per frame.
+- 3D view: the status message shows. Apply writes `drums.gamepad.settings.v1`, and `drums:judgment.inputOffsetMs` uses that value.
+- Controllers card:
+  - it loads and claims as `drums.controls`;
+  - its lights are silent;
+  - the offset input keeps focus when a pad is plugged in;
+  - Back goes to `returnTo` once;
+  - the free source reclaims after you leave the card.
 
 ## Builder-check rulings (binding; they override the tasks and decisions above where they differ)
 
