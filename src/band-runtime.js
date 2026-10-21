@@ -187,8 +187,10 @@ export function createBandRuntime({
             // Overdrive (plan 5): the per-song session and its tick.
             od: null,
             odTimer: null,
-            // Chart time at the last OD tick, and whether it stood still since the
-            // tick before (the paused fallback).
+            // Without overdrive, a tick that only tracks the chart stall.
+            stallTimer: null,
+            // Chart time at the last OD or stall tick, and whether it stood still
+            // since the tick before (the paused fallback).
             lastChartT: null,
             chartStalled: false,
             // Drums stars over the full chart (M6, R20): the largest thresholds seen.
@@ -523,16 +525,31 @@ export function createBandRuntime({
             readVocals: () => (s.karaoke && typeof s.karaoke.getOverdrive === 'function' ? s.karaoke.getOverdrive() : null),
         })) || null;
         if (s.od) s.odTimer = setTimer(() => odTick(s), OD_TICK_MS);
+        else if (s.score && s.stallTimer === null) s.stallTimer = setTimer(() => stallTick(s), OD_TICK_MS);
+    }
+
+    // Paused fallback: the chart clock stood still between the last two ticks.
+    // Returns the chart time read.
+    function trackStall(s) {
+        const chartT = chartNow();
+        s.chartStalled = Number.isFinite(chartT) && Number.isFinite(s.lastChartT) && !(chartT > s.lastChartT);
+        if (Number.isFinite(chartT)) s.lastChartT = chartT;
+        return chartT;
+    }
+
+    // With no overdrive session, only the stall is tracked (songPaused).
+    function stallTick(s) {
+        s.stallTimer = null;
+        if (session !== s || state.phase !== 'playing') return;
+        trackStall(s);
+        s.stallTimer = setTimer(() => stallTick(s), OD_TICK_MS);
     }
 
     function odTick(s) {
         s.odTimer = null;
         if (session !== s || state.phase !== 'playing' || !s.od) return;
         const t = displayTime(s);
-        const chartT = chartNow();
-        // Paused fallback: the chart clock stood still between the last two ticks.
-        s.chartStalled = Number.isFinite(chartT) && Number.isFinite(s.lastChartT) && !(chartT > s.lastChartT);
-        if (Number.isFinite(chartT)) s.lastChartT = chartT;
+        const chartT = trackStall(s);
         const od = s.od;
         safe(() => od.tick(Number.isFinite(chartT) ? chartT : t, t));
         syncDrumsThresholds(s);
@@ -916,6 +933,7 @@ export function createBandRuntime({
             s.splitWaiting = false;
             // 6. Overdrive.
             if (s.odTimer !== null) { clearTimer(s.odTimer); s.odTimer = null; }
+            if (s.stallTimer !== null) { clearTimer(s.stallTimer); s.stallTimer = null; }
             s.od = null;
             s.drumCanvas = null;
             // 7. Every stem the band muted comes back, and its claim is released.
@@ -1107,7 +1125,7 @@ export function createBandRuntime({
     }
     // Whether the song is paused (fix 6): core's transport flag says so
     // (window.feedBack.isPlaying === false), or the chart clock stood still
-    // between the last two OD ticks. The flag alone isn't enough: an ordinary
+    // between the last two OD or stall ticks. The flag alone isn't enough: an ordinary
     // browser-audio pause can leave it true (core transport.js togglePlay).
     function songPaused(s) {
         return fb.isPlaying === false || s.chartStalled;

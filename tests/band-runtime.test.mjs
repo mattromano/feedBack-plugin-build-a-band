@@ -2788,3 +2788,30 @@ test('Rock Band: the band-failed ending keeps the drums out until teardown', asy
     await flush();
     assert.equal(calls.caps.length, total, 'dispose sends nothing more');
 });
+
+// Fix 4 (T4 M2): without overdrive, a stall tick still tracks the paused chart.
+test('without overdrive, a stalled chart still ignores a paused overhit', async (t) => {
+    t.mock.method(console, 'warn', () => {});   // createOverdriveSession's throw is logged
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls, timers } = env;
+    env.chart.beats = new Proxy([], { get() { throw new Error('bad beats'); } });
+    rt.startSession({ song: STEM_ITEM, prefs: rb() });
+    loadSong(STEM_ITEM);
+    assert.equal(rt.overdrive(), null, 'no overdrive session');
+    const lane = mounts[0].drumCanvas;
+    fb.isPlaying = true;
+    env.chart.t = 5;
+    timers.fire(100);
+    timers.fire(100);
+    fb.emit('drums:overhit', { canvas: lane });
+    await flush();
+    assert.deepEqual(soundCommand(calls, 'mute'), [], 'a stalled chart: the overhit is ignored');
+    assert.equal(rt.drumSound().muted, false);
+    env.chart.t = 6;
+    timers.fire(100);
+    fb.emit('drums:overhit', { canvas: lane });
+    await flush();
+    assert.equal(soundCommand(calls, 'mute').length, 1, 'the chart moves again: the overhit mutes');
+    rt.dispose();
+    assert.ok(!timers.delays().includes(100), 'no stall tick left after teardown');
+});
