@@ -107,7 +107,7 @@ test('setSong stores lastSong + recentSongs, renders chips and greys what the so
     assert.equal(prefs().lastSong.filename, holiday.filename);
     assert.equal(prefs().recentSongs[0].title, 'Holiday');
     assert.equal(root.querySelector('.bab-title').textContent, 'Holiday');
-    assert.equal(root.querySelectorAll('.bab-chip').length, 4);
+    assert.equal(root.querySelectorAll('.bab-chip').length, 5);
     assert.ok(col('vocals').classList.contains('bab-unavailable'));
     assert.equal(col('vocals').querySelector('.bab-note').textContent, 'No vocal pitch for this song');
     assert.ok(part('vocals').classList.contains('bab-unavailable'));
@@ -825,7 +825,7 @@ test('Choose a song asks core with the band chips', () => {
     assert.equal(o.confirmLabel, 'Use this song');
     assert.equal(o.backLabel, 'Back to the band');
     assert.equal(o.selected, null);
-    assert.deepEqual(o.filters.map((f) => f.id), ['playable', 'drumStem', 'drums', 'vocals', 'guitar']);
+    assert.deepEqual(o.filters.map((f) => f.id), ['playable', 'drumStem', 'drums', 'vocals', 'guitar', 'fiveFret', 'fiveFretReal']);
     const playable = o.filters[0];
     assert.equal(playable.on, true);
     assert.equal(playable.params.has_drums, '1');
@@ -865,7 +865,7 @@ test('a picked song lands on Confirm, re-resolved', async () => {
     assert.equal(prefs().pickFilters.drumStem, true);
     assert.ok(urls.includes('/api/library?q=Holiday&size=30'));
     assert.equal(bs.getSong(), holiday, 'the full row replaces the grouped one');
-    assert.equal(root.querySelectorAll('.bab-chip').length, 4);
+    assert.equal(root.querySelectorAll('.bab-chip').length, 5);
     bs.dispose();
 });
 
