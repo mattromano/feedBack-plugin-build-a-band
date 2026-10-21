@@ -11,6 +11,12 @@ import { applyDevices } from './devices.js';
 import { planStage } from './stage.js';
 import { PART_TYPES, getPart, hasChart, songFacts } from './parts.js';
 import { karaokeApi, armVocals, startVocals, stopVocals } from './vocals.js';
+import { createBandScore } from './band-score.js';
+import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals } from './part-events.js';
+import { guitarStarThresholds } from './stars.js';
+import { createBandHud } from './hud.js';
+import { createToastStack } from './toasts.js';
+import { createCountInOverlay } from './count-in-overlay.js';
 
 const BAND_SCREEN = 'plugin-build_a_band';
 const SPLIT_KEY = 'splitscreenActive';
@@ -26,6 +32,10 @@ const STEM_SOUND_MODES = ['rockband', 'kit'];
 const SPLIT_MAX_STARTS = 3;
 const SPLIT_POLL_MS = 50;
 const SPLIT_POLL_MAX = 100;
+// A backward song:seek further than this rewinds the band score (plan 4 R2).
+const REWIND_MIN_S = 0.05;
+const BAND_SONG_CLASS = 'bab-band-song';
+const DRUM_JUDGMENTS = ['hit', 'miss', 'overhit'];
 
 function safe(fn) {
     try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
@@ -41,6 +51,9 @@ function sessionPrefs(prefs, item) {
 }
 
 const isOn = (prefs, id) => !!(prefs && prefs.parts && prefs.parts[id] && prefs.parts[id].on);
+// The parts the band score counts: only the ones playing (an absent part would
+// pin the band multiplier at x1).
+const playingParts = (prefs) => PART_TYPES.map((p) => p.id).filter((id) => isOn(prefs, id));
 
 // The parts this session plays, decided once at Go: a part plays only when it
 // is on AND the song has its chart (the band screen's rule for greying a
@@ -66,7 +79,8 @@ function withoutVocals(prefs) {
 // createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer, deviceMemo })
 //   deviceMemo: the inputs last handed to note_detect / drums (devices.js),
 //   shared with the band screen so a Go doesn't re-apply a device just picked.
-//   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase() }
+//   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase(),
+//        snapshot(): the current session's band score snapshot, or null }
 // startSession returns false when it refuses (a session is running, no song);
 // otherwise a promise of core's playSong that rejects, after the session went
 // back to idle, when playSong throws or rejects.
@@ -86,18 +100,27 @@ export function createBandRuntime({
     let stage = null;
     let release = null;
     let exitTimer = null;
+    // One toast stack per runtime, over the player (R18).
+    const toasts = createToastStack({
+        doc, getHost: () => doc.getElementById('player'), setTimer, clearTimer, ttlMs: TOAST_MS,
+    });
+    // note_detect hands each judgment to window twice (its own dispatch, then
+    // the same detail bubbling from its instance root): count each once.
+    const seenGuitar = new WeakSet();
 
     function sliderMastery() {
         const slider = doc.getElementById('mastery-slider');
         return slider ? masteryFromPct(parseFloat(slider.value)) : null;
     }
 
-    function newSession(item, prefs) {
+    function newSession(item, prefs, goPrefs) {
         const guitarOn = isOn(prefs, 'guitar');
         const drumsOnly = !guitarOn && isOn(prefs, 'drums');
         const drumIndex = drumsOnly ? drumArrIndex(item.arrangements, { hasDrumTab: songFacts(item).hasDrumTab }) : -1;
         return {
             item, prefs,
+            // The prefs Go was given (Play again replays with them).
+            goPrefs,
             // The guitar part's arrangement, with the Lead fallback.
             guitarIndex: guitarOn ? getPart('guitar').chartFrom(item, prefs.parts.guitar) : undefined,
             drumsOnly,
@@ -110,8 +133,6 @@ export function createBandRuntime({
             savedMastery: null,
             readyDetail: null,
             drumCanvas: null,
-            toast: null,
-            toastTimer: null,
             canvasListener: false,
             played: null,
             setReturn: false,
@@ -125,6 +146,19 @@ export function createBandRuntime({
             // Hear-myself off couldn't be applied: vocals sits out (no mic).
             vocalsFailed: false,
             karaoke: null,
+            // The band score ledger, kept past teardown for the results.
+            score: null,
+            scoreParts: [],
+            guitarThresholds: null,
+            hud: null,
+            countIn: null,
+            lastT: 0,
+            // Karaoke's totals from its latest karaoke:reset, until a phrase
+            // supersedes them: re-applied after a rewind replays the ledger.
+            vocalsReset: undefined,
+            // The plugins' own score displays this session hid.
+            hidden: { nd: false, drums: new Set(), scorecard: false },
+            countInOverride: false,
         };
     }
 
@@ -136,19 +170,131 @@ export function createBandRuntime({
     }
 
     function showToast(s, text) {
+        void s;
+        safe(() => toasts.show(text));
+    }
+
+    // The canvas the band's drums play on: the stage's drum lane, else (drums
+    // alone) #highway, following canvas replacement.
+    function bandDrumCanvas(s) {
+        if (!isOn(s.prefs, 'drums')) return null;
+        const lane = stage && typeof stage.getDrumCanvas === 'function' ? safe(() => stage.getDrumCanvas()) : null;
+        if (lane) return lane;
+        if (!s.drumsOnly) return null;
+        return s.drumCanvas || doc.getElementById('highway');
+    }
+
+    function hideDrumHud(s, canvas) {
+        const api = win.feedBackDrums;
+        if (!canvas || s.hidden.drums.has(canvas) || !api || typeof api.setScoreHudHidden !== 'function') return;
+        s.hidden.drums.add(canvas);
+        safe(() => api.setScoreHudHidden(canvas, true));
+    }
+
+    function listenCanvas(s) {
+        if (s.canvasListener) return;
+        fb.on('highway:canvas-replaced', onCanvasReplaced);
+        s.canvasListener = true;
+    }
+
+    // The band HUD replaces the plugins' own score displays (R13). Each switch
+    // set here is undone at teardown.
+    function applyHides(s) {
+        if (isOn(s.prefs, 'guitar') && !s.hidden.nd) {
+            const nd = win.noteDetect;
+            if (nd && typeof nd.setScoreHudHidden === 'function') {
+                s.hidden.nd = true;
+                safe(() => nd.setScoreHudHidden(true));
+            }
+        }
+        if (isOn(s.prefs, 'drums')) {
+            hideDrumHud(s, bandDrumCanvas(s));
+            listenCanvas(s);
+        }
+        const sc = win.feedBackScorecard;
+        if (!s.hidden.scorecard && sc && typeof sc.setHudHidden === 'function') {
+            s.hidden.scorecard = true;
+            safe(() => sc.setHudHidden(true));
+        }
+    }
+
+    function undoHides(s) {
+        if (s.hidden.nd) {
+            s.hidden.nd = false;
+            const nd = win.noteDetect;
+            if (nd && typeof nd.setScoreHudHidden === 'function') safe(() => nd.setScoreHudHidden(false));
+        }
+        const drums = win.feedBackDrums;
+        for (const canvas of s.hidden.drums) {
+            if (drums && typeof drums.setScoreHudHidden === 'function') safe(() => drums.setScoreHudHidden(canvas, false));
+        }
+        s.hidden.drums.clear();
+        if (s.hidden.scorecard) {
+            s.hidden.scorecard = false;
+            const sc = win.feedBackScorecard;
+            if (sc && typeof sc.setHudHidden === 'function') safe(() => sc.setHudHidden(false));
+        }
+    }
+
+    // The band HUD on the current stage (a remount re-hosts it).
+    function mountHud(s, song) {
+        if (s.hud) { const old = s.hud; s.hud = null; safe(() => old.destroy()); }
         const player = doc.getElementById('player');
-        if (!player) return;
-        const el = doc.createElement('div');
-        el.className = 'bab-toast';
-        el.setAttribute('role', 'status');
-        el.textContent = text;
-        player.appendChild(el);
-        s.toast = el;
-        s.toastTimer = setTimer(() => {
-            s.toastTimer = null;
-            safe(() => el.remove());
-            if (s.toast === el) s.toast = null;
-        }, TOAST_MS);
+        if (!player || !stage || !s.score) return;
+        const cur = song || fb.currentSong || {};
+        s.hud = safe(() => createBandHud({
+            doc, player, stage, parts: s.scoreParts, prefs: s.prefs,
+            song: { title: cur.title || s.item.title, artist: cur.artist || s.item.artist },
+            oneLevel: !(s.readyDetail && s.readyDetail.hasPhraseData),
+        })) || null;
+        if (s.hud) safe(() => s.hud.update(s.score.snapshot()));
+    }
+
+    function startCountIn(s) {
+        safe(() => doc.body.classList.add(BAND_SONG_CLASS));
+        if (s.countIn) return;
+        s.countIn = safe(() => createCountInOverlay({
+            doc, bus: fb, getHost: () => doc.getElementById('player'), setTimer, clearTimer,
+        })) || null;
+    }
+
+    // Vocals that couldn't start leave the band, while nothing has been judged
+    // yet, so they never pin the band multiplier at x1.
+    function dropVocals(s) {
+        if (!s.score || !s.scoreParts.includes('vocals')) return;
+        const snap = s.score.snapshot();
+        if (Object.values(snap.parts).some((p) => p.hits + p.misses + p.overhits > 0)) return;
+        s.scoreParts = s.scoreParts.filter((id) => id !== 'vocals');
+        s.score = createBandScore({ parts: s.scoreParts });
+        if (s.guitarThresholds) s.score.setStarThresholds('guitar', s.guitarThresholds);
+        if (s.hud) mountHud(s);
+    }
+
+    // The session whose judgments score: playing, with a ledger.
+    function scoring() {
+        const s = session;
+        return s && state.phase === 'playing' && s.score ? s : null;
+    }
+
+    // The song's display time for a ledger entry, always finite.
+    function displayTime(s) {
+        let t = typeof fb.getDisplayTime === 'function' ? safe(() => fb.getDisplayTime()) : undefined;
+        if (!Number.isFinite(t)) {
+            const audio = doc.getElementById('audio');
+            t = audio ? Number(audio.currentTime) : undefined;
+        }
+        if (Number.isFinite(t)) s.lastT = t;
+        return s.lastT;
+    }
+
+    function refreshHud(s, silent) {
+        if (s.hud) safe(() => s.hud.update(s.score.snapshot(), silent ? { silent: true } : undefined));
+    }
+
+    function record(s, entry) {
+        if (!entry) return;
+        s.score.record(entry);
+        refreshHud(s, false);
     }
 
     const splitscreen = () => win.slopsmithSplitscreen;
@@ -203,9 +349,14 @@ export function createBandRuntime({
         const d = e && e.detail;
         const s = session;
         if (!s || state.phase !== 'playing' || !d || !d.newCanvas) return;
+        // A drum canvas this session hid was replaced: hide the clone too
+        // (the stage's lane canvas, or #highway for drums alone).
+        if (d.oldCanvas && s.hidden.drums.has(d.oldCanvas)) hideDrumHud(s, d.newCanvas);
+        if (!s.drumsOnly) return;
         if (d.oldCanvas && s.drumCanvas && d.oldCanvas !== s.drumCanvas) return;
         s.drumCanvas = d.newCanvas;
         pinDrumDifficulty(s);
+        if (s.hidden.drums.size) hideDrumHud(s, s.drumCanvas);
     }
 
     // Core's Auto view and its instrument takeover both leave a guitar part on
@@ -287,6 +438,15 @@ export function createBandRuntime({
             // Splitscreen's playSong wrapper auto-starts from this pref; a band
             // session runs without it (teardown puts the saved value back).
             safe(() => storage.setItem(SPLIT_KEY, 'false'));
+            // Band songs always count in (R15), drawn by the band's overlay
+            // over core's own, which body.bab-band-song hides. Core counts in
+            // from its song:ready listener, before the stage mounts, so both
+            // are up from the start of the session.
+            if (typeof fb.setSongCountInOverride === 'function') {
+                safe(() => fb.setSongCountInOverride(true));
+                s.countInOverride = true;
+            }
+            startCountIn(s);
             try {
                 s.played = Promise.resolve(win.playSong(encodeURIComponent(s.item.filename), arrIndex));
             } catch (e) {
@@ -316,6 +476,15 @@ export function createBandRuntime({
                 const api = s.karaoke;
                 safe(() => api.mountStrip(stage.stripSlot));
             }
+            // The band score survives a remount; the HUD moves to the new slots.
+            if (!s.score) {
+                s.scoreParts = playingParts(s.prefs);
+                s.score = createBandScore({ parts: s.scoreParts });
+                if (s.guitarThresholds) s.score.setStarThresholds('guitar', s.guitarThresholds);
+            }
+            mountHud(s, song);
+            startCountIn(s);
+            applyHides(s);
         },
         applyDifficulties(s) {
             if (isOn(s.prefs, 'guitar')) {
@@ -324,13 +493,23 @@ export function createBandRuntime({
                 } else {
                     showToast(s, ONE_DIFFICULTY);
                 }
+                // Guitar stars: note_detect's full combo of the notes shown
+                // at the band mastery (R5), read after it is applied. A stage
+                // mounted later (splitscreen was up) picks them up from s.
+                const hw = win.highway;
+                if (hw && typeof hw.getFilteredNotes === 'function' && typeof hw.getFilteredChords === 'function') {
+                    s.guitarThresholds = safe(() => guitarStarThresholds(hw.getFilteredNotes(), hw.getFilteredChords())) || null;
+                    if (s.score) {
+                        safe(() => s.score.setStarThresholds('guitar', s.guitarThresholds));
+                        refreshHud(s, true);
+                    }
+                }
             }
             if (s.drumsOnly) {
                 showDrumView(s);
                 s.drumCanvas = doc.getElementById('highway');
                 pinDrumDifficulty(s);
-                fb.on('highway:canvas-replaced', onCanvasReplaced);
-                s.canvasListener = true;
+                listenCanvas(s);
             }
         },
         applyDevices(s) {
@@ -351,6 +530,7 @@ export function createBandRuntime({
             }).then((result) => {
                 // Karaoke refused a song the library lists with pitch: a failure.
                 if (!isCurrent()) return;
+                if (result === 'no-pitch' || result === 'mic-error') dropVocals(s);
                 if (result === 'no-pitch') {
                     showToast(s, songFacts(s.item).hasVocalPitch ? VOCALS_FAILED : NO_PITCH);
                 } else if (result === 'mic-error') {
@@ -378,6 +558,18 @@ export function createBandRuntime({
                 const api = s.karaoke;
                 safe(() => stopVocals(api));
             }
+            // 0b. The band HUD, count-in and toasts go; each plugin's own
+            // score display comes back; core's count-in pref rules again.
+            // s.score is kept for the results.
+            if (s.hud) { const hud = s.hud; s.hud = null; safe(() => hud.destroy()); }
+            if (s.countIn) { const c = s.countIn; s.countIn = null; safe(() => c.destroy()); }
+            safe(() => doc.body.classList.remove(BAND_SONG_CLASS));
+            undoHides(s);
+            if (s.countInOverride) {
+                s.countInOverride = false;
+                if (typeof fb.setSongCountInOverride === 'function') safe(() => fb.setSongCountInOverride(null));
+            }
+            safe(() => toasts.clear());
             // 1. Stage.
             unmountStage();
             // 2. Drums-only: the main highway's band difficulty.
@@ -399,9 +591,7 @@ export function createBandRuntime({
                 if (s.savedSplit === null) storage.removeItem(SPLIT_KEY);
                 else storage.setItem(SPLIT_KEY, s.savedSplit);
             });
-            // 5. Toast and the canvas-replaced listener.
-            if (s.toastTimer !== null) { clearTimer(s.toastTimer); s.toastTimer = null; }
-            if (s.toast) { safe(() => s.toast.remove()); s.toast = null; }
+            // 5. The canvas-replaced listener.
             if (s.canvasListener) { safe(() => fb.off('highway:canvas-replaced', onCanvasReplaced)); s.canvasListener = false; }
             if (s.splitTimer !== null) { clearTimer(s.splitTimer); s.splitTimer = null; }
             s.splitWaiting = false;
@@ -436,7 +626,7 @@ export function createBandRuntime({
 
     function startSession({ song, prefs } = {}) {
         if (state.phase !== 'idle' || !song || !song.filename) return false;
-        const s = newSession(song, effectivePrefs(sessionPrefs(prefs, song), song, win));
+        const s = newSession(song, effectivePrefs(sessionPrefs(prefs, song), song, win), prefs);
         session = s;
         dispatch({ type: 'go', filename: song.filename });
         if (state.phase === 'idle') return false;
@@ -475,15 +665,68 @@ export function createBandRuntime({
             else dispatch({ type: 'left' });
         },
     };
+    // Judgments into the band score (R3): each acts only while the session
+    // plays, then refreshes the HUD.
+    const drumHandler = (type) => (e) => {
+        const s = scoring();
+        if (!s) return;
+        const canvas = bandDrumCanvas(s);
+        // A canvas the stage adopted without an announcement is hidden here.
+        if (canvas && s.hidden.drums.size) hideDrumHud(s, canvas);
+        // Plan 5's overdrive factor goes on entries here, but not on drums:
+        // drums' points already include its own star-power doubling.
+        record(s, drumsEntry(type, e && e.detail, displayTime(s), canvas));
+    };
+    for (const type of DRUM_JUDGMENTS) handlers['drums:' + type] = drumHandler(type);
+    handlers['karaoke:phrase'] = (e) => {
+        const s = scoring();
+        if (!s) return;
+        const entry = vocalsEntry(e && e.detail, displayTime(s));
+        if (entry) s.vocalsReset = undefined;
+        record(s, entry);
+    };
+    handlers['karaoke:reset'] = (e) => {
+        const s = scoring();
+        if (!s) return;
+        s.vocalsReset = vocalsTotals(e && e.detail);
+        s.score.syncTotals('vocals', s.vocalsReset);
+        refreshHud(s, true);
+    };
+    // Rewind on a backward seek (R2): the ledger first, then karaoke's reset
+    // totals (karaoke may announce its reset before or after this listener).
+    handlers['song:seek'] = (e) => {
+        const s = scoring();
+        const d = (e && e.detail) || {};
+        if (!s || !Number.isFinite(d.from) || !Number.isFinite(d.to)) return;
+        if (!(d.to < d.from - REWIND_MIN_S) || d.reason === 'loop-wrap') return;
+        s.score.rewindTo(d.to);
+        s.lastT = d.to;
+        if (s.vocalsReset !== undefined) s.score.syncTotals('vocals', s.vocalsReset);
+        refreshHud(s, true);
+    };
+    function onGuitarJudgment(e) {
+        const s = scoring();
+        const d = e && e.detail;
+        if (!s || !d || typeof d !== 'object' || seenGuitar.has(d)) return;
+        seenGuitar.add(d);
+        record(s, guitarEntry(d, displayTime(s)));
+    }
+    const winHandlers = { 'notedetect:hit': onGuitarJudgment, 'notedetect:miss': onGuitarJudgment };
+
     for (const [ev, fn] of Object.entries(handlers)) fb.on(ev, fn);
+    const winEvents = typeof win.addEventListener === 'function';
+    if (winEvents) for (const [ev, fn] of Object.entries(winHandlers)) win.addEventListener(ev, fn);
 
     return {
         dispose() {
             dispatch({ type: 'left' });
             for (const [ev, fn] of Object.entries(handlers)) fb.off(ev, fn);
+            if (winEvents) for (const [ev, fn] of Object.entries(winHandlers)) safe(() => win.removeEventListener(ev, fn));
+            safe(() => toasts.clear());
         },
         isMounted: () => !!stage,
         startSession,
         phase: () => state.phase,
+        snapshot: () => (session && session.score ? session.score.snapshot() : null),
     };
 }

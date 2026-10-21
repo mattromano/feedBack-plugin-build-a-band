@@ -53,7 +53,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
-        karaoke: [], karaokeAt: [], playSongAt: [] };
+        karaoke: [], karaokeAt: [], playSongAt: [], hides: [], countIn: [], countInAt: [] };
     // Shared sequence counter: orders karaoke calls against playSong and unmount.
     let seq = 0;
     const doc = makeDoc();
@@ -82,13 +82,22 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         _nextReturnScreen: null,
         setReturnScreen: (id) => { calls.setReturnScreen.push(id); fb._nextReturnScreen = id; },
         holdAutoExit: () => { calls.hold++; return () => { calls.release++; }; },
+        setSongCountInOverride: (v) => { calls.countIn.push(v); calls.countInAt.push(++seq); },
+        getDisplayTime: () => clock.t,
     };
+    // The song's display time, moved by the tests.
+    const clock = { t: 0 };
     let ssActive = false;
     const storage = memStorage(storageInit);
     const win = {
         feedBack: fb,
         localStorage: storage,
-        highway: { setMastery: (f) => calls.setMastery.push(f) },
+        highway: {
+            setMastery: (f) => calls.setMastery.push(f),
+            // Ten single notes at the band mastery.
+            getFilteredNotes: () => Array.from({ length: 10 }, (_, i) => ({ t: i, s: 0, f: 3 })),
+            getFilteredChords: () => [],
+        },
         setMastery: () => { throw new Error('window.setMastery persists; never call it'); },
         playSong: (f, i) => { calls.playSongAt.push(++seq); calls.playSong.push([f, i]); },
         showScreen: (id) => calls.showScreen.push(id),
@@ -97,9 +106,17 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         feedBackDrums: {
             setDifficulty: (id, c) => calls.setDifficulty.push([id, c]),
             clearDifficulty: (c) => calls.clearDifficulty.push(c),
+            setScoreHudHidden: (c, v) => { calls.hides.push(['drums', c, v]); return true; },
         },
+        noteDetect: { setScoreHudHidden: (v) => { calls.hides.push(['nd', v]); return true; } },
+        feedBackScorecard: { setHudHidden: (v) => { calls.hides.push(['scorecard', v]); return true; } },
         slopsmithSplitscreen: { isActive: () => ssActive, start: () => { calls.splitStart++; }, stop() { ssActive = false; } },
     };
+    // note_detect's judgments arrive on window.
+    const winEvents = new EventTarget();
+    win.addEventListener = (t, f) => winEvents.addEventListener(t, f);
+    win.removeEventListener = (t, f) => winEvents.removeEventListener(t, f);
+    win.dispatchEvent = (e) => winEvents.dispatchEvent(e);
     // Lyrics Karaoke's v1 API, recording [name, arg] into calls.karaoke.
     if (karaoke) {
         const rec = (name, ...args) => { calls.karaoke.push([name, ...args]); calls.karaokeAt.push(++seq); };
@@ -118,9 +135,27 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         if (mountFails) throw new Error('mount failed');
         // The real stage stops splitscreen, which clears the stored pref.
         storage.setItem('splitscreenActive', 'false');
-        const s = { player: p, song, prefs, unmounted: 0, unmountedAt: null,
-            stripSlot: prefs.parts.vocals && prefs.parts.vocals.on ? doc.createElement('div') : null,
-            unmount() { this.unmounted++; this.unmountedAt = ++seq; } };
+        // The real stage's slots: a lane per playing part, a drum-lane canvas
+        // beside a guitar lane (drums alone draws on #highway), the strip.
+        const on = (id) => !!(prefs.parts[id] && prefs.parts[id].on);
+        const root = doc.createElement('div');
+        root.className = 'bab-stage-root';
+        p.appendChild(root);
+        const lanes = {};
+        for (const id of ['guitar', 'drums']) {
+            if (!on(id)) continue;
+            lanes[id] = doc.createElement('div');
+            lanes[id].className = 'bab-lane';
+            root.appendChild(lanes[id]);
+        }
+        const drumCanvas = on('guitar') && on('drums') ? doc.createElement('canvas') : null;
+        if (drumCanvas) lanes.drums.appendChild(drumCanvas);
+        const stripSlot = on('vocals') ? doc.createElement('div') : null;
+        if (stripSlot) root.appendChild(stripSlot);
+        const s = { player: p, song, prefs, unmounted: 0, unmountedAt: null, stripSlot, lanes, drumCanvas,
+            laneSlot: (id) => lanes[id] || null,
+            getDrumCanvas: () => drumCanvas,
+            unmount() { this.unmounted++; this.unmountedAt = ++seq; root.remove(); } };
         mounts.push(s);
         return s;
     };
@@ -137,7 +172,8 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         fb.emit('song:loaded', fb.currentSong);
         fb.emit('song:ready', { hasPhraseData });
     }
-    return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong,
+    const fireWin = (type, detail) => win.dispatchEvent(new CustomEvent(type, { detail }));
+    return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong, clock, fireWin,
         setSplit: (v) => { ssActive = v; } };
 }
 
@@ -817,5 +853,390 @@ test('splitscreen still up at song:ready: vocals start once the stage mounts aft
     await flush();
     assert.equal(mounts.length, 1);
     assert.deepEqual(calls.karaoke.slice(2), [['mountStrip', mounts[0].stripSlot], ['setKaraokeMode', true], ['startMic']]);
+    rt.dispose();
+});
+
+// ── Plan 4: scoring, the band HUD and the plugins' hide switches ──
+
+const scoreText = (player) => {
+    const el = player.querySelector('.bab-hud-score');
+    return el ? el.textContent : null;
+};
+const guitarHit = (extra = {}) => ({ isDefault: true, counted: true, hit: true, points: 50, multiplier: 1, streak: 1, ...extra });
+const FULL_ITEM = { ...DRUM_ITEM, filename: 'Full.sloppak', has_vocal_pitch: true };
+
+test('Go forces the song count-in, and teardown clears it', () => {
+    const { rt, fb, calls, loadSong } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    assert.deepEqual(calls.countIn, [true]);
+    assert.ok(calls.countInAt[0] < calls.playSongAt[0], 'forced before playSong');
+    loadSong(ITEM);
+    fb.emit('song:stop', {});
+    assert.deepEqual(calls.countIn, [true, null]);
+    rt.dispose();
+    assert.deepEqual(calls.countIn, [true, null], 'cleared once');
+});
+
+test("mount hides every plugin's own score display; leaving shows them again", () => {
+    const { rt, fb, doc, calls, mounts, loadSong } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    assert.ok(doc.body.classList.contains('bab-band-song'), 'set at session start, before any count-in');
+    loadSong(DRUM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    assert.ok(lane);
+    assert.deepEqual(calls.hides, [['nd', true], ['drums', lane, true], ['scorecard', true]]);
+    assert.ok(doc.body.classList.contains('bab-band-song'));
+    assert.ok(doc.getElementById('player').querySelector('.bab-hud'), 'the band HUD is up');
+    fb.emit('screen:changing', { id: 'v3-songs', from: 'player' });
+    assert.deepEqual(calls.hides.slice(3).sort(), [['drums', lane, false], ['nd', false], ['scorecard', false]].sort());
+    assert.equal(doc.body.classList.contains('bab-band-song'), false);
+    assert.equal(doc.getElementById('player').querySelector('.bab-hud'), null);
+    rt.dispose();
+});
+
+test('every way a session ends gives each display back and clears the count-in override', () => {
+    const exits = {
+        stop: (e) => e.fb.emit('song:stop', {}),
+        leave: (e) => e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }),
+        'new song': (e) => e.fb.emit('song:loading', { filename: 'next.psarc' }),
+        'song end': (e) => { e.fb.emit('song:ended', {}); e.timers.fire(1500); },
+        'end then leave': (e) => { e.fb.emit('song:ended', {}); e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }); },
+        dispose: (e) => e.rt.dispose(),
+        'splitscreen thrice': (e) => {
+            const ss = fakeSplitscreen(e);
+            const warn = console.warn;
+            console.warn = () => {};
+            try { ss.start(); e.timers.fire(50); ss.start(); e.timers.fire(50); ss.start(); } finally { console.warn = warn; }
+        },
+    };
+    for (const [name, exit] of Object.entries(exits)) {
+        const env = setup();
+        env.rt.startSession({ song: FULL_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+        env.loadSong(FULL_ITEM);
+        exit(env);
+        assert.equal(env.rt.phase(), 'idle', name);
+        const last = new Map();
+        // The last call per switch (per canvas for drums).
+        for (const h of env.calls.hides) last.set(h.length === 3 ? h[1] : h[0], h.at(-1));
+        assert.ok(last.size >= 3, name);
+        assert.ok([...last.values()].every((v) => v === false), `${name}: ${JSON.stringify([...last].map(([k, v]) => [typeof k === 'string' ? k : 'canvas', v]))}`);
+        assert.equal(env.calls.countIn.at(-1), null, name);
+        assert.equal(env.doc.body.classList.contains('bab-band-song'), false, name);
+        assert.equal(env.player.querySelector('.bab-hud'), null, name);
+        assert.equal(env.player.querySelector('.bab-part-hud'), null, name);
+        env.rt.dispose();
+    }
+});
+
+test('a failed mount or a failed Go still clears the count-in override and the body class', async () => {
+    const a = setup({ mountFails: true });
+    const error = console.error;
+    console.error = () => {};
+    try {
+        a.rt.startSession({ song: ITEM, prefs: prefsWith() });
+        a.loadSong(ITEM);
+    } finally { console.error = error; }
+    assert.deepEqual(a.calls.hides, [], 'no band HUD, so the plugins keep theirs');
+    a.fb.emit('song:stop', {});
+    assert.deepEqual(a.calls.countIn, [true, null]);
+    assert.equal(a.doc.body.classList.contains('bab-band-song'), false);
+    a.rt.dispose();
+    const b = setup();
+    b.win.playSong = () => Promise.reject(new Error('load failed'));
+    await assert.rejects(b.rt.startSession({ song: ITEM, prefs: prefsWith() }), /load failed/);
+    assert.deepEqual(b.calls.countIn, [true, null]);
+    assert.equal(b.doc.body.classList.contains('bab-band-song'), false);
+    b.rt.dispose();
+});
+
+test("a guitar hit from the default detector scores; a panel detector's doesn't", () => {
+    const { rt, loadSong, player, fireWin } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    assert.equal(scoreText(player), '0');
+    fireWin('notedetect:hit', guitarHit());
+    assert.equal(scoreText(player), '50');
+    fireWin('notedetect:hit', guitarHit({ isDefault: false }));
+    assert.equal(scoreText(player), '50');
+    fireWin('notedetect:hit', guitarHit({ counted: false }));
+    assert.equal(scoreText(player), '50');
+    rt.dispose();
+});
+
+test('a guitar judgment delivered twice (window, then bubbled from its instance root) counts once', () => {
+    const { rt, loadSong, player, fireWin } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    const detail = guitarHit();
+    fireWin('notedetect:hit', detail);
+    fireWin('notedetect:hit', detail);
+    assert.equal(scoreText(player), '50');
+    const miss = { isDefault: true, counted: true, hit: false, points: 0, multiplier: 1, streak: 0 };
+    fireWin('notedetect:miss', miss);
+    fireWin('notedetect:miss', miss);
+    assert.equal(rt.snapshot().parts.guitar.misses, 1);
+    fireWin('notedetect:hit', guitarHit());
+    assert.equal(scoreText(player), '100', 'a new judgment still scores');
+    rt.dispose();
+});
+
+test("drums events score only from the band's drum canvas", () => {
+    const { rt, fb, doc, mounts, loadSong, player, clock } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    clock.t = 3;
+    fb.emit('drums:hit', { canvas: doc.createElement('canvas'), points: 30, multiplier: 1, combo: 1 });
+    assert.equal(scoreText(player), '0');
+    fb.emit('drums:hit', { canvas: lane, points: 30, multiplier: 1, combo: 1, stars: 0.5 });
+    assert.equal(scoreText(player), '30');
+    fb.emit('drums:miss', { canvas: lane, multiplier: 1, combo: 0 });
+    fb.emit('drums:overhit', { canvas: lane, multiplier: 1, combo: 0 });
+    const d = rt.snapshot().parts.drums;
+    assert.deepEqual([d.hits, d.misses, d.overhits, d.stars], [1, 1, 1, 0.5]);
+    rt.dispose();
+});
+
+test('drums alone scores from #highway and follows its replacement, hiding the new canvas', () => {
+    const { rt, fb, doc, calls, loadSong, player, highwayCanvas } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith({ guitar: { on: false } }) });
+    loadSong(DRUM_ITEM);
+    assert.deepEqual(calls.hides, [['drums', highwayCanvas, true], ['scorecard', true]], 'no guitar: note_detect untouched');
+    fb.emit('drums:hit', { canvas: highwayCanvas, points: 20, multiplier: 1, combo: 1 });
+    assert.equal(scoreText(player), '20');
+    const fresh = doc.createElement('canvas');
+    fb.emit('highway:canvas-replaced', { oldCanvas: highwayCanvas, newCanvas: fresh });
+    assert.deepEqual(calls.hides.at(-1), ['drums', fresh, true]);
+    fb.emit('drums:hit', { canvas: highwayCanvas, points: 20, multiplier: 1, combo: 2 });
+    assert.equal(scoreText(player), '20', 'the old canvas is no longer the band one');
+    fb.emit('drums:hit', { canvas: fresh, points: 20, multiplier: 1, combo: 2 });
+    assert.equal(scoreText(player), '40');
+    fb.emit('song:stop', {});
+    const shown = calls.hides.filter((h) => h[0] === 'drums' && h[2] === false).map((h) => h[1]);
+    assert.ok(shown.includes(highwayCanvas) && shown.includes(fresh), 'both canvases shown again');
+    rt.dispose();
+});
+
+test("the drum lane's replaced canvas is hidden and becomes the band's", () => {
+    const { rt, fb, doc, calls, mounts, loadSong, player } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    const fresh = doc.createElement('canvas');
+    // The real stage adopts the clone; the fake follows it.
+    mounts[0].getDrumCanvas = () => fresh;
+    fb.emit('highway:canvas-replaced', { oldCanvas: lane, newCanvas: fresh });
+    assert.deepEqual(calls.hides.at(-1), ['drums', fresh, true]);
+    fb.emit('drums:hit', { canvas: fresh, points: 25, multiplier: 1, combo: 1 });
+    assert.equal(scoreText(player), '25');
+    // A core swap the stage found without an announcement is hidden on first use.
+    const quiet = doc.createElement('canvas');
+    mounts[0].getDrumCanvas = () => quiet;
+    fb.emit('drums:hit', { canvas: quiet, points: 25, multiplier: 1, combo: 2 });
+    assert.deepEqual(calls.hides.at(-1), ['drums', quiet, true]);
+    assert.equal(scoreText(player), '50');
+    fb.emit('song:stop', {});
+    const shown = calls.hides.filter((h) => h[0] === 'drums' && h[2] === false).map((h) => h[1]);
+    for (const c of [lane, fresh, quiet]) assert.ok(shown.includes(c));
+    rt.dispose();
+});
+
+test('karaoke phrases score with their totals', async () => {
+    const { rt, fb, loadSong, player, clock } = setup();
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    clock.t = 12;
+    fb.emit('karaoke:phrase', { phraseIndex: 0, rating: 'Great', accuracy: 0.9, points: 400, multiplier: 2, streak: 3, stars: 2.4 });
+    assert.equal(scoreText(player), '400');
+    const v = rt.snapshot().parts.vocals;
+    assert.deepEqual([v.multiplier, v.streak, v.stars, v.hits], [2, 3, 2.4, 1]);
+    fb.emit('karaoke:reset', { multiplier: 1, streak: 0, stars: 1.1 });
+    const r = rt.snapshot().parts.vocals;
+    assert.deepEqual([r.multiplier, r.streak, r.stars, r.score], [1, 0, 1.1, 400]);
+    fb.emit('karaoke:reset', null);
+    assert.equal(rt.snapshot().parts.vocals.stars, null);
+    rt.dispose();
+});
+
+test("a backward seek rewinds the band score; a loop wrap doesn't", () => {
+    const { rt, fb, loadSong, player, clock, fireWin } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    clock.t = 10;
+    fireWin('notedetect:hit', guitarHit());
+    clock.t = 20;
+    fireWin('notedetect:hit', guitarHit({ points: 70, streak: 2 }));
+    assert.equal(scoreText(player), '120');
+    fb.emit('song:seek', { from: 20, to: 10.5, reason: 'loop-wrap' });
+    assert.equal(scoreText(player), '120', 'a loop wrap stays cumulative');
+    fb.emit('song:seek', { from: 20, to: 19.98 });
+    assert.equal(scoreText(player), '120', 'within 50 ms is not a rewind');
+    fb.emit('song:seek', { from: 20, to: 15 });
+    assert.equal(scoreText(player), '50');
+    fb.emit('song:seek', { from: 15, to: 30 });
+    fb.emit('song:seek', { from: NaN, to: 0 });
+    assert.equal(scoreText(player), '50', 'forward and malformed seeks keep the score');
+    rt.dispose();
+});
+
+test("a seek rewinds the ledger before karaoke's reset applies, in either listener order", async () => {
+    for (const karaokeFirst of [true, false]) {
+        const { rt, fb, loadSong, clock } = setup();
+        const onSeek = () => fb.emit('karaoke:reset', { multiplier: 1, streak: 0, stars: 0.3 });
+        // Karaoke emits its reset from its own song:seek listener.
+        if (karaokeFirst) fb.on('song:seek', onSeek);
+        rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+        loadSong(PITCH_ITEM);
+        await flush();
+        if (!karaokeFirst) fb.on('song:seek', onSeek);
+        clock.t = 10;
+        fb.emit('karaoke:phrase', { rating: 'Good', accuracy: 0.8, points: 100, multiplier: 1, streak: 1, stars: 1 });
+        clock.t = 20;
+        fb.emit('karaoke:phrase', { rating: 'Great', accuracy: 0.9, points: 200, multiplier: 2, streak: 2, stars: 2 });
+        fb.emit('song:seek', { from: 20, to: 15 });
+        const v = rt.snapshot().parts.vocals;
+        assert.deepEqual([v.score, v.multiplier, v.streak, v.stars], [100, 1, 0, 0.3], `karaokeFirst=${karaokeFirst}`);
+        rt.dispose();
+    }
+});
+
+test("judgments after the song ended don't score", () => {
+    const { rt, fb, loadSong, player, mounts, fireWin } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    fireWin('notedetect:hit', guitarHit());
+    fb.emit('song:ended', {});
+    assert.equal(rt.phase(), 'ending');
+    fireWin('notedetect:hit', guitarHit());
+    fb.emit('drums:hit', { canvas: mounts[0].drumCanvas, points: 30, multiplier: 1, combo: 1 });
+    fb.emit('karaoke:phrase', { points: 100, multiplier: 1, streak: 1 });
+    fb.emit('song:seek', { from: 20, to: 0 });
+    assert.equal(scoreText(player), '50');
+    assert.equal(rt.snapshot().score, 50);
+    rt.dispose();
+});
+
+test('guitar star thresholds come from the filtered notes at the band mastery', () => {
+    const a = setup();
+    a.rt.startSession({ song: ITEM, prefs: prefsWith() });
+    a.loadSong(ITEM);
+    assert.equal(a.rt.snapshot().parts.guitar.stars, 0);
+    a.rt.dispose();
+    const b = setup();
+    b.win.highway.getFilteredNotes = () => [];
+    b.rt.startSession({ song: ITEM, prefs: prefsWith() });
+    b.loadSong(ITEM);
+    assert.equal(b.rt.snapshot().parts.guitar.stars, null);
+    b.rt.dispose();
+    // The band mastery is applied before the notes are read.
+    const c = setup();
+    let mastery = null;
+    c.win.highway.setMastery = (f) => { mastery = f; };
+    c.win.highway.getFilteredNotes = () => (mastery === 0.5 ? [{ t: 1 }] : []);
+    c.rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: { difficulty: 'medium' } }) });
+    c.loadSong(ITEM);
+    assert.equal(c.rt.snapshot().parts.guitar.stars, 0);
+    c.rt.dispose();
+});
+
+test('only the parts playing are in the band score', async () => {
+    const { rt, loadSong } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(ITEM);
+    await flush();
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar'], 'no drum chart, no vocal pitch');
+    rt.dispose();
+    assert.equal(rt.snapshot(), null, 'no session, no snapshot');
+});
+
+test("vocals that couldn't start leave the band, so they never pin it at ×1", async () => {
+    const { rt, loadSong, player, fireWin } = setup({ karaokePitch: false });
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    assert.ok(rt.snapshot().parts.vocals);
+    await flush();
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
+    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1, 'the strip HUD goes too');
+    fireWin('notedetect:hit', guitarHit({ multiplier: 2, streak: 10 }));
+    assert.equal(rt.snapshot().bandMultiplier, 2);
+    assert.ok(Number.isFinite(rt.snapshot().parts.guitar.stars), 'guitar thresholds kept');
+    rt.dispose();
+});
+
+test('a splitscreen remount keeps the score and re-hosts the HUD', () => {
+    const env = setup();
+    const { rt, mounts, loadSong, timers, player, fireWin } = env;
+    const ss = fakeSplitscreen(env);
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    fireWin('notedetect:hit', guitarHit({ multiplier: 2, streak: 12, points: 100 }));
+    ss.start();
+    timers.fire(50);
+    assert.equal(mounts.length, 2);
+    assert.equal(scoreText(player), '100');
+    assert.equal(player.querySelectorAll('.bab-hud').length, 1);
+    const hud = mounts[1].laneSlot('guitar').querySelector('.bab-part-hud');
+    assert.ok(hud, 'the guitar lane HUD is in the new lane');
+    assert.equal(hud.querySelector('.bab-mult').textContent, '×2');
+    assert.ok(mounts[1].laneSlot('drums').querySelector('.bab-part-hud'));
+    assert.equal(player.querySelectorAll('.bab-part-hud').length, 2);
+    assert.ok(env.calls.hides.some((h) => h[0] === 'drums' && h[1] === mounts[1].drumCanvas && h[2] === true),
+        'the new drum lane canvas is hidden');
+    rt.dispose();
+});
+
+test('toasts stack: one difficulty and no pitch both show', async () => {
+    const { rt, loadSong, player } = setup({ karaokePitch: false });
+    const item = { ...ITEM, filename: 'Sing2.sloppak', has_vocal_pitch: true };
+    rt.startSession({ song: item, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(item, { hasPhraseData: false });
+    await flush();
+    const box = player.querySelector('.bab-toasts');
+    assert.ok(box);
+    assert.deepEqual(box.querySelectorAll('div.bab-toast').map((t) => t.textContent),
+        ['This chart has one difficulty', "Vocals couldn't start"]);
+    rt.dispose();
+    assert.equal(player.querySelector('.bab-toasts'), null, 'cleared at teardown');
+});
+
+test("the band's count-in shows over the player and goes at teardown", () => {
+    const { rt, fb, loadSong, player } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    fb.emit('count-in:tick', { n: 1, total: 4 });
+    assert.equal(player.querySelector('.bab-countin').textContent, '4', 'drawn before the stage mounts');
+    loadSong(ITEM);
+    fb.emit('count-in:tick', { n: 2, total: 4 });
+    assert.equal(player.querySelector('.bab-countin').textContent, '3');
+    fb.emit('song:stop', {});
+    assert.equal(player.querySelector('.bab-countin'), null);
+    fb.emit('count-in:tick', { n: 3, total: 4 });
+    assert.equal(player.querySelector('.bab-countin'), null, 'no longer listening');
+    rt.dispose();
+});
+
+test('dispose removes the scoring listeners', () => {
+    const { rt, fb, win } = setup();
+    rt.dispose();
+    const before = rt.snapshot();
+    win.dispatchEvent(new CustomEvent('notedetect:hit', { detail: guitarHit() }));
+    fb.emit('drums:hit', {});
+    assert.equal(before, null);
+});
+
+test('guitar star thresholds apply when the stage mounts after splitscreen went down', () => {
+    const env = setup();
+    const { rt, mounts, loadSong, timers } = env;
+    const ss = fakeSplitscreen(env);
+    ss.stop = () => { ss.stops++; };
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    ss.active = true;
+    env.fb.emit('splitscreen:panels-changed', {});
+    loadSong(ITEM);
+    assert.equal(mounts.length, 0);
+    ss.active = false;
+    timers.fire(50);
+    assert.equal(mounts.length, 1);
+    assert.equal(rt.snapshot().parts.guitar.stars, 0);
     rt.dispose();
 });

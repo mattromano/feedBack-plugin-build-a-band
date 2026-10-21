@@ -33,6 +33,8 @@ export function armVocals(api, vocalsPrefs) {
     try {
         applied = typeof api.setHearMyself === 'function' && api.setHearMyself(hear) !== false;
     } catch (_) { /* not applied */ }
+    // The band HUD replaces karaoke's own score HUD (plan 4 R13).
+    guard(() => { if (typeof api.setScoreHudHidden === 'function') api.setScoreHudHidden(true); });
     return hear || applied;
 }
 
@@ -81,4 +83,5 @@ export function stopVocals(api) {
     guard(() => api.mountStrip(null));
     guard(() => api.setDifficulty(null));
     guard(() => api.setHearMyself(null));
+    guard(() => { if (typeof api.setScoreHudHidden === 'function') api.setScoreHudHidden(false); });
 }

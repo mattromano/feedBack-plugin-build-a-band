@@ -179,3 +179,38 @@ test("a cancelled start doesn't turn karaoke off under a newer start on the same
     assert.equal(await second, 'started');
     assert.ok(!api.calls.some((c) => c[0] === 'setKaraokeMode' && c[1] === false), JSON.stringify(api.calls));
 });
+
+// ── Plan 4: the band HUD replaces karaoke's own score HUD (R13) ──
+
+function hudApi() {
+    const api = fakeApi();
+    api.setScoreHudHidden = (a) => { api.calls.push(['setScoreHudHidden', a]); return true; };
+    return api;
+}
+
+test("armVocals hides karaoke's score HUD when it can", () => {
+    const api = hudApi();
+    assert.equal(armVocals(api, { difficulty: 'hard', hearMyself: false }), true);
+    assert.ok(api.calls.some((c) => c[0] === 'setScoreHudHidden' && c[1] === true), JSON.stringify(api.calls));
+    // Its return value is ignored: a refusal doesn't stop vocals.
+    const refuses = hudApi();
+    refuses.setScoreHudHidden = () => false;
+    assert.equal(armVocals(refuses, { difficulty: 'hard', hearMyself: false }), true);
+});
+
+test('stopVocals shows it again last', () => {
+    const api = hudApi();
+    stopVocals(api);
+    assert.deepEqual(api.calls, [...STOP_ALL, ['setScoreHudHidden', false]]);
+    const throws = hudApi();
+    throws.setHearMyself = () => { throw new Error('boom'); };
+    stopVocals(throws);
+    assert.deepEqual(throws.calls.at(-1), ['setScoreHudHidden', false]);
+});
+
+test('an API without setScoreHudHidden still arms and stops', () => {
+    const api = fakeApi();
+    assert.equal(armVocals(api, { difficulty: 'easy', hearMyself: false }), true);
+    stopVocals(api);
+    assert.deepEqual(api.calls, [['setDifficulty', 'easy'], ['setHearMyself', false], ...STOP_ALL]);
+});
