@@ -15,12 +15,17 @@ const rows = [
     ['armed ready different', st('armed'), { type: 'ready', filename: 'b.psarc' }, 'idle', ['teardown']],
     ['armed loading', st('armed'), { type: 'loading' }, 'armed', []],
     ['playing loading', st('playing'), { type: 'loading' }, 'idle', ['teardown']],
-    ['ending loading', st('ending'), { type: 'loading' }, 'idle', ['cancelExitTimer', 'teardown']],
-    ['playing ended', st('playing'), { type: 'ended' }, 'ending', ['holdExit', 'startExitTimer']],
-    ['ending exitTimer', st('ending'), { type: 'exitTimer' }, 'idle', ['teardown', 'releaseExit', 'showBandScreen']],
+    ['ending loading', st('ending'), { type: 'loading' }, 'idle', ['hideResults', 'dropExit', 'teardown']],
+    ['playing ended', st('playing'), { type: 'ended' }, 'ending', ['holdExit', 'showResults']],
+    ['ending again', st('ending'), { type: 'again' }, 'idle', ['hideResults', 'dropExit', 'teardown', 'replay']],
+    ['ending next', st('ending'), { type: 'next' }, 'idle', ['hideResults', 'teardown', 'releaseExit', 'showBandScreen']],
+    ['ending exitTimer is gone', st('ending'), { type: 'exitTimer' }, 'ending', []],
+    ['again while playing', st('playing'), { type: 'again' }, 'playing', []],
+    ['next while playing', st('playing'), { type: 'next' }, 'playing', []],
+    ['again while idle', st('idle', null), { type: 'again' }, 'idle', []],
     ['armed left', st('armed'), { type: 'left' }, 'idle', ['teardown']],
     ['playing left', st('playing'), { type: 'left' }, 'idle', ['teardown']],
-    ['ending left', st('ending'), { type: 'left' }, 'idle', ['cancelExitTimer', 'teardown']],
+    ['ending left', st('ending'), { type: 'left' }, 'idle', ['hideResults', 'dropExit', 'teardown']],
     ['idle left', st('idle', null), { type: 'left' }, 'idle', []],
     ['go while armed', st('armed'), { type: 'go', filename: 'z' }, 'armed', []],
     ['go while playing', st('playing'), { type: 'go', filename: 'z' }, 'playing', []],
@@ -43,11 +48,11 @@ test('a full session', () => {
     let s = initialSession();
     const all = [];
     for (const e of [{ type: 'go', filename: 'a' }, { type: 'loading' }, { type: 'ready', filename: 'a' },
-        { type: 'ended' }, { type: 'exitTimer' }]) {
+        { type: 'ended' }, { type: 'next' }]) {
         const r = step(s, e); s = r.state; all.push(...r.effects);
     }
     assert.deepEqual(all, ['saveRestorePoint', 'armVocals', 'play', 'mount', 'applyDifficulties', 'applyDevices',
-        'startVocals', 'holdExit', 'startExitTimer', 'teardown', 'releaseExit', 'showBandScreen']);
+        'startVocals', 'holdExit', 'showResults', 'hideResults', 'teardown', 'releaseExit', 'showBandScreen']);
     assert.equal(s.phase, 'idle');
 });
 
@@ -60,16 +65,20 @@ test('teardown happens exactly once however the session ends', () => {
         'left while armed': [go, { type: 'left' }],
         'left while playing': [go, ready, { type: 'left' }],
         'left while ending': [go, ready, { type: 'ended' }, { type: 'left' }],
-        'exitTimer': [go, ready, { type: 'ended' }, { type: 'exitTimer' }],
+        'next song': [go, ready, { type: 'ended' }, { type: 'next' }],
+        'play again': [go, ready, { type: 'ended' }, { type: 'again' }],
         'loading while ending': [go, ready, { type: 'ended' }, { type: 'loading' }],
     };
     for (const [name, events] of Object.entries(paths)) {
         let s = initialSession();
         const effects = [];
-        for (const e of [...events, { type: 'left' }, { type: 'exitTimer' }]) {
+        for (const e of [...events, { type: 'left' }, { type: 'next' }, { type: 'again' }]) {
             const r = step(s, e); s = r.state; effects.push(...r.effects);
         }
         assert.equal(effects.filter((x) => x === 'teardown').length, 1, name);
+        // The results never outlive the session, and replay is always the last effect.
+        assert.equal(effects.filter((x) => x === 'hideResults').length, effects.filter((x) => x === 'showResults').length, name);
+        if (effects.includes('replay')) assert.equal(effects.at(-1), 'replay', name);
     }
 });
 

@@ -257,27 +257,35 @@ test('drums only: plays the drum arrangement, mounts the stage (R10), pins the d
     rt.dispose();
 });
 
-test('song:ended holds auto-exit, then after 1500 ms releases once and shows the band screen', () => {
-    const { rt, fb, calls, mounts, loadSong, timers } = setup();
-    rt.startSession({ song: ITEM, prefs: prefsWith() });
+test('song:ended holds auto-exit and shows the results; Next song releases once and shows the band screen', () => {
+    const { rt, fb, calls, mounts, loadSong, timers, player } = setup();
+    rt.startSession({ song: { ...ITEM, title: 'Everlong', artist: 'Foo Fighters' }, prefs: prefsWith() });
     loadSong(ITEM);
     fb.emit('song:ended', {});
     assert.equal(calls.hold, 1);
     assert.equal(calls.release, 0);
     assert.equal(rt.phase(), 'ending');
-    assert.ok(timers.delays().includes(1500));
-    timers.fire(1500);
+    const results = player.querySelector('.bab-results');
+    assert.ok(results, 'the results show in #player');
+    assert.equal(results.querySelector('.bab-results-sub').textContent, 'Everlong · Foo Fighters');
+    assert.deepEqual(results.querySelectorAll('.bab-card').map((c) => c.getAttribute('data-part')), ['guitar'], 'ITEM has no drum chart');
+    assert.ok(!timers.delays().includes(1500), 'no 1.5 s exit');
+    assert.equal(mounts[0].unmounted, 0, 'the stage stays under the results');
+    rt.next();
     assert.equal(calls.release, 1);
     assert.equal(mounts[0].unmounted, 1);
     assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    assert.equal(player.querySelector('.bab-results'), null);
     assert.equal(rt.phase(), 'idle');
+    rt.next();
+    assert.equal(calls.release, 1, 'released once');
     fb.emit('song:ended', {});
     assert.equal(calls.hold, 1, 'no hold outside a session');
     rt.dispose();
 });
 
 test('the band screen is not re-shown when release already returned to it', () => {
-    const { rt, fb, calls, loadSong, timers, bandScreen } = setup();
+    const { rt, fb, calls, loadSong, bandScreen } = setup();
     fb.holdAutoExit = () => () => {
         calls.release++;
         bandScreen.classList.add('active');
@@ -286,10 +294,78 @@ test('the band screen is not re-shown when release already returned to it', () =
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM);
     fb.emit('song:ended', {});
-    timers.fire(1500);
+    rt.next();
     assert.equal(calls.release, 1);
     assert.deepEqual(calls.showScreen, []);
     rt.dispose();
+});
+
+test('Play again tears down and starts the same song with the same prefs', async () => {
+    const { rt, fb, calls, mounts, loadSong, player } = setup();
+    const prefs = prefsWith({ guitar: { arrangement: 'Bass', difficulty: 'hard' } });
+    rt.startSession({ song: ITEM, prefs });
+    loadSong(ITEM);
+    fb.emit('song:ended', {});
+    rt.again();
+    assert.equal(calls.release, 0, 'the held exit is dropped, never released');
+    assert.equal(mounts[0].unmounted, 1);
+    assert.equal(player.querySelector('.bab-results'), null);
+    assert.deepEqual(calls.playSong, [['My%20Song.sloppak', 1], ['My%20Song.sloppak', 1]]);
+    assert.deepEqual(calls.showScreen, []);
+    assert.equal(rt.phase(), 'armed');
+    loadSong(ITEM);
+    assert.equal(rt.phase(), 'playing');
+    assert.equal(mounts.length, 2);
+    assert.equal(mounts[1].prefs.parts.guitar.difficulty, 'hard');
+    assert.equal(calls.hold, 1);
+    fb.emit('song:ended', {});
+    assert.equal(calls.hold, 2, 'the replayed session ends with results too');
+    assert.ok(player.querySelector('.bab-results'));
+    rt.dispose();
+    assert.equal(player.querySelector('.bab-results'), null);
+});
+
+test('a Play again whose playSong rejects warns and leaves the runtime idle', async () => {
+    const { rt, fb, win, loadSong } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    fb.emit('song:ended', {});
+    win.playSong = () => Promise.reject(new Error('load failed'));
+    const warns = [];
+    const warn = console.warn;
+    console.warn = (...a) => warns.push(a);
+    try {
+        rt.again();
+        await flush();
+    } finally { console.warn = warn; }
+    assert.equal(rt.phase(), 'idle');
+    assert.ok(warns.some((a) => a.some((x) => x instanceof Error && /load failed/.test(x.message))));
+    rt.dispose();
+});
+
+test('leaving while the results show tears down without releasing', () => {
+    for (const leave of [
+        (e) => e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }),
+        (e) => e.fb.emit('song:loading', { filename: 'next.psarc' }),
+        (e) => e.fb.emit('song:stop', {}),
+    ]) {
+        const env = setup();
+        env.rt.startSession({ song: ITEM, prefs: prefsWith() });
+        env.loadSong(ITEM);
+        env.fb.emit('song:ended', {});
+        assert.ok(env.player.querySelector('.bab-results'));
+        leave(env);
+        assert.equal(env.rt.phase(), 'idle');
+        assert.equal(env.calls.release, 0);
+        assert.equal(env.mounts[0].unmounted, 1);
+        assert.equal(env.player.querySelector('.bab-results'), null);
+        assert.deepEqual(env.calls.showScreen, []);
+        env.rt.next();
+        env.rt.again();
+        assert.equal(env.calls.release, 0);
+        assert.equal(env.calls.playSong.length, 1);
+        env.rt.dispose();
+    }
 });
 
 test('leaving the player ends the session and restores mastery and the splitscreen pref', () => {
@@ -899,7 +975,7 @@ test('every way a session ends gives each display back and clears the count-in o
         stop: (e) => e.fb.emit('song:stop', {}),
         leave: (e) => e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }),
         'new song': (e) => e.fb.emit('song:loading', { filename: 'next.psarc' }),
-        'song end': (e) => { e.fb.emit('song:ended', {}); e.timers.fire(1500); },
+        'song end': (e) => { e.fb.emit('song:ended', {}); e.rt.next(); },
         'end then leave': (e) => { e.fb.emit('song:ended', {}); e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }); },
         dispose: (e) => e.rt.dispose(),
         'splitscreen thrice': (e) => {
@@ -1238,5 +1314,85 @@ test('guitar star thresholds apply when the stage mounts after splitscreen went 
     timers.fire(50);
     assert.equal(mounts.length, 1);
     assert.equal(rt.snapshot().parts.guitar.stars, 0);
+    rt.dispose();
+});
+
+test("the results show this session's numbers", () => {
+    const { rt, fb, loadSong, player, fireWin, mounts } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    fireWin('notedetect:hit', guitarHit());
+    fb.emit('song:ended', {});
+    const card = player.querySelector('.bab-results').querySelector('.bab-card[data-part="guitar"]');
+    const stats = card.querySelectorAll('.bab-stat').map((r) => r.children.map((c) => c.textContent));
+    assert.ok(stats.some(([label, value]) => label === 'Notes hit' && value === '1 / 1'), JSON.stringify(stats));
+    assert.equal(card.querySelector('.bab-card-pct').textContent, '100%');
+    assert.equal(player.querySelector('.bab-results-score').textContent, '50');
+    assert.ok(mounts[0].drumCanvas);
+    rt.dispose();
+});
+
+test("the drums card reads star power phrases from the band's drum canvas", () => {
+    const { rt, fb, win, loadSong, player, mounts } = setup();
+    const asked = [];
+    win.feedBackDrums.getInstanceState = (c) => {
+        asked.push(c);
+        return { starPower: { active: false, amount: 0, phrasesHit: 4, phrasesTotal: 5 } };
+    };
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    fb.emit('song:ended', {});
+    assert.deepEqual(asked, [mounts[0].drumCanvas]);
+    const stats = player.querySelector('.bab-card[data-part="drums"]').querySelectorAll('.bab-stat')
+        .map((r) => r.children.map((c) => c.textContent));
+    assert.ok(stats.some(([label, value]) => label === 'Star power phrases' && value === '4 / 5'), JSON.stringify(stats));
+    rt.dispose();
+});
+
+test('a throwing getInstanceState still shows the results, without star power', () => {
+    const { rt, fb, win, loadSong, player } = setup();
+    win.feedBackDrums.getInstanceState = () => { throw new Error('boom'); };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+        rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+        loadSong(DRUM_ITEM);
+        fb.emit('song:ended', {});
+    } finally { console.warn = warn; }
+    const drums = player.querySelector('.bab-card[data-part="drums"]');
+    assert.ok(drums);
+    assert.ok(!drums.querySelectorAll('.bab-stat').some((r) => r.children[0].textContent === 'Star power phrases'));
+    rt.dispose();
+});
+
+test('a session whose stage never mounted still ends on the results', () => {
+    const { rt, fb, calls, loadSong, player } = setup({ mountFails: true });
+    const error = console.error;
+    console.error = () => {};
+    try {
+        rt.startSession({ song: ITEM, prefs: prefsWith() });
+        loadSong(ITEM);
+    } finally { console.error = error; }
+    fb.emit('song:ended', {});
+    const results = player.querySelector('.bab-results');
+    assert.ok(results);
+    assert.equal(results.querySelector('.bab-results-score').textContent, '0');
+    assert.equal(results.querySelectorAll('.bab-card').length, 0);
+    rt.next();
+    assert.equal(calls.release, 1);
+    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    rt.dispose();
+});
+
+test('results that cannot show fall through to Next song, so the held exit is released', () => {
+    const { rt, fb, calls, loadSong, player } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    player.remove();
+    fb.emit('song:ended', {});
+    assert.equal(rt.phase(), 'idle');
+    assert.equal(calls.hold, 1);
+    assert.equal(calls.release, 1);
+    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
     rt.dispose();
 });

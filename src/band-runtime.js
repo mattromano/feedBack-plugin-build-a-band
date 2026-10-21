@@ -1,7 +1,8 @@
 // Build-a-Band session runtime: Go plays the picked song, the band stage
-// mounts on that song's song:ready, and the session ends on song end (back to
-// the band screen) or on leaving the player. The state machine lives in
-// session.js; this file feeds it bus events and runs the effects it names.
+// mounts on that song's song:ready, and the session ends on song end (the
+// results, then Play again or Next song) or on leaving the player. The state
+// machine lives in session.js; this file feeds it bus events and runs the
+// effects it names.
 // Everything is injected, so this is testable under node; screen.js passes
 // the real window/document. Nothing here plays sound.
 import { initialSession, reduceSession } from './session.js';
@@ -17,11 +18,12 @@ import { guitarStarThresholds } from './stars.js';
 import { createBandHud } from './hud.js';
 import { createToastStack } from './toasts.js';
 import { createCountInOverlay } from './count-in-overlay.js';
+import { resultsModel } from './results.js';
+import { showResultsScreen } from './results-screen.js';
 
 const BAND_SCREEN = 'plugin-build_a_band';
 const SPLIT_KEY = 'splitscreenActive';
 const VIZ_KEY = 'vizSelection';
-const EXIT_WAIT_MS = 1500;
 const TOAST_MS = 4000;
 const ONE_DIFFICULTY = 'This chart has one difficulty';
 const NO_PITCH = 'No vocal pitch for this song';
@@ -80,7 +82,8 @@ function withoutVocals(prefs) {
 //   deviceMemo: the inputs last handed to note_detect / drums (devices.js),
 //   shared with the band screen so a Go doesn't re-apply a device just picked.
 //   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase(),
-//        snapshot(): the current session's band score snapshot, or null }
+//        snapshot(): the current session's band score snapshot, or null,
+//        again(), next(): Play again / Next song while the results show }
 // startSession returns false when it refuses (a session is running, no song);
 // otherwise a promise of core's playSong that rejects, after the session went
 // back to idle, when playSong throws or rejects.
@@ -99,7 +102,6 @@ export function createBandRuntime({
     let session = null;
     let stage = null;
     let release = null;
-    let exitTimer = null;
     // One toast stack per runtime, over the player (R18).
     const toasts = createToastStack({
         doc, getHost: () => doc.getElementById('player'), setTimer, clearTimer, ttlMs: TOAST_MS,
@@ -134,6 +136,8 @@ export function createBandRuntime({
             readyDetail: null,
             drumCanvas: null,
             canvasListener: false,
+            // The results screen while the session is ending.
+            results: null,
             played: null,
             setReturn: false,
             splitStarts: 0,
@@ -268,6 +272,16 @@ export function createBandRuntime({
         s.score = createBandScore({ parts: s.scoreParts });
         if (s.guitarThresholds) s.score.setStarThresholds('guitar', s.guitarThresholds);
         if (s.hud) mountHud(s);
+    }
+
+    // Drums' star power phrases for the results, from the band's drum canvas.
+    function drumsStarPower(s) {
+        const api = win.feedBackDrums;
+        const canvas = bandDrumCanvas(s);
+        if (!canvas || !api || typeof api.getInstanceState !== 'function') return null;
+        const sp = safe(() => { const st = api.getInstanceState(canvas); return st && st.starPower; });
+        if (!sp || !Number.isFinite(sp.phrasesHit) || !Number.isFinite(sp.phrasesTotal)) return null;
+        return { phrasesHit: sp.phrasesHit, phrasesTotal: sp.phrasesTotal };
     }
 
     // The session whose judgments score: playing, with a ledger.
@@ -542,11 +556,36 @@ export function createBandRuntime({
         holdExit() {
             release = (typeof fb.holdAutoExit === 'function') ? safe(() => fb.holdAutoExit()) || null : null;
         },
-        startExitTimer() {
-            exitTimer = setTimer(() => { exitTimer = null; dispatch({ type: 'exitTimer' }); }, EXIT_WAIT_MS);
+        // The results over the stage (R16, R17), with this session's numbers.
+        // A session with no ledger (the stage never mounted) still gets them,
+        // empty; if they can't show at all, Next song runs so core's held
+        // exit is never stuck.
+        showResults(s) {
+            const player = doc.getElementById('player');
+            if (s.results) return;
+            const model = player && safe(() => resultsModel({
+                snapshot: s.score ? s.score.snapshot() : null,
+                prefs: s.prefs,
+                song: { title: s.item.title, artist: s.item.artist },
+                oneLevel: !(s.readyDetail && s.readyDetail.hasPhraseData),
+                drumsExtra: drumsStarPower(s),
+            }));
+            s.results = model ? safe(() => showResultsScreen({
+                doc, win, host: player, model,
+                onAgain: () => dispatch({ type: 'again' }),
+                onNext: () => dispatch({ type: 'next' }),
+            })) || null : null;
+            if (!s.results) dispatch({ type: 'next' });
         },
-        cancelExitTimer() {
-            if (exitTimer !== null) { clearTimer(exitTimer); exitTimer = null; }
+        hideResults(s) {
+            if (!s.results) return;
+            const r = s.results;
+            s.results = null;
+            safe(() => r.hide());
+        },
+        // Play again or leaving: core's held exit is never released. Core's
+        // next playSong bumps its auto-exit generation, so it can't navigate.
+        dropExit() {
             release = null;
         },
         teardown(s) {
@@ -606,6 +645,14 @@ export function createBandRuntime({
             const el = doc.getElementById(BAND_SCREEN);
             if (el && el.classList.contains('active')) return;
             if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN));
+        },
+        // Play again: the same library item with the prefs Go was given, through
+        // the normal Go path. Always the last effect: the session is idle by now.
+        replay(s) {
+            const started = startSession({ song: s.item, prefs: s.goPrefs });
+            if (started && typeof started.then === 'function') {
+                started.catch((e) => console.warn('[build-a-band] Play again failed to start the song', e));
+            }
         },
     };
 
@@ -728,5 +775,7 @@ export function createBandRuntime({
         startSession,
         phase: () => state.phase,
         snapshot: () => (session && session.score ? session.score.snapshot() : null),
+        again: () => dispatch({ type: 'again' }),
+        next: () => dispatch({ type: 'next' }),
     };
 }

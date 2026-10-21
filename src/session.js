@@ -20,13 +20,16 @@ const TABLE = {
     },
     playing: {
         loading: () => [IDLE, ['teardown']],
-        ended: (s) => [{ phase: 'ending', filename: s.filename }, ['holdExit', 'startExitTimer']],
+        ended: (s) => [{ phase: 'ending', filename: s.filename }, ['holdExit', 'showResults']],
         left: () => [IDLE, ['teardown']],
     },
+    // The results show (R16): Next song releases core's held exit and returns
+    // to the band screen; Play again drops it and replays (always last).
     ending: {
-        loading: () => [IDLE, ['cancelExitTimer', 'teardown']],
-        exitTimer: () => [IDLE, ['teardown', 'releaseExit', 'showBandScreen']],
-        left: () => [IDLE, ['cancelExitTimer', 'teardown']],
+        loading: () => [IDLE, ['hideResults', 'dropExit', 'teardown']],
+        again: () => [IDLE, ['hideResults', 'dropExit', 'teardown', 'replay']],
+        next: () => [IDLE, ['hideResults', 'teardown', 'releaseExit', 'showBandScreen']],
+        left: () => [IDLE, ['hideResults', 'dropExit', 'teardown']],
     },
 };
 

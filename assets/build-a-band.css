@@ -429,3 +429,69 @@ body.bab-band-song #count-in-overlay { display: none !important; }
     #player .bab-glow.bab-glow-miss, #player .bab-glow.bab-glow-miss::after { animation: none; }
 }
 @keyframes bab-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ── Results (plan 4 R16, R17) ─────────────────────────────────────────────
+   A dialog over the whole of #player when a band song ends: band stars, score
+   and song, one card per part (coloured by --bab-c) and Play again / Next song.
+   Cards sit in three columns, one below 720 px. Next song is styled like Go. */
+#player .bab-results {
+    position: absolute; inset: 0; z-index: 50; overflow-y: auto; box-sizing: border-box;
+    background: rgba(11, 11, 16, 0.94); color: #ecebf2;
+    font: 14px/1.4 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+#player .bab-results *, #player .bab-results *::before, #player .bab-results *::after { box-sizing: border-box; }
+#player .bab-results-inner { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
+#player .bab-results-head { text-align: center; margin-bottom: 26px; }
+#player .bab-results-stars { display: inline-flex; gap: 8px; filter: drop-shadow(0 0 20px #f5c54266); }
+#player .bab-results-stars .bab-star { width: 40px; height: 40px; }
+#player .bab-results-stars .bab-star-fill { height: 40px; }
+#player .bab-results-stars.bab-gold .bab-star-fill { color: #ffd23f; filter: drop-shadow(0 0 6px #ffb80099); }
+#player .bab-results-score {
+    font: 800 44px/1.15 'Unbounded', system-ui, sans-serif; font-variant-numeric: tabular-nums;
+}
+#player .bab-results-sub { color: #8d8ca0; }
+#player .bab-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+#player .bab-card {
+    background: #15151d; border: 1px solid #2a2a36; border-top: 4px solid var(--bab-c, #8d8ca0);
+    border-radius: 14px; padding: 18px;
+}
+#player .bab-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+#player .bab-card-icon { display: inline-flex; color: var(--bab-c, #8d8ca0); }
+#player .bab-card-name { margin: 0; flex: 1; min-width: 0; font: 700 17px/1.2 'Unbounded', system-ui, sans-serif; }
+#player .bab-card-diff { font-size: 12px; color: #8d8ca0; }
+#player .bab-card-pct {
+    font: 800 40px/1.1 'Unbounded', system-ui, sans-serif; color: var(--bab-c, #ecebf2);
+    font-variant-numeric: tabular-nums;
+}
+#player .bab-stat {
+    display: flex; justify-content: space-between; gap: 12px; padding: 6px 0;
+    border-bottom: 1px solid #2a2a36; font-size: 13px;
+}
+#player .bab-stat:last-of-type { border-bottom: 0; }
+#player .bab-stat-label { color: #8d8ca0; }
+#player .bab-stat-value { text-align: right; font-variant-numeric: tabular-nums; }
+#player .bab-award {
+    margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px;
+    border-radius: 6px; background: color-mix(in srgb, var(--bab-c, #8d8ca0) 15%, transparent);
+}
+#player .bab-award-icon { display: inline-flex; color: var(--bab-c, #ecebf2); }
+#player .bab-results-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 26px; }
+#player .bab-results-btns button {
+    display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: #fff;
+}
+#player .bab-btn-icon { display: inline-flex; }
+#player .bab-again {
+    background: #222; border: 1px solid #444; border-radius: 10px; padding: 12px 26px;
+    font: 600 15px/1.2 'Barlow', system-ui, sans-serif; color: #ecebf2;
+}
+#player .bab-again:hover { background: #2c2c34; }
+#player .bab-next {
+    padding: 14px 54px; border: 0; border-radius: 12px; text-transform: uppercase;
+    font: 800 20px/1.2 'Unbounded', system-ui, sans-serif; letter-spacing: 0.08em;
+    background: linear-gradient(180deg, #4aa3ff, #2a6fd6); box-shadow: 0 6px 24px #2a6fd655;
+}
+#player .bab-results-btns button:focus-visible { outline: 2px solid #4aa3ff; outline-offset: 3px; }
+@media (max-width: 720px) {
+    #player .bab-cards { grid-template-columns: minmax(0, 1fr); }
+    #player .bab-results-score { font-size: 34px; }
+}
