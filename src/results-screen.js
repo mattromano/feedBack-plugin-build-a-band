@@ -1,17 +1,29 @@
-// The band results screen (plan 4 R16, R17): a dialog over #player with the band's
-// stars, score and song, one card per part, and Play again / Next song. Enter is
-// Next song, R is Play again. Draws only: the caller decides what the buttons do.
+// The band results screen (plan 4 R16, R17): a modal dialog over #player with the
+// band's stars, score and song, one card per part, and Play again / Next song.
+// Enter and Escape are Next song, R is Play again; the player's own keys are held
+// off while it shows. Draws only: the caller decides what the buttons do.
 import { icon } from './icons.js';
 import { formatScore } from './hud-model.js';
 
 const STAR_COUNT = 5;
 const STAR_PX = 40;
 const TYPING_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+// Core's player-scope shortcuts (play/pause, seek, speed, ...): never passed
+// through to the player while the results show.
+const PLAYER_KEYS = new Set([' ', 'Spacebar', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '[', ']', '+', '-', '=']);
 
 function isTyping(target) {
     if (!target) return false;
     if (target.isContentEditable) return true;
     return TYPING_TAGS.has(String(target.tagName || '').toUpperCase());
+}
+
+const isButton = (target) => !!target && String(target.tagName || '').toUpperCase() === 'BUTTON';
+
+function focus(el) {
+    if (el && typeof el.focus === 'function') {
+        try { el.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
+    }
 }
 
 // showResultsScreen({ doc, win, host, model, onAgain, onNext }) -> { hide() }
@@ -88,29 +100,52 @@ export function showResultsScreen({ doc, win, host, model, onAgain, onNext }) {
     again.addEventListener('click', () => onAgain());
     next.addEventListener('click', () => onNext());
 
-    // Enter: Next song. R: Play again. Typing and browser shortcuts (Ctrl/Cmd/Alt) are left alone.
+    // Keys, in the capture phase on win so core's player shortcuts (document
+    // listeners) never see them while the results are up: Space would restart
+    // the ended song behind the dialog. Browser shortcuts (Ctrl/Cmd/Alt) are
+    // left alone.
+    //   Space, arrows, [ ] + - =: swallowed, whatever has focus.
+    //   Tab / Shift+Tab: wrap between the two buttons.
+    //   Escape: Next song.
+    //   Enter: a focused button activates natively; on the dialog or body it is
+    //   Next song. R: Play again. Typing targets keep Enter and R.
+    const focusables = [again, next];
     function onKey(e) {
-        if (!e || e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
-        let action = null;
-        if (e.key === 'Enter') action = onNext;
-        else if (e.key === 'r' || e.key === 'R') action = onAgain;
-        if (!action) return;
-        e.preventDefault();
-        action();
+        if (!e || e.ctrlKey || e.metaKey || e.altKey) return;
+        const swallow = () => { e.preventDefault(); e.stopPropagation(); };
+        if (PLAYER_KEYS.has(e.key) || e.code === 'Space') { swallow(); return; }
+        if (e.key === 'Tab') {
+            swallow();
+            const i = focusables.indexOf(doc.activeElement);
+            const last = focusables.length - 1;
+            const to = e.shiftKey ? (i <= 0 ? last : i - 1) : (i < 0 || i === last ? 0 : i + 1);
+            focus(focusables[to]);
+            return;
+        }
+        if (e.key === 'Escape') { swallow(); onNext(); return; }
+        if (isTyping(e.target)) return;
+        if (e.key === 'Enter') {
+            if (isButton(e.target)) { e.stopPropagation(); return; }
+            if (e.target !== root && e.target !== doc.body) return;
+            swallow();
+            onNext();
+            return;
+        }
+        if (e.key === 'r' || e.key === 'R') { swallow(); onAgain(); }
     }
-    win.addEventListener('keydown', onKey);
+    win.addEventListener('keydown', onKey, true);
 
+    root.setAttribute('tabindex', '-1');
     host.appendChild(root);
-    if (typeof next.focus === 'function') {
-        try { next.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
-    }
+    focus(next);
+    if (doc.activeElement !== next) focus(root);
 
     let shown = true;
     return {
         hide() {
             if (!shown) return;
             shown = false;
-            win.removeEventListener('keydown', onKey);
+            win.removeEventListener('keydown', onKey, true);
             root.remove();
         },
     };

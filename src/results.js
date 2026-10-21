@@ -5,7 +5,8 @@ import { formatScore, difficultyLabel } from './hud-model.js';
 
 const NAMES = { drums: 'Drums', vocals: 'Vocals' };
 const FALLBACK_AWARDS = { guitar: 'Riff keeper', drums: 'Held it down', vocals: 'Big voice' };
-const FLAWLESS_MIN_JUDGED = 20;
+// Flawless and Most accurate both need this many judgments.
+const ACCURACY_MIN_JUDGED = 20;
 const STREAK_AWARD_MIN = 10;
 
 const num = (v) => (Number.isFinite(v) ? v : 0);
@@ -25,7 +26,8 @@ function partStats(id, p, drumsExtra) {
     if (id === 'vocals') {
         // Ratings are karaoke's own strings, ordered by mean phrase accuracy (R3, R17).
         const phrases = (Array.isArray(p.phrases) ? p.phrases : [])
-            .slice().sort((a, b) => num(b.meanAccuracy) - num(a.meanAccuracy))
+            .filter((r) => r && typeof r.rating === 'string')
+            .sort((a, b) => num(b.meanAccuracy) - num(a.meanAccuracy))
             .map((r) => formatScore(num(r.count)) + ' ' + r.rating);
         return [score, ['Phrases', phrases.length ? phrases.join(' · ') : '—'],
             ['Best run', formatScore(num(p.bestStreak)) + ' phrases']];
@@ -61,9 +63,9 @@ export function pickAwards(cards) {
     const band = list.length >= 2;
     const streakTop = band ? uniqueTop(list, (c) => c.bestStreak) : null;
     const streakCard = streakTop && streakTop.bestStreak >= STREAK_AWARD_MIN ? streakTop : null;
-    const accurateCard = band ? uniqueTop(list, (c) => c.accuracy) : null;
+    const accurateCard = band ? uniqueTop(list, (c) => (num(c.judged) >= ACCURACY_MIN_JUDGED ? c.accuracy : null)) : null;
     return list.map((c) => {
-        if (c.accuracy === 1 && num(c.judged) >= FLAWLESS_MIN_JUDGED) return 'Flawless';
+        if (c.accuracy === 1 && num(c.judged) >= ACCURACY_MIN_JUDGED) return 'Flawless';
         if (c === streakCard) return 'Best streak in the band';
         if (c === accurateCard) return 'Most accurate';
         return FALLBACK_AWARDS[c.part] || '';

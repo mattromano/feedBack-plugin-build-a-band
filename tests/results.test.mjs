@@ -117,3 +117,21 @@ test('awards: flawless needs 20 judged; streaks under 10 and tied accuracy give 
     assert.deepEqual(pickAwards([card('guitar', 1, 19, 5), card('drums', 1, 19, 9)]), ['Riff keeper', 'Held it down']);
     assert.deepEqual(pickAwards([card('drums', null, 0, 0), card('vocals', null, 0, 0)]), ['Held it down', 'Big voice']);
 });
+
+test('most accurate needs 20 judged, like flawless', () => {
+    // Different accuracies, but both on 19 judgments: no Most accurate.
+    assert.deepEqual(pickAwards([card('guitar', 0.8, 19, 5), card('drums', 0.95, 19, 5)]), ['Riff keeper', 'Held it down']);
+    // Drums is the most accurate on 19 judgments: the top card that qualifies gets it.
+    assert.deepEqual(pickAwards([card('guitar', 0.8, 100, 5), card('drums', 0.95, 19, 5), card('vocals', 0.7, 20, 2)]),
+        ['Most accurate', 'Held it down', 'Big voice']);
+});
+
+test('phrase entries without a string rating are skipped', () => {
+    const vocals = part({ accuracy: 0.8, hits: 3, bestStreak: 2, phrases: [
+        { rating: 'Strong', count: 2, meanAccuracy: 0.8 },
+        { rating: null, count: 5, meanAccuracy: 0.9 },
+        { count: 1, meanAccuracy: 0.99 },
+    ] });
+    const m = resultsModel({ snapshot: { score: 0, parts: { vocals } }, prefs: prefsOn({ vocals: true }), song: {}, oneLevel: false, drumsExtra: null });
+    assert.deepEqual(m.cards[0].stats.find(([label]) => label === 'Phrases'), ['Phrases', '2 Strong']);
+});

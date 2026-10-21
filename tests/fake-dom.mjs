@@ -100,6 +100,7 @@ export function makeEl(tag, doc) {
         querySelector(sel) { return this.querySelectorAll(sel)[0] || null; },
         closest(sel) { for (let e = this; e; e = e.parentNode) if (e.tagName && matches(e, sel)) return e; return null; },
         click() { if (!this.disabled) this.fire('click'); },
+        focus() { doc.activeElement = this; },
         ...makeListeners(),
     };
     return el;
