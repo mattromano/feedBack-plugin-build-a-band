@@ -152,7 +152,7 @@ test('callout() sets the text and shows it', () => {
     hud.destroy();
 });
 
-test('setOverdrive fills the bar (inert in plan 4)', () => {
+test('setOverdrive fills the bar and writes only changes', () => {
     const { hud, partHud } = setup();
     hud.setOverdrive('guitar', 0.42, true);
     assert.equal(partHud('guitar').querySelector('.bab-od').querySelector('i').style.width, '42%');
