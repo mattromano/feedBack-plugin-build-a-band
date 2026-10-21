@@ -69,7 +69,8 @@ export function listMicInputs(win) {
 export async function applyGuitarDevice(key, win) {
     if (!key) return 'none';
     if ((await sessionSources(win)).length) {
-        win.feedBack.audioSession.selectInputSource({ logicalSourceKey: key }, REQUESTER);
+        const as = win.feedBack.audioSession;
+        if (typeof as.selectInputSource === 'function') as.selectInputSource({ logicalSourceKey: key }, REQUESTER);
         return 'session';
     }
     const nd = win && win.noteDetect;
@@ -89,9 +90,12 @@ export function applyDrumDevice(key, win) {
     return 'ok';
 }
 
-// Karaoke reads its mic from this key as a raw string.
+// Karaoke reads its mic from this key as a raw string. An empty id (the
+// placeholder) leaves karaoke's own pick alone.
 export function applyMicDevice(deviceId, storage) {
+    if (!deviceId) return 'none';
     try { storage.setItem(KARAOKE_DEVICE_KEY, deviceId); } catch (_) { /* blocked storage */ }
+    return 'ok';
 }
 
 export async function applyDevices(prefs, win, storage) {

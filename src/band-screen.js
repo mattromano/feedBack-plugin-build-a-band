@@ -22,6 +22,7 @@ const INPUT_LABEL = { guitar: 'Input', drums: 'Kit', vocals: 'Mic' };
 const DEVICE_PLACEHOLDER = { guitar: 'Choose an input', drums: 'Choose your kit', vocals: 'Choose a mic' };
 const SIGNAL_LABEL = { guitar: 'Signal', drums: 'Hit a pad', vocals: 'Level' };
 const STATE_LABEL = { 'no-access': 'no access', 'check-in-game': 'check in game' };
+const NEEDS_MIC_ACCESS = 'Allow microphone access to list inputs';
 const PAD_FLASH_MS = 120;
 const LIT_LEVEL = 0.02;
 
@@ -55,6 +56,10 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     let song = null;
     let picked = false; // setSong was called: the lastSong restore must not override it
     let disposed = false;
+    // Go fires once per showing: a burst of pad hits or Space + pad must not
+    // start the song twice while core is still switching screens.
+    let launched = false;
+    const inputNote = {}; // part id -> device note (e.g. mic access needed)
     const isActive = () => {
         const el = doc.getElementById(SCREEN_ID);
         return !!(el && el.classList.contains('active'));
@@ -104,7 +109,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
                 const off = field === 'soundMode' && c.soundModesDisabled ? SOUND_MODES_NEEDING_STEM : [];
                 renderSeg(seg, toDom(field, pp[field]), off);
             }
-            $('.bab-note', col).textContent = c.note;
+            $('.bab-note', col).textContent = [c.note, inputNote[part.id]].filter(Boolean).join(' \u00b7 ');
         }
         renderSeg($('.bab-seg[data-field="failMode"]'), prefs.failMode);
         $('input.bab-fullscreen').checked = !!prefs.fullScreenStage;
@@ -113,7 +118,9 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     }
 
     function go() {
-        if (disposed || !bandScreenModel({ prefs, item: song }).goEnabled) return false;
+        if (disposed || launched || !bandScreenModel({ prefs, item: song }).goEnabled) return false;
+        launched = true;
+        stopLight('drums');
         onGo(song, prefs);
         return true;
     }
@@ -186,7 +193,6 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         const p = io[id];
         if (!p) return;
         p.text.textContent = STATE_LABEL[state] || SIGNAL_LABEL[id];
-        p.sig.classList.toggle('bab-live', state === 'live');
         p.sig.classList.toggle('bab-warn', !!STATE_LABEL[state]);
         if (state !== 'live') {
             p.sig.classList.remove('bab-lit');
@@ -286,6 +292,11 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         try { [guitar, mics] = await Promise.all([listGuitarInputs(win), listMicInputs(win)]); } catch (_) { /* empty lists */ }
         if (gen !== showGen || !shown()) return;
         guitarVia = guitar.via;
+        // Only blank ids: the browser hides devices until mic permission.
+        const needsAccess = (items) => items.length > 0 && !items.some(hasKey);
+        inputNote.guitar = guitar.via === 'browser' && needsAccess(guitar.items) ? NEEDS_MIC_ACCESS : '';
+        inputNote.vocals = needsAccess(mics) ? NEEDS_MIC_ACCESS : '';
+        render();
         lists.guitar = guitar.items.filter(hasKey);
         lists.vocals = mics.filter(hasKey);
         lists.drums = listDrumInputs(win).filter(hasKey);
@@ -295,6 +306,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
 
     function show() {
         visible = true;
+        launched = false;
         showGen++;
         stopLights();
         if (shown()) loadDevices(showGen);

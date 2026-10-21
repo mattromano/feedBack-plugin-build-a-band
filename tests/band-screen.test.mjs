@@ -113,26 +113,28 @@ test('Go button and Space call onGo only while visible and a part can play', () 
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0, 'no song yet');
     bs.setSong(holiday);
+    doc.activeElement = { tagName: 'INPUT' };
+    doc.fire('keydown', { code: 'Space' });
+    assert.equal(gos.length, 0, 'typing in the search box');
+    doc.activeElement = null;
     root.querySelector('.bab-go').click();
     assert.equal(gos.length, 1);
     assert.equal(gos[0].item, holiday);
-    const ev = doc.fire('keydown', { code: 'Space' });
-    assert.equal(gos.length, 2);
-    assert.equal(ev.defaultPrevented, true);
-    doc.activeElement = { tagName: 'INPUT' };
     doc.fire('keydown', { code: 'Space' });
-    assert.equal(gos.length, 2, 'typing in the search box');
-    doc.activeElement = null;
+    root.querySelector('.bab-go').click();
+    assert.equal(gos.length, 1, 'Go latches until the screen is shown again');
     fb.emit('screen:changed', { id: 'player', from: 'plugin-build_a_band' });
     assert.equal(bs.isVisible(), false);
     doc.fire('keydown', { code: 'Space' });
-    assert.equal(gos.length, 2, 'hidden');
+    assert.equal(gos.length, 1, 'hidden');
     fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
-    doc.fire('keydown', { code: 'Space' });
-    assert.equal(gos.length, 3);
+    const ev = doc.fire('keydown', { code: 'Space' });
+    assert.equal(gos.length, 2, 'shown again: the latch resets');
+    assert.equal(ev.defaultPrevented, true);
+    fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
     bs.dispose();
     doc.fire('keydown', { code: 'Space' });
-    assert.equal(gos.length, 3, 'disposed');
+    assert.equal(gos.length, 2, 'disposed');
     assert.equal(doc.listenerCount(), 0);
 });
 
@@ -427,5 +429,57 @@ test('Find my kit discovers MIDI and lists the kit', async () => {
     assert.equal(d.calls.discover, 1);
     assert.deepEqual(col('drums').querySelector('select').querySelectorAll('option').slice(1).map((o) => o.value), ['webmidi:kit']);
     assert.equal(find.hidden, true);
+    bs.dispose();
+});
+
+test('a burst of pad hits, or Space right after a pad Go, calls onGo once', async () => {
+    const d = deviceWin();
+    const { doc, fb, bs, gos } = setup({ stored: withDevices, winExtra: d.winExtra });
+    await flush();
+    await flush();
+    bs.setSong(holiday);
+    d.hit([0x99, 38, 100]);
+    d.hit([0x99, 38, 100]);
+    d.hit([0x99, 36, 90]);
+    assert.equal(gos.length, 1);
+    const ev = doc.fire('keydown', { code: 'Space' });
+    assert.equal(gos.length, 1, 'Space after a pad Go');
+    assert.equal(ev.defaultPrevented, false);
+    assert.equal(d.listeners.size, 0, 'the drums light stops once Go fires');
+    fb.emit('screen:changing', { id: 'player', from: 'plugin-build_a_band' });
+    fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    await flush();
+    await flush();
+    d.hit([0x99, 38, 100]);
+    assert.equal(gos.length, 2, 'shown again: pads start the song again');
+    bs.dispose();
+});
+
+test('picking the vocals placeholder keeps karaoke\'s mic', async () => {
+    const d = deviceWin();
+    const { col, bs, storage, prefs } = setup({ stored: withDevices, winExtra: d.winExtra });
+    storage.setItem('lyrics_karaoke.deviceId', 'usb-mic');
+    await flush();
+    const sel = col('vocals').querySelector('select');
+    sel.value = '';
+    sel.fire('change');
+    assert.equal(prefs().parts.vocals.deviceId, '');
+    assert.equal(storage.getItem('lyrics_karaoke.deviceId'), 'usb-mic');
+    bs.dispose();
+});
+
+test('blank-id audio inputs ask for microphone access in the column note', async () => {
+    const d = deviceWin();
+    d.winExtra.navigator.mediaDevices.enumerateDevices = async () => [
+        { kind: 'audioinput', deviceId: '', label: '' },
+        { kind: 'audiooutput', deviceId: '', label: '' },
+    ];
+    const { col, bs } = setup({ winExtra: d.winExtra });
+    await flush();
+    await flush();
+    assert.equal(col('guitar').querySelector('.bab-note').textContent, 'Allow microphone access to list inputs');
+    assert.ok(col('vocals').querySelector('.bab-note').textContent.endsWith('Allow microphone access to list inputs'));
+    assert.equal(col('drums').querySelector('.bab-note').textContent, '');
+    assert.equal(col('guitar').querySelector('select').querySelectorAll('option').length, 1, 'placeholder only');
     bs.dispose();
 });

@@ -107,6 +107,10 @@ test('applyGuitarDevice routes to the session or to note_detect', async () => {
 
     assert.equal(await applyGuitarDevice('', b.win), 'none');
     assert.deepEqual(b.calls.noteDetect, ['usb-mic']);
+    // A session without selectInputSource: no throw.
+    const noSel = fakeWin({ sessionSources: SESSION });
+    delete noSel.win.feedBack.audioSession.selectInputSource;
+    assert.equal(await applyGuitarDevice('native::in1', noSel.win), 'session');
     // note_detect not loaded: still no throw.
     assert.equal(await applyGuitarDevice('usb-mic', {}), 'browser');
 });
@@ -123,7 +127,10 @@ test('applyDrumDevice selects the core source and the drums pref', () => {
 
 test("applyMicDevice writes karaoke's key raw", () => {
     const st = memStorage();
-    applyMicDevice('usb-mic', st);
+    assert.equal(applyMicDevice('usb-mic', st), 'ok');
+    assert.equal(st.m.get('lyrics_karaoke.deviceId'), 'usb-mic');
+    // The placeholder (empty id) never overwrites karaoke's pick.
+    assert.equal(applyMicDevice('', st), 'none');
     assert.equal(st.m.get('lyrics_karaoke.deviceId'), 'usb-mic');
     // Blocked storage never throws.
     applyMicDevice('usb-mic', { setItem() { throw new Error('blocked'); } });
