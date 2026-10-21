@@ -307,6 +307,8 @@ export function createBandRuntime({
             } catch (e) {
                 console.error('[build-a-band] stage failed to mount', e);
                 stage = null;
+                // No strip slot: vocals can't start (startVocals bails silently).
+                if (s.vocals && !s.vocalsStarted) showToast(s, VOCALS_FAILED);
                 return;
             }
             // A remount (splitscreen) re-hosts the running strip in the new slot.
@@ -347,7 +349,10 @@ export function createBandRuntime({
             startVocals({
                 api: s.karaoke, slot: stage.stripSlot, deviceId: s.prefs.parts.vocals.deviceId, storage, isCurrent,
             }).then((result) => {
-                if (result === 'no-pitch' && isCurrent()) showToast(s, NO_PITCH);
+                // Karaoke refused a song the library lists with pitch: a failure.
+                if (result === 'no-pitch' && isCurrent()) {
+                    showToast(s, songFacts(s.item).hasVocalPitch ? VOCALS_FAILED : NO_PITCH);
+                }
             }, (e) => console.warn('[build-a-band] vocals failed to start', e));
         },
         holdExit() {

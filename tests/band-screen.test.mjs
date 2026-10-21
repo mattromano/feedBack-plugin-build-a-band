@@ -159,7 +159,7 @@ test('song picker is mounted in .bab-picker: picking sets the song, part toggles
     search.fire('input');
     await new Promise((r) => setTimeout(r, 300)); // real 250 ms debounce
     await flush();
-    // Vocals is on, but playable leaves vocal pitch out until the vocals lane ships.
+    // Vocals is on (the default), but without karaoke playable leaves vocal pitch out.
     assert.deepEqual(urls, ['/api/library?q=holiday&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_drums=1']);
     picker.querySelector('li.bab-row').click();
     assert.equal(bs.getSong(), holiday);
@@ -589,6 +589,17 @@ test('with only vocals on and a pitched song, Go is enabled', () => {
     assert.equal(root.querySelector('.bab-go').disabled, false);
     root.querySelector('.bab-go').click();
     assert.equal(gos.length, 1);
+    bs.dispose();
+});
+
+test('with karaoke and vocals on, the playable search also asks for vocal pitch', async () => {
+    const { root, urls, bs } = setup({ library: [holiday], winExtra: { lyricsKaraoke: karaokeFake() } });
+    const search = root.querySelector('.bab-picker').querySelector('input.bab-search');
+    search.value = 'holiday';
+    search.fire('input');
+    await new Promise((r) => setTimeout(r, 300)); // real 250 ms debounce
+    await flush();
+    assert.deepEqual(urls, ['/api/library?q=holiday&size=30&arrangements_has=Lead%2CRhythm%2CBass&has_drums=1&has_lyrics=pitch']);
     bs.dispose();
 });
 

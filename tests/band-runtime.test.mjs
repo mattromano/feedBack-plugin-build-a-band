@@ -49,7 +49,7 @@ const ITEM = { filename: 'My Song.sloppak', arrangements: [{ index: 0, name: 'Le
 const DRUM_ITEM = { filename: 'Beat.sloppak', arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Drums' }] };
 
 function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 },
-    karaoke = true, karaokePitch = true } = {}) {
+    karaoke = true, karaokePitch = true, mountFails = false } = {}) {
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
@@ -115,6 +115,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     }
     const mounts = [];
     const mountStage = ({ player: p, song, prefs }) => {
+        if (mountFails) throw new Error('mount failed');
         // The real stage stops splitscreen, which clears the stored pref.
         storage.setItem('splitscreenActive', 'false');
         const s = { player: p, song, prefs, unmounted: 0, unmountedAt: null,
@@ -658,14 +659,50 @@ test('no karaoke plugin: vocals sits out and karaoke is never called', async () 
     rt.dispose();
 });
 
-test('karaoke has no pitch for the song: toast, no mic', async () => {
+// Vocals only plays at Go when the library item has_vocal_pitch, so a refused
+// karaoke mode is a failure, not a missing chart.
+test('karaoke mode refused for a song the library lists with pitch: "Vocals couldn\'t start", no mic', async () => {
     const { rt, calls, loadSong, player } = setup({ karaokePitch: false });
     rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
     loadSong(PITCH_ITEM);
     await flush();
     const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
-    assert.ok(toasts.includes('No vocal pitch for this song'), JSON.stringify(toasts));
+    assert.deepEqual(toasts, ["Vocals couldn't start"]);
     assert.ok(!names(calls).includes('startMic'));
+    rt.dispose();
+});
+
+test('the stage failing to mount with vocals armed says "Vocals couldn\'t start" and opens no mic', async () => {
+    const { rt, calls, loadSong, player } = setup({ mountFails: true });
+    const error = console.error;
+    const errors = [];
+    console.error = (...a) => errors.push(a.join(' '));
+    try {
+        rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+        loadSong(PITCH_ITEM);
+    } finally {
+        console.error = error;
+    }
+    await flush();
+    assert.ok(errors.some((e) => /stage failed to mount/.test(e)));
+    const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+    assert.deepEqual(toasts, ["Vocals couldn't start"]);
+    assert.ok(!names(calls).includes('startMic'));
+    rt.dispose();
+});
+
+test('the stage failing to mount without vocals shows no vocals toast', () => {
+    const { rt, loadSong, player } = setup({ mountFails: true });
+    const error = console.error;
+    console.error = () => {};
+    try {
+        rt.startSession({ song: ITEM, prefs: prefsWith() });
+        loadSong(ITEM);
+    } finally {
+        console.error = error;
+    }
+    const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+    assert.ok(!toasts.includes("Vocals couldn't start"), JSON.stringify(toasts));
     rt.dispose();
 });
 
