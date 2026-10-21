@@ -2366,3 +2366,142 @@ test('with isPlaying true and the chart clock advancing, onsets still deploy', (
     assert.equal(rt.overdrive().guitar.active, true);
     rt.dispose();
 });
+
+// ── Drum sound modes (plan 6 Task 3): My kit only holds the sound claim ──
+
+const STEM_ITEM = { ...DRUM_ITEM, stem_ids: ['guitar', 'drums'] };
+const SOUND_CLAIM = 'build_a_band:sound:drums';
+const isSound = (r) => !!r && (r.claimId === SOUND_CLAIM || !!(r.args && r.args.claimId === SOUND_CLAIM));
+const soundCommand = (calls, command) => stemsCommand(calls, command).filter(isSound);
+const soundCaps = (calls) => calls.caps.filter((c) => isSound(c[1]));
+const kitPrefs = (drums = {}) => prefsWith({ drums: { soundMode: 'kit', ...drums } });
+
+test('My kit only mutes the drum stem under its own claim', () => {
+    const env = setup();
+    const { rt, loadSong, calls } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+    loadSong(STEM_ITEM);
+    assert.deepEqual(capCalls(calls, 'claim', isSound), [{ capability: 'stems', claimId: SOUND_CLAIM, requester: 'build_a_band' }]);
+    assert.deepEqual(soundCommand(calls, 'mute').map((r) => r.args), [{ id: 'drums', claimId: SOUND_CLAIM }]);
+    assert.deepEqual(rt.drumSound(), { mode: 'kit', muted: true });
+    rt.dispose();
+});
+
+test('the stems graph arriving after song:ready still gets the mute', async () => {
+    const ids = [];
+    const env = setup({ stems: ids });
+    const { rt, loadSong, calls, fireWin } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+    loadSong(STEM_ITEM);
+    assert.deepEqual(stemsCommand(calls, 'mute'), [], 'no stems yet');
+    ids.push('guitar', 'drums');
+    fireWin('stems:state', { event: 'provider-ready', stemIds: ids });
+    assert.equal(soundCommand(calls, 'mute').length, 1);
+    fireWin('stems:state', { event: 'provider-ready', stemIds: ids });
+    await flush();   // the forced re-mute queues behind the first one
+    assert.equal(soundCommand(calls, 'mute').length, 2, 'a rebuilt graph is muted again');
+    assert.deepEqual(soundCommand(calls, 'restore'), []);
+    fireWin('stems:state', { event: 'state' });
+    await flush();
+    assert.equal(soundCaps(calls).length, 4, 'nothing more: two claims, two mutes');
+    rt.dispose();
+});
+
+test('song drums never claim; nothing without a playing drums part', () => {
+    const cases = [
+        ['song', {}, prefsWith({ drums: { soundMode: 'song' } })],
+        ['drums off', {}, kitPrefs({ on: false })],
+        ['no drum lane', { drumLane: false }, kitPrefs()],
+    ];
+    for (const [name, opts, prefs] of cases) {
+        const env = setup(opts);
+        const { rt, loadSong, calls, fireWin } = env;
+        rt.startSession({ song: STEM_ITEM, prefs });
+        loadSong(STEM_ITEM);
+        fireWin('stems:state', { event: 'provider-ready', stemIds: ['guitar', 'drums'] });
+        assert.deepEqual(soundCaps(calls), [], name);
+        assert.equal(rt.drumSound(), null, name);
+        rt.dispose();
+    }
+});
+
+test('no capability host or no drum stem: no dispatch, no throw', () => {
+    {
+        const env = setup({ caps: false });
+        const { rt, loadSong, fireWin } = env;
+        rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+        loadSong(STEM_ITEM);
+        fireWin('stems:state', { event: 'provider-ready', stemIds: ['guitar', 'drums'] });
+        assert.equal(rt.drumSound().muted, false);
+        rt.dispose();
+    }
+    {
+        const env = setup({ stems: ['guitar'] });
+        const { rt, loadSong, calls } = env;
+        rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+        loadSong(STEM_ITEM);
+        assert.deepEqual(soundCaps(calls), []);
+        rt.dispose();
+    }
+});
+
+test('every exit path restores and releases the kit claim', async () => {
+    const exits = {
+        'Next song': (e) => { e.fb.emit('song:ended', {}); e.rt.next(); },
+        'Play again': (e) => { e.fb.emit('song:ended', {}); e.rt.again(); },
+        'song:stop': (e) => e.fb.emit('song:stop', {}),
+        'screen:changing away': (e) => e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }),
+        'dispose()': (e) => e.rt.dispose(),
+    };
+    for (const [name, exit] of Object.entries(exits)) {
+        const env = setup();
+        env.rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+        env.loadSong(STEM_ITEM);
+        assert.equal(soundCommand(env.calls, 'mute').length, 1, name);
+        exit(env);
+        await flush();
+        assert.deepEqual(soundCommand(env.calls, 'restore').map((r) => r.args), [{ claimId: SOUND_CLAIM }], name);
+        assert.deepEqual(capCalls(env.calls, 'release', isSound), [{ capability: 'stems', claimId: SOUND_CLAIM, requester: 'build_a_band' }], name);
+        const kinds = soundCaps(env.calls).map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
+        assert.ok(kinds.indexOf('dispatch:restore') < kinds.indexOf('release'), `${name}: restore before release`);
+        assert.equal(env.rt.drumSound(), null, name);
+        env.rt.dispose();
+        await flush();
+        assert.equal(capCalls(env.calls, 'release', isSound).length, 1, `${name}: released once`);
+    }
+});
+
+test("Play again: the replay's kit mute follows the old restore and release", async () => {
+    const env = setup();
+    const { rt, fb, loadSong, calls } = env;
+    const held = holdMutes(env);
+    rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+    loadSong(STEM_ITEM);
+    fb.emit('song:ended', {});
+    rt.again();
+    loadSong(STEM_ITEM);
+    assert.equal(rt.phase(), 'playing');
+    await flush();
+    assert.deepEqual(capKinds(calls), ['claim', 'dispatch:mute'], 'everything waits for the first mute');
+    held[0]();
+    await flush();
+    assert.deepEqual(capKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release', 'claim', 'dispatch:mute']);
+    assert.deepEqual(rt.drumSound(), { mode: 'kit', muted: true });
+    held[1]();
+    rt.dispose();
+    await flush();
+    assert.deepEqual(capKinds(calls).slice(-2), ['dispatch:restore', 'release']);
+});
+
+test('pausing changes nothing', () => {
+    const env = setup();
+    const { rt, fb, loadSong, calls, timers } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+    loadSong(STEM_ITEM);
+    fb.isPlaying = false;
+    timers.fire(100);
+    timers.fire(100);
+    assert.deepEqual(soundCommand(calls, 'restore'), []);
+    assert.equal(rt.drumSound().muted, true);
+    rt.dispose();
+});

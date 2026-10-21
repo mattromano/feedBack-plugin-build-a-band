@@ -16,7 +16,8 @@ import { createBandScore } from './band-score.js';
 import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals, onsetTime } from './part-events.js';
 import { chartPhrases } from './guitar-od.js';
 import { createOverdriveSession } from './overdrive-session.js';
-import { stemIdFor, muteStem, restoreStem } from './stem-claims.js';
+import { stemIdFor, muteStem, restoreStem, SOUND_CLAIM_ID } from './stem-claims.js';
+import { createDrumSound } from './drum-sound.js';
 import { OD_CALLOUT } from './hud-model.js';
 import { guitarStarThresholds } from './stars.js';
 import { createBandHud } from './hud.js';
@@ -198,6 +199,10 @@ export function createBandRuntime({
             failed: new Set(),
             stemClaims: new Set(),
             bandFailed: false,
+            // Drum sound mode (plan 6): the session's createDrumSound, and whether
+            // a sound mute was sent and not yet restored.
+            drumSound: null,
+            soundClaim: false,
         };
     }
 
@@ -316,6 +321,7 @@ export function createBandRuntime({
         if (s.hud) mountHud(s);
         // The part's own claim goes with it; with it gone, everyone left may be out.
         syncFailures(s, { silent: true });
+        if (id === 'drums') releaseDrumSound(s);
     }
 
     // Vocals that couldn't start leave the band unless they have judged
@@ -422,6 +428,40 @@ export function createBandRuntime({
         s.stemClaims.delete(id);
         const caps = fb.capabilities;
         safe(() => queueStemOp(id, () => restoreStem({ caps, part: id })));
+    }
+
+    // Drum sound mode (plan 6 R4, R8): only while drums is a playing band part,
+    // and never for Song drums. Idempotent.
+    function startDrumSound(s) {
+        if (s.drumSound || !s.score || !s.scoreParts.includes('drums')) return;
+        const mode = s.prefs.parts.drums.soundMode;
+        if (mode === 'song') return;
+        s.drumSound = createDrumSound(mode);
+        syncDrumSound(s);
+    }
+
+    // Brings the sound claim in line with the mode's wanted state. force re-mutes
+    // a held claim (stems rebuilt its graph, R4). With no drum stem or no
+    // capability host nothing is sent; a later provider-ready retries.
+    function syncDrumSound(s, { force = false } = {}) {
+        const want = !!(s.drumSound && s.drumSound.muted());
+        const caps = fb.capabilities;
+        if (want) {
+            const stemId = stemIdFor('drums', s.prefs.parts.drums, songStemIds());
+            if (!stemId || !caps) return;
+            if (s.soundClaim && !force) return;
+            s.soundClaim = true;
+            safe(() => queueStemOp('sound:drums', () => muteStem({ caps, part: 'drums', stemId, claimId: SOUND_CLAIM_ID })));
+        } else if (s.soundClaim) {
+            s.soundClaim = false;
+            safe(() => queueStemOp('sound:drums', () => restoreStem({ caps, part: 'drums', claimId: SOUND_CLAIM_ID })));
+        }
+    }
+
+    // The mode goes: a held claim is restored and released (R12).
+    function releaseDrumSound(s) {
+        s.drumSound = null;
+        syncDrumSound(s);
     }
 
     // Fail mode (R12, R13): brings the lanes and stem claims in line with the
@@ -546,6 +586,7 @@ export function createBandRuntime({
                 EFFECTS.mount(s);
                 // The ledger came with this mount: overdrive starts now.
                 startOverdrive(s);
+                startDrumSound(s);
                 // Splitscreen was still up at song:ready, so vocals had no
                 // strip slot then: start them now the stage is up.
                 if (s.vocals && !s.vocalsStarted && !s.vocalsFailed) EFFECTS.startVocals(s);
@@ -736,6 +777,7 @@ export function createBandRuntime({
                 listenCanvas(s);
             }
             startOverdrive(s);
+            startDrumSound(s);
         },
         applyDevices(s) {
             Promise.resolve()
@@ -878,6 +920,7 @@ export function createBandRuntime({
             s.drumCanvas = null;
             // 7. Every stem the band muted comes back, and its claim is released.
             for (const id of [...s.stemClaims]) restoreFailedStem(s, id);
+            releaseDrumSound(s);
         },
         releaseExit() {
             const r = release;
@@ -1080,8 +1123,17 @@ export function createBandRuntime({
         const od = s.od;
         if (safe(() => od.onset(t, displayTime(s))) === true) record(s, { part: 'guitar', t: displayTime(s), kind: 'deploy' });
     }
+    // Stems built a new stem graph (R4): its claims are gone, so a held sound
+    // mute is sent again.
+    function onStemsState(e) {
+        const d = e && e.detail;
+        if (!d || d.event !== 'provider-ready') return;
+        const s = scoring();
+        if (s && s.drumSound) syncDrumSound(s, { force: true });
+    }
     const winHandlers = {
         'notedetect:hit': onGuitarJudgment, 'notedetect:miss': onGuitarJudgment, 'notedetect:onset': onOnset,
+        'stems:state': onStemsState,
     };
 
     for (const [ev, fn] of Object.entries(handlers)) fb.on(ev, fn);
@@ -1101,6 +1153,8 @@ export function createBandRuntime({
         snapshot: () => (session && session.score ? session.score.snapshot() : null),
         // The current session's overdrive meters, or null.
         overdrive: () => (session && session.od ? session.od.snapshot(displayTime(session)) : null),
+        // The current session's drum sound mode (R17): { mode, muted }, or null.
+        drumSound: () => (session && session.drumSound ? { mode: session.drumSound.mode, muted: session.soundClaim } : null),
         again: () => dispatch({ type: 'again' }),
         next: () => dispatch({ type: 'next' }),
     };
