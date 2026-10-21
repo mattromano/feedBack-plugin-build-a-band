@@ -13,7 +13,9 @@ import { planStage } from './stage.js';
 import { PART_TYPES, getPart, hasChart, songFacts } from './parts.js';
 import { karaokeApi, armVocals, startVocals, stopVocals, showKaraokeHud } from './vocals.js';
 import { createBandScore } from './band-score.js';
-import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals } from './part-events.js';
+import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals, onsetTime } from './part-events.js';
+import { chartPhrases } from './guitar-od.js';
+import { createOverdriveSession } from './overdrive-session.js';
 import { guitarStarThresholds } from './stars.js';
 import { createBandHud } from './hud.js';
 import { createToastStack } from './toasts.js';
@@ -38,6 +40,8 @@ const SPLIT_POLL_MAX = 100;
 const REWIND_MIN_S = 0.05;
 const BAND_SONG_CLASS = 'bab-band-song';
 const DRUM_JUDGMENTS = ['hit', 'miss', 'overhit'];
+// The overdrive tick while the song plays (plan 5 R16).
+const OD_TICK_MS = 100;
 
 function safe(fn) {
     try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
@@ -83,6 +87,7 @@ function withoutVocals(prefs) {
 //   shared with the band screen so a Go doesn't re-apply a device just picked.
 //   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase(),
 //        snapshot(): the current session's band score snapshot, or null,
+//        overdrive(): its overdrive meters (overdrive-session snapshot), or null,
 //        again(), next(): Play again / Next song while the results show }
 // startSession returns false when it refuses (a session is running, no song);
 // otherwise a promise of core's playSong that rejects, after the session went
@@ -109,6 +114,8 @@ export function createBandRuntime({
     // note_detect hands each judgment to window twice (its own dispatch, then
     // the same detail bubbling from its instance root): count each once.
     const seenGuitar = new WeakSet();
+    // notedetect:onset arrives twice the same way.
+    const seenOnset = new WeakSet();
 
     function sliderMastery() {
         const slider = doc.getElementById('mastery-slider');
@@ -170,6 +177,15 @@ export function createBandRuntime({
             countInOverride: false,
             // The band turned note_detect's detection on (restored at teardown).
             ndEnabled: false,
+            // Overdrive (plan 5): the per-song session and its tick.
+            od: null,
+            odTimer: null,
+            // Drums stars over the full chart (M6, R20): the largest thresholds seen.
+            drumsThresholds: null,
+            // Fail mode (Task 11).
+            failed: new Set(),
+            stemClaims: new Set(),
+            bandFailed: false,
         };
     }
 
@@ -350,6 +366,59 @@ export function createBandRuntime({
         refreshHud(s, false);
     }
 
+    // The drums engine's state on the band's drum canvas, or null.
+    function drumsState(s) {
+        const api = win.feedBackDrums;
+        const canvas = bandDrumCanvas(s);
+        if (!canvas || !api || typeof api.getInstanceState !== 'function') return null;
+        return api.getInstanceState(canvas);
+    }
+
+    // Overdrive for the ledger's parts (R16), once the ledger exists and the
+    // band mastery is applied. Idempotent.
+    function startOverdrive(s) {
+        if (s.od || !s.score) return;
+        const hw = win.highway;
+        const call = (name) => (hw && typeof hw[name] === 'function' ? safe(() => hw[name]()) : null);
+        const guitar = s.scoreParts.includes('guitar') && hw
+            ? { phrases: chartPhrases(hw), notes: call('getFilteredNotes'), chords: call('getFilteredChords') }
+            : null;
+        s.od = safe(() => createOverdriveSession({
+            parts: s.scoreParts.slice(),
+            beats: call('getBeats'),
+            guitar,
+            getHud: () => s.hud,
+            readDrums: () => drumsState(s),
+            readVocals: () => (s.karaoke && typeof s.karaoke.getOverdrive === 'function' ? s.karaoke.getOverdrive() : null),
+        })) || null;
+        if (s.od) s.odTimer = setTimer(() => odTick(s), OD_TICK_MS);
+    }
+
+    function odTick(s) {
+        s.odTimer = null;
+        if (session !== s || state.phase !== 'playing' || !s.od) return;
+        const hw = win.highway;
+        const t = displayTime(s);
+        const chartT = hw && typeof hw.getTime === 'function' ? safe(() => hw.getTime()) : undefined;
+        const od = s.od;
+        safe(() => od.tick(Number.isFinite(chartT) ? chartT : t, t));
+        syncDrumsThresholds(s);
+        s.odTimer = setTimer(() => odTick(s), OD_TICK_MS);
+    }
+
+    // M6 (R20): after a seek the drums engine's thresholds cover only the
+    // rest of the chart, so the band keeps the ones with the largest final
+    // value (the full chart) and measures the ledger's drums score with them.
+    function syncDrumsThresholds(s) {
+        const th = safe(() => { const st = drumsState(s); return st && st.starThresholds; });
+        if (!Array.isArray(th) || !th.length || !Number.isFinite(th[th.length - 1])) return;
+        const prev = s.drumsThresholds;
+        if (prev && !(th[th.length - 1] > prev[prev.length - 1])) return;
+        s.drumsThresholds = th.slice();
+        safe(() => s.score.setStarThresholds('drums', s.drumsThresholds));
+        refreshHud(s, true);
+    }
+
     const splitscreen = () => win.slopsmithSplitscreen;
     function splitActive() {
         const ss = splitscreen();
@@ -382,6 +451,8 @@ export function createBandRuntime({
             s.splitWaiting = false;
             if (state.phase === 'playing') {
                 EFFECTS.mount(s);
+                // The ledger came with this mount: overdrive starts now.
+                startOverdrive(s);
                 // Splitscreen was still up at song:ready, so vocals had no
                 // strip slot then: start them now the stage is up.
                 if (s.vocals && !s.vocalsStarted && !s.vocalsFailed) EFFECTS.startVocals(s);
@@ -571,6 +642,7 @@ export function createBandRuntime({
                 pinDrumDifficulty(s);
                 listenCanvas(s);
             }
+            startOverdrive(s);
         },
         applyDevices(s) {
             Promise.resolve()
@@ -683,6 +755,9 @@ export function createBandRuntime({
             if (s.canvasListener) { safe(() => fb.off('highway:canvas-replaced', onCanvasReplaced)); s.canvasListener = false; }
             if (s.splitTimer !== null) { clearTimer(s.splitTimer); s.splitTimer = null; }
             s.splitWaiting = false;
+            // 6. Overdrive.
+            if (s.odTimer !== null) { clearTimer(s.odTimer); s.odTimer = null; }
+            s.od = null;
             s.drumCanvas = null;
         },
         releaseExit() {
@@ -788,11 +863,25 @@ export function createBandRuntime({
         const canvas = bandDrumCanvas(s);
         // A canvas the stage adopted without an announcement is hidden here.
         if (canvas && s.hidden.drums.size) hideDrumHud(s, canvas);
-        // Plan 5's overdrive factor goes on entries here, but not on drums:
-        // drums' points already include its own star-power doubling.
+        // Drums never take an overdrive factor (R4): their points already
+        // include the drums engine's own star-power doubling.
         record(s, drumsEntry(type, e && e.detail, displayTime(s), canvas));
     };
     for (const type of DRUM_JUDGMENTS) handlers['drums:' + type] = drumHandler(type);
+    // Deploys (R18): drums star power on the band's drum canvas, karaoke's overdrive.
+    handlers['drums:sp-activate'] = (e) => {
+        const s = scoring();
+        const d = e && e.detail;
+        if (!s || !s.od || !d || !d.canvas || d.canvas !== bandDrumCanvas(s)) return;
+        s.od.deployed('drums');
+        record(s, { part: 'drums', t: displayTime(s), kind: 'deploy' });
+    };
+    handlers['karaoke:od-activate'] = () => {
+        const s = scoring();
+        if (!s || !s.od) return;
+        s.od.deployed('vocals');
+        record(s, { part: 'vocals', t: displayTime(s), kind: 'deploy' });
+    };
     handlers['karaoke:phrase'] = (e) => {
         const s = scoring();
         if (!s) return;
@@ -813,10 +902,16 @@ export function createBandRuntime({
         const s = scoring();
         const d = (e && e.detail) || {};
         if (!s || !Number.isFinite(d.from) || !Number.isFinite(d.to)) return;
-        if (!(d.to < d.from - REWIND_MIN_S) || d.reason === 'loop-wrap') return;
+        // A loop wrap keeps the ledger; the looped phrases earn again (R8).
+        if (d.reason === 'loop-wrap') {
+            if (s.od) { const od = s.od; safe(() => od.loopWrap(d.to)); }
+            return;
+        }
+        if (!(d.to < d.from - REWIND_MIN_S)) return;
         s.score.rewindTo(d.to);
         s.lastT = d.to;
         if (s.vocalsReset !== undefined) s.score.syncTotals('vocals', s.vocalsReset);
+        if (s.od) { const od = s.od; safe(() => od.rewindTo(d.to)); }
         refreshHud(s, true);
     };
     function onGuitarJudgment(e) {
@@ -824,9 +919,29 @@ export function createBandRuntime({
         const d = e && e.detail;
         if (!s || !d || typeof d !== 'object' || seenGuitar.has(d)) return;
         seenGuitar.add(d);
-        record(s, guitarEntry(d, displayTime(s)));
+        const entry = guitarEntry(d, displayTime(s));
+        if (!entry) return;
+        const od = s.od;
+        // A dropped-out guitar earns nothing (R19): checked before this entry.
+        const before = od ? s.score.snapshot().parts.guitar : null;
+        const failed = !!(before && before.failed);
+        record(s, { ...entry, factor: od ? od.factorFor('guitar', entry.t) : 1 });
+        if (od && !failed) safe(() => od.guitarJudgment(entry.noteTime, entry.kind === 'hit', entry.t));
     }
-    const winHandlers = { 'notedetect:hit': onGuitarJudgment, 'notedetect:miss': onGuitarJudgment };
+    // Noodle it up (R9, R10): an onset that deploys is the guitar's deploy entry.
+    function onOnset(e) {
+        const s = scoring();
+        const d = e && e.detail;
+        if (!s || !d || typeof d !== 'object' || seenOnset.has(d)) return;
+        seenOnset.add(d);
+        const t = onsetTime(d);
+        if (!s.od || !Number.isFinite(t)) return;
+        const od = s.od;
+        if (safe(() => od.onset(t, displayTime(s))) === true) record(s, { part: 'guitar', t: displayTime(s), kind: 'deploy' });
+    }
+    const winHandlers = {
+        'notedetect:hit': onGuitarJudgment, 'notedetect:miss': onGuitarJudgment, 'notedetect:onset': onOnset,
+    };
 
     for (const [ev, fn] of Object.entries(handlers)) fb.on(ev, fn);
     const winEvents = typeof win.addEventListener === 'function';
@@ -843,6 +958,8 @@ export function createBandRuntime({
         startSession,
         phase: () => state.phase,
         snapshot: () => (session && session.score ? session.score.snapshot() : null),
+        // The current session's overdrive meters, or null.
+        overdrive: () => (session && session.od ? session.od.snapshot(displayTime(session)) : null),
         again: () => dispatch({ type: 'again' }),
         next: () => dispatch({ type: 'next' }),
     };

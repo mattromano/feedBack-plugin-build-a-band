@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createBandRuntime } from '../src/band-runtime.js';
 import { makeDoc, flush } from './fake-dom.mjs';
+import { starsFromScore } from '../src/yarg-rules.js';
 
 function memStorage(init = {}) {
     const m = new Map(Object.entries(init));
@@ -53,7 +54,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
-        karaoke: [], karaokeAt: [], playSongAt: [], hides: [], countIn: [], countInAt: [], nd: [] };
+        karaoke: [], karaokeAt: [], playSongAt: [], hides: [], countIn: [], countInAt: [], nd: [], micHit: [] };
     // Shared sequence counter: orders karaoke calls against playSong and unmount.
     let seq = 0;
     const doc = makeDoc();
@@ -87,6 +88,10 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     };
     // The song's display time, moved by the tests.
     const clock = { t: 0 };
+    // The chart: highway time, beats and phrases (overdrive), moved by the tests.
+    const chart = { t: 0, beats: [], phrases: null };
+    // What the drums engine and karaoke report for overdrive (null: nothing).
+    const od = { drums: null, vocals: null };
     let ssActive = false;
     const storage = memStorage(storageInit);
     const win = {
@@ -97,6 +102,9 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
             // Ten single notes at the band mastery.
             getFilteredNotes: () => Array.from({ length: 10 }, (_, i) => ({ t: i, s: 0, f: 3 })),
             getFilteredChords: () => [],
+            getBeats: () => chart.beats,
+            getPhrases: () => chart.phrases,
+            getTime: () => chart.t,
         },
         setMastery: () => { throw new Error('window.setMastery persists; never call it'); },
         playSong: (f, i) => { calls.playSongAt.push(++seq); calls.playSong.push([f, i]); },
@@ -107,6 +115,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
             setDifficulty: (id, c) => calls.setDifficulty.push([id, c]),
             clearDifficulty: (c) => calls.clearDifficulty.push(c),
             setScoreHudHidden: (c, v) => { calls.hides.push(['drums', c, v]); return true; },
+            getInstanceState: (c) => (typeof od.drums === 'function' ? od.drums(c) : od.drums),
         },
         noteDetect: {
             setScoreHudHidden: (v) => { calls.hides.push(['nd', v]); return true; },
@@ -137,6 +146,8 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
             setHearMyself: (on) => { rec('setHearMyself', on); return true; },
             // Recorded with the other plugins' hide switches.
             setScoreHudHidden: (v) => { calls.hides.push(['karaoke', v]); return true; },
+            getOverdrive: () => od.vocals,
+            setMicHitThreshold: (db) => { calls.micHit.push(db); },
         };
     }
     const mounts = [];
@@ -185,7 +196,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         fb.emit('song:ready', { hasPhraseData });
     }
     const fireWin = (type, detail) => win.dispatchEvent(new CustomEvent(type, { detail }));
-    return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong, clock, fireWin,
+    return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong, clock, chart, od, fireWin,
         makeRuntime, setSplit: (v) => { ssActive = v; } };
 }
 
@@ -1635,5 +1646,213 @@ test('an enable that rejects is only warned about', async () => {
     } finally { console.warn = warn; }
     assert.equal(rt.phase(), 'playing');
     assert.ok(warns.length >= 1);
+    rt.dispose();
+});
+
+// ── Overdrive (plan 5 Task 10) ──
+
+// Two phrases over nine notes (0..8), then a 12 s gap before the note at 20.
+const OD_NOTES = [...Array.from({ length: 9 }, (_, i) => ({ t: i, s: 0, f: 3 })), { t: 20, s: 0, f: 3 }];
+const OD_PHRASES = [{ start_time: 0, end_time: 4.5 }, { start_time: 4.5, end_time: 9 }];
+
+function odSetup(opts) {
+    const env = setup(opts);
+    env.win.highway.getFilteredNotes = () => OD_NOTES;
+    env.chart.phrases = OD_PHRASES;
+    // Display time and chart time move together here.
+    env.at = (t) => { env.clock.t = t; env.chart.t = t; };
+    return env;
+}
+
+const odHud = (player, part) => {
+    const hud = player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === part);
+    return hud ? hud.querySelector('.bab-od').querySelector('i') : null;
+};
+
+// Nine hits clear both phrases; two ticks past them fill half a bar; three
+// onsets in the gap deploy. Guitar overdrive is active from display time 11.5.
+function deployGuitar(env) {
+    const { fireWin, timers, at } = env;
+    for (let i = 0; i < 9; i++) {
+        at(i);
+        fireWin('notedetect:hit', guitarHit({ noteTime: i, points: 100 }));
+    }
+    at(6);
+    timers.fire(100);
+    at(10);
+    timers.fire(100);
+    for (const t of [10.5, 11, 11.5]) {
+        at(t);
+        const onset = { t, midi: null, confidence: null, level: 0.3, source: 'level', isDefault: true };
+        fireWin('notedetect:onset', onset);
+        fireWin('notedetect:onset', onset);
+    }
+}
+
+test('guitar overdrive doubles guitar points while active', () => {
+    const env = odSetup();
+    const { rt, loadSong, fireWin, at } = env;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    loadSong(ITEM);
+    deployGuitar(env);
+    assert.equal(rt.snapshot().parts.guitar.deploys, 1, 'one deploy entry for three onsets each dispatched twice');
+    assert.equal(rt.overdrive().guitar.active, true);
+    at(12);
+    const before = rt.snapshot().parts.guitar.score;
+    fireWin('notedetect:hit', guitarHit({ noteTime: 20, points: 100 }));
+    assert.equal(rt.snapshot().parts.guitar.score - before, 200);
+    rt.dispose();
+});
+
+test('onsets before the bar is ready never deploy', () => {
+    const env = odSetup();
+    const { rt, loadSong, fireWin, at } = env;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    loadSong(ITEM);
+    for (const t of [10.5, 11, 11.5, 12]) {
+        at(t);
+        fireWin('notedetect:onset', { t, source: 'level', isDefault: true });
+    }
+    fireWin('notedetect:onset', { t: 12.5, source: 'level', isDefault: false });
+    assert.equal(rt.snapshot().parts.guitar.deploys, 0);
+    rt.dispose();
+});
+
+test('drums and vocals points are never doubled', () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, mounts, at } = env;
+    rt.startSession({ song: FULL_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(FULL_ITEM);
+    deployGuitar(env);
+    assert.equal(rt.overdrive().guitar.active, true, 'the band meter is active');
+    at(12);
+    const before = rt.snapshot().parts;
+    fb.emit('drums:hit', { canvas: mounts[0].drumCanvas, points: 120, multiplier: 4, combo: 9, spActive: true });
+    fb.emit('karaoke:phrase', { rating: 'Great', accuracy: 0.9, points: 1600, multiplier: 2, streak: 2 });
+    const after = rt.snapshot().parts;
+    assert.equal(after.drums.score - before.drums.score, 120);
+    assert.equal(after.vocals.score - before.vocals.score, 1600);
+    rt.dispose();
+});
+
+test('drums sp-activate and karaoke od-activate record deploys', () => {
+    const env = odSetup();
+    const { rt, fb, doc, loadSong, mounts } = env;
+    rt.startSession({ song: FULL_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(FULL_ITEM);
+    fb.emit('drums:sp-activate', { canvas: doc.createElement('canvas'), spActive: true, spAmount: 0.5 });
+    assert.equal(rt.snapshot().parts.drums.deploys, 0, 'another canvas does nothing');
+    fb.emit('drums:sp-activate', { canvas: mounts[0].drumCanvas, spActive: true, spAmount: 0.5 });
+    fb.emit('karaoke:od-activate', { fill: 0.5, t: 3 });
+    const parts = rt.snapshot().parts;
+    assert.equal(parts.drums.deploys, 1);
+    assert.equal(parts.vocals.deploys, 1);
+    assert.equal(parts.guitar.deploys, 0);
+    rt.dispose();
+});
+
+test('the tick mirrors drums and vocals bars', () => {
+    const env = odSetup();
+    const { rt, loadSong, mounts, player, timers, od } = env;
+    const asked = [];
+    od.drums = (c) => { asked.push(c); return { starPower: { amount: 0.5, active: false } }; };
+    od.vocals = { fill: 0.25, active: false, ready: false };
+    rt.startSession({ song: FULL_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(FULL_ITEM);
+    timers.fire(100);
+    assert.equal(odHud(player, 'drums').style.width, '50%');
+    assert.equal(odHud(player, 'vocals').style.width, '25%');
+    assert.ok(asked.length > 0 && asked.every((c) => c === mounts[0].drumCanvas), 'read from the band drum canvas');
+    assert.ok(timers.delays().includes(100), 'the tick runs again');
+    rt.dispose();
+});
+
+test('drums stars use the full chart after a seek (M6)', () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, mounts, timers, od, at } = env;
+    const full = [60, 120, 200, 450, 750, 1090];
+    od.drums = { starPower: { amount: 0, active: false }, starThresholds: full };
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    timers.fire(100);
+    at(3);
+    fb.emit('drums:hit', { canvas: mounts[0].drumCanvas, points: 300, multiplier: 1, combo: 1, stars: 5 });
+    fb.emit('song:seek', { from: 30, to: 20 });
+    // The drums engine rebuilt from the seek: thresholds for the rest only.
+    od.drums = { starPower: { amount: 0, active: false }, starThresholds: [6, 12, 20, 45, 75, 109] };
+    at(20);
+    timers.fire(100);
+    assert.equal(rt.snapshot().parts.drums.stars, starsFromScore(300, full));
+    rt.dispose();
+});
+
+test('rewinding restores the guitar bar', () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, fireWin, timers, at } = env;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    loadSong(ITEM);
+    for (let i = 0; i < 5; i++) {
+        at(i);
+        fireWin('notedetect:hit', guitarHit({ noteTime: i }));
+    }
+    at(6);
+    timers.fire(100);
+    assert.equal(rt.overdrive().guitar.fill, 0.25, 'a gain');
+    fb.emit('song:seek', { from: 30, to: 5 });
+    at(5);
+    assert.equal(rt.overdrive().guitar.fill, 0);
+    rt.dispose();
+});
+
+test('a loop wrap keeps the guitar bar and reopens the looped phrases', () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, fireWin, timers, at } = env;
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    loadSong(ITEM);
+    for (let i = 0; i < 5; i++) {
+        at(i);
+        fireWin('notedetect:hit', guitarHit({ noteTime: i }));
+    }
+    at(6);
+    timers.fire(100);
+    fb.emit('song:seek', { from: 6, to: 0, reason: 'loop-wrap' });
+    // Display time keeps moving across a wrap; the chart goes back.
+    env.clock.t = 7;
+    env.chart.t = 1;
+    for (let i = 0; i < 5; i++) fireWin('notedetect:hit', guitarHit({ noteTime: i }));
+    env.clock.t = 12;
+    env.chart.t = 6;
+    timers.fire(100);
+    assert.equal(rt.overdrive().guitar.fill, 0.5, 'the reopened phrase earns again');
+    rt.dispose();
+});
+
+test('teardown stops the overdrive tick', () => {
+    const env = odSetup();
+    const { rt, fb, loadSong, timers } = env;
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    assert.ok(timers.delays().includes(100));
+    fb.emit('song:ended', {});
+    rt.next();
+    assert.ok(!timers.delays().includes(100));
+    assert.equal(rt.overdrive(), null);
+    rt.dispose();
+});
+
+test('splitscreen up at song:ready: overdrive starts once the stage mounts', () => {
+    const env = odSetup();
+    const { rt, loadSong, timers } = env;
+    const ss = fakeSplitscreen(env);
+    ss.stop = () => { ss.stops++; };
+    rt.startSession({ song: ITEM, prefs: prefsWith({ drums: { on: false } }) });
+    ss.active = true;
+    env.fb.emit('splitscreen:panels-changed', {});
+    loadSong(ITEM);
+    assert.equal(rt.overdrive(), null, 'no ledger yet');
+    ss.active = false;
+    timers.fire(50);
+    assert.ok(rt.overdrive(), 'started with the ledger');
+    assert.deepEqual(timers.delays().filter((ms) => ms === 100), [100], 'one tick chain');
     rt.dispose();
 });

@@ -214,3 +214,22 @@ test('an API without setScoreHudHidden still arms and stops', () => {
     stopVocals(api);
     assert.deepEqual(api.calls, [['setDifficulty', 'easy'], ['setHearMyself', false], ...STOP_ALL]);
 });
+
+test('the mic-hit threshold goes to karaoke and is cleared', () => {
+    const api = fakeApi();
+    api.setMicHitThreshold = (db) => api.calls.push(['setMicHitThreshold', db]);
+    armVocals(api, { micHitDb: -27, difficulty: 'hard', hearMyself: false });
+    assert.ok(api.calls.some((c) => c[0] === 'setMicHitThreshold' && c[1] === -27));
+    api.calls.length = 0;
+    stopVocals(api);
+    assert.ok(api.calls.some((c) => c[0] === 'setMicHitThreshold' && c[1] === null));
+    // An API without the method is fine.
+    const old = fakeApi();
+    assert.equal(armVocals(old, { micHitDb: -27, difficulty: 'hard', hearMyself: false }), true);
+    assert.doesNotThrow(() => stopVocals(old));
+    // A throwing setter is ignored.
+    const bad = fakeApi();
+    bad.setMicHitThreshold = () => { throw new Error('boom'); };
+    assert.equal(armVocals(bad, { micHitDb: -27, difficulty: 'hard', hearMyself: false }), true);
+    assert.doesNotThrow(() => stopVocals(bad));
+});

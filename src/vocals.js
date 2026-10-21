@@ -35,6 +35,8 @@ export function armVocals(api, vocalsPrefs) {
     } catch (_) { /* not applied */ }
     // The band HUD replaces karaoke's own score HUD (plan 4 R13).
     guard(() => { if (typeof api.setScoreHudHidden === 'function') api.setScoreHudHidden(true); });
+    // The band screen's mic-hit sensitivity (plan 5 R7), for this session only.
+    guard(() => { if (typeof api.setMicHitThreshold === 'function') api.setMicHitThreshold(vocalsPrefs.micHitDb); });
     return hear || applied;
 }
 
@@ -84,6 +86,7 @@ export function stopVocals(api, { keepHud = false } = {}) {
     guard(() => api.mountStrip(null));
     guard(() => api.setDifficulty(null));
     guard(() => api.setHearMyself(null));
+    guard(() => { if (typeof api.setMicHitThreshold === 'function') api.setMicHitThreshold(null); });
     if (!keepHud) showKaraokeHud(api);
 }
 
