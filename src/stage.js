@@ -225,10 +225,13 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     }
     player.appendChild(root);
 
-    // Lanes stop above the footer, as core's own viewport sizing does.
+    // Lanes stop above the footer, as core's own viewport sizing does. The
+    // footer's height also places the hover chrome above the transport (R5).
     function fitFooter() {
         const footer = doc.getElementById('player-footer') || doc.getElementById('player-controls');
-        root.style.bottom = (footer ? footer.offsetHeight : 0) + 'px';
+        const h = (footer ? footer.offsetHeight : 0) + 'px';
+        root.style.bottom = h;
+        player.style.setProperty('--bab-transport-h', h);
     }
 
     function applyLayout() {
@@ -407,6 +410,12 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             applyLayout();
             resizeAll();
         },
+        // Full mode on or off (R6): re-measure the transport and resize the lanes.
+        refit() {
+            if (!mounted) return;
+            fitFooter();
+            resizeAll();
+        },
         unmount() {
             if (!mounted) return;
             mounted = false;
@@ -439,6 +448,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             }
             safe(() => player.style.removeProperty('--bab-lanes-top'));
             safe(() => player.style.removeProperty('--bab-main-zoom'));
+            safe(() => player.style.removeProperty('--bab-transport-h'));
             player.classList.remove('bab-stage');
             if (stripSlot) safe(() => stripSlot.remove());
             safe(() => root.remove());

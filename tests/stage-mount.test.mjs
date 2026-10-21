@@ -538,3 +538,24 @@ test('laneSlot and getDrumCanvas', () => {
     assert.equal(player.style.getPropertyValue('--bab-main-zoom'), '');
     assert.equal(s.getDrumCanvas(), null);
 });
+
+test('refit sets the transport height and resizes', () => {
+    const { doc, player, log, deps } = setup();
+    delete doc.ids['player-footer'];
+    const controls = doc.createElement('div');
+    controls.offsetHeight = 64;
+    doc.ids['player-controls'] = controls;
+    const s = mountStage({ player, song: withDrums, prefs: {}, deps });
+    assert.equal(player.style.getPropertyValue('--bab-transport-h'), '64px');
+    controls.offsetHeight = 80;
+    log.length = 0;
+    s.refit();
+    assert.equal(player.style.getPropertyValue('--bab-transport-h'), '80px');
+    assert.deepEqual(log, ['main.resize', 'drum.resize']);
+    s.unmount();
+    assert.equal(player.style.getPropertyValue('--bab-transport-h'), '');
+    log.length = 0;
+    assert.doesNotThrow(() => s.refit());
+    assert.deepEqual(log, []);
+    assert.equal(player.style.getPropertyValue('--bab-transport-h'), '');
+});

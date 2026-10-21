@@ -282,9 +282,10 @@ test('a silent update writes values but pops no callout and no miss flash', () =
     hud.destroy();
 });
 
-test('CSS: the bar sits at z-index 20 and core\'s section map is hidden on the stage', () => {
+test('CSS: the bar sits at z-index 20 and core\'s section map is click-through on the stage until the hover chrome shows', () => {
     const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
-    assert.match(css, /#player\.bab-stage #section-map \{ display: none; \}/);
+    const map = css.match(/#player\.bab-stage #section-map \{[^}]*\}/);
+    assert.ok(map && /opacity: 0;/.test(map[0]) && /pointer-events: none;/.test(map[0]), 'section map hidden and click-through');
     const bar = css.match(/#player \.bab-hud \{[^}]*\}/);
     assert.ok(bar && /z-index: 20;/.test(bar[0]), 'bar z-index 20');
 });
