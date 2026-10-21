@@ -898,7 +898,7 @@ test('Back from the library keeps the view and song', async () => {
     await pickSong(t, holiday);
     root.querySelector('.bab-change').click();
     assert.equal(picker.calls.length, 2);
-    assert.deepEqual(picker.calls[1].selected, { filename: holiday.filename });
+    assert.equal(picker.calls[1].selected, holiday, 'the whole current row');
     picker.resolveLast({ item: null, filters: { playable: false, drumStem: true }, reason: 'back' });
     await flush();
     assert.equal(view(root), 'confirm');
@@ -935,7 +935,7 @@ test('Esc on Confirm opens the library; Esc on Setup does nothing', async () => 
     ev = esc(doc);
     assert.equal(picker.calls.length, 2);
     assert.equal(ev.defaultPrevented, true);
-    assert.deepEqual(picker.calls[1].selected, { filename: holiday.filename });
+    assert.equal(picker.calls[1].selected, holiday, 'the whole current row');
     assert.equal(view(root), 'confirm');
     doc.getElementById('plugin-build_a_band').classList.remove('active');
     esc(doc);
@@ -1102,4 +1102,81 @@ test('a pick after dispose does nothing, and a failing hook is logged', async ()
         assert.equal(warned.length, 1);
         assert.equal(warned[0][0], '[build-a-band] library pick failed');
     }
+});
+
+// ── Fix round 1 ────────────────────────────────────────────────────────────
+
+test('Change song, then Use this song on the same song keeps Confirm intact', async () => {
+    const t = setup({ library: [holiday] });
+    const { root, bs, picker, prefs, urls } = t;
+    await pickSong(t, holiday);
+    const before = urls.length;
+    root.querySelector('.bab-change').click();
+    // Core hands the preset selection back as the item.
+    picker.resolveLast({ item: picker.calls[1].selected, filters: { playable: true }, reason: 'picked' });
+    await flush();
+    assert.equal(bs.view(), 'confirm');
+    assert.equal(bs.getSong(), holiday);
+    assert.equal(root.querySelector('.bab-title').textContent, 'Holiday');
+    assert.equal(root.querySelector('.bab-go').disabled, false);
+    assert.equal(prefs().lastSong.title, 'Holiday');
+    assert.equal(urls.length, before, 'no re-resolve');
+    // Even a bare { filename } for the current song keeps it.
+    root.querySelector('.bab-change').click();
+    picker.resolveLast({ item: { filename: holiday.filename }, filters: {}, reason: 'picked' });
+    await flush();
+    assert.equal(bs.getSong(), holiday);
+    assert.equal(prefs().lastSong.title, 'Holiday');
+    bs.dispose();
+});
+
+test('a bare item with no title still resolves', async () => {
+    const t = setup({ library: [holiday] });
+    await pickSong(t, { filename: holiday.filename });
+    assert.ok(t.urls.includes('/api/library?q=greeholi.sloppak&size=30'));
+    assert.equal(t.bs.getSong(), holiday);
+    assert.equal(t.root.querySelector('.bab-title').textContent, 'Holiday');
+    assert.equal(t.root.querySelector('.bab-go').disabled, false);
+    assert.equal(t.prefs().lastSong.title, 'Holiday', 'lastSong stored with its title');
+    t.bs.dispose();
+});
+
+test('Next song opens the pick before loading devices: no mic opens', async () => {
+    const d = deviceWin();
+    const t = setup({ active: false, stored: withDevices, winExtra: d.winExtra });
+    t.bs.setSong(holiday);
+    t.bs.nextSong();
+    t.doc.getElementById('plugin-build_a_band').classList.add('active');
+    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    await flush();
+    await flush();
+    assert.equal(t.picker.calls.length, 1);
+    assert.equal(d.calls.enumerate, 0, 'no device list');
+    assert.equal(d.calls.gum.length, 0, 'no mic');
+    assert.equal(d.calls.open.length, 0, 'no pad light');
+    t.bs.dispose();
+});
+
+test('a pending Next song pick is dropped when the screen hides', () => {
+    const t = setup({ active: false });
+    t.bs.nextSong();
+    t.fb.emit('screen:changing', { id: 'v3-settings' });
+    t.doc.getElementById('plugin-build_a_band').classList.add('active');
+    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'v3-settings' });
+    assert.equal(t.picker.calls.length, 0);
+    t.bs.dispose();
+});
+
+test('Esc already handled elsewhere does not open the library', async () => {
+    const t = setup();
+    await pickSong(t, holiday);
+    esc(t.doc, { defaultPrevented: true });
+    assert.equal(t.picker.calls.length, 1);
+    t.bs.dispose();
+});
+
+test('the art is hidden until there is a song', () => {
+    const t = setup();
+    assert.equal(t.root.querySelector('.bab-art-img').hidden, true);
+    t.bs.dispose();
 });

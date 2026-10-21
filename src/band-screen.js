@@ -51,6 +51,8 @@ function defaultStorage(win) {
 const fromDom = (field, v) => (field === 'hearMyself' ? v === 'on' : v);
 const toDom = (field, v) => (field === 'hearMyself' ? (v ? 'on' : 'off') : String(v));
 
+const fileBase = (f) => String(f || '').split('/').pop();
+
 function songRef(item) {
     return { filename: item.filename, title: item.title || '', artist: item.artist || '' };
 }
@@ -87,7 +89,7 @@ export function createBandScreen({
     let pickGen = 0; // a late result from an older library pick is ignored
     let pendingPick = false; // nextSong while hidden: pick on the next show
     let lastResolved = false; // lastSong resolved to a library row: offer Continue with
-    let artFile = null; // the file the art <img> shows
+    let artFile; // the file the art <img> shows (undefined: not rendered yet, so the first render hides it)
     // Go fires once per showing: a burst of pad hits or Space + pad must not
     // start the song twice while core is still switching screens.
     let launched = false;
@@ -295,10 +297,11 @@ export function createBandScreen({
 
     // Choose a song / Change song: the Song Library in pick mode. A picked
     // song goes to Confirm; Back or leaving keeps the view as it was.
+    // -> true when core's pick was asked.
     function openLibrary() {
-        if (!pickAvailable || disposed) return;
+        if (!pickAvailable || disposed) return false;
         const vocalsSupported = !!karaokeApi(win);
-        if (!bandScreenModel({ prefs, item: song, vocalsSupported, pickAvailable }).pickEnabled) return;
+        if (!bandScreenModel({ prefs, item: song, vocalsSupported, pickAvailable }).pickEnabled) return false;
         const gen = ++pickGen;
         // "Playable by band" leaves vocals out when Lyrics Karaoke isn't loaded.
         const parts = vocalsSupported ? prefs.parts
@@ -310,31 +313,39 @@ export function createBandScreen({
             pending = library.pick({
                 title: PICK_TITLE,
                 filters: pickFilters({ parts, on: prefs.pickFilters }),
-                selected: song ? { filename: song.filename } : null,
+                // The whole current row: core hands it back as the item when it is re-used.
+                selected: song || null,
                 returnTo: SCREEN_ID,
                 confirmLabel: PICK_CONFIRM,
                 backLabel: PICK_BACK,
             });
         } catch (err) {
             failed(err);
-            return;
+            return false;
         }
         Promise.resolve(pending).then((result) => {
             if (!live()) return;
             const r = result || {};
             if (r.filters && typeof r.filters === 'object') save({ pickFilters: r.filters });
             if (!r.item) return;
+            // The current song picked again: keep the full row we already have.
+            if (song && r.item.filename === song.filename) { setView('confirm'); return; }
             setSong(r.item);
             setView('confirm');
-            // The grid row may be grouped: re-fetch the full row for chips and greying.
-            const ref = { filename: song.filename, title: song.title || '' };
+            // The grid row may be grouped, or bare ({ filename } only): re-fetch the
+            // full row for chips and greying. A bare row searches by file name.
+            const bare = !r.item.title;
+            const ref = { filename: song.filename, title: song.title || fileBase(song.filename) };
             resolveRecent(ref, getJson).then((it) => {
                 if (!live() || !it || !song || it.filename !== song.filename) return;
                 song = it;
                 lastResolved = true;
+                // A bare pick stored lastSong without a title: store the real one.
+                if (bare) prefs = savePrefs({ lastSong: songRef(it), recentSongs: pushRecent(prefs.recentSongs, songRef(it)) });
                 render();
             });
         }).catch(failed);
+        return true;
     }
 
     // Next song (from the results): Confirm is where Back from the library
@@ -525,12 +536,18 @@ export function createBandScreen({
         if (goError) { goError = ''; render(); }
         showGen++;
         stopLights();
+        // Next song: open the library first; the screen is leaving, so no
+        // device list loads and no mic opens on the way through.
+        if (pendingPick) {
+            pendingPick = false;
+            if (openLibrary()) return;
+        }
         if (shown()) loadDevices(showGen);
-        if (pendingPick) { pendingPick = false; openLibrary(); }
     }
 
     function hide() {
         visible = false;
+        pendingPick = false; // a Next song pick is only for the very next show
         showGen++;
         stopLights();
     }
@@ -608,7 +625,7 @@ export function createBandScreen({
     listen(doc, 'keydown', (e) => {
         if (!visible || !isActive() || view !== 'confirm') return;
         if (e.key === 'Escape') {
-            if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || isTyping(doc.activeElement)) return;
+            if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || isTyping(doc.activeElement)) return;
             openLibrary();
             if (e.preventDefault) e.preventDefault();
             return;
