@@ -3222,3 +3222,46 @@ test('a Play again whose song fails to start leaves full screen', (t) => {
         rt.dispose();
     });
 });
+
+// ---- Plan 7 final review fixes ----
+
+test("a late loadSettings can't leave the solo mastery", async () => {
+    for (const closedFirst of [true, false]) {
+        const { rt, win, calls, loadSong, keyWin, sidebar, navLinks } = setup();
+        let resolveLoad;
+        win.loadSettings = () => new Promise((r) => { resolveLoad = r; });
+        rt.startSession({ song: ITEM, prefs: prefsWith({ guitar: { difficulty: 'medium' } }) });
+        loadSong(ITEM);
+        sidebar.fire('click', { target: navLinks.settings });
+        if (closedFirst) {
+            keyWin('Escape', 'Escape');
+            assert.equal(calls.setMastery.at(-1), 0.5);
+            assert.equal(calls.resume.length, 1);
+        }
+        win.highway.setMastery(0.9); // the late _applyMastery
+        resolveLoad();
+        await flush();
+        assert.equal(calls.setMastery.at(-1), 0.5, 'the band mastery wins');
+        if (!closedFirst) {
+            keyWin('Escape', 'Escape');
+            assert.equal(calls.setMastery.at(-1), 0.5);
+        }
+        assert.equal(calls.resume.length, 1, 'the late load resumes nothing');
+        rt.dispose();
+    }
+});
+
+test('a loadSettings settling after song:stop sets no mastery', async () => {
+    const { rt, fb, win, calls, loadSong, sidebar, navLinks } = setup();
+    let resolveLoad;
+    win.loadSettings = () => new Promise((r) => { resolveLoad = r; });
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    sidebar.fire('click', { target: navLinks.settings });
+    fb.emit('song:stop', {});
+    const n = calls.setMastery.length;
+    resolveLoad();
+    await flush();
+    assert.equal(calls.setMastery.length, n);
+    rt.dispose();
+});

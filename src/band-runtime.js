@@ -804,7 +804,13 @@ export function createBandRuntime({
         s.overlay = safe(() => openSettingsOverlay({
             doc, win, onClose: () => { s.overlay = null; afterOverlay(s); },
         })) || null;
-        if (!s.overlay) afterOverlay(s);
+        if (!s.overlay) { afterOverlay(s); return; }
+        // Core's loadSettings ends in _applyMastery (the solo mastery). If it
+        // settles after the close re-applied the band one, re-apply again.
+        const ov = s.overlay;
+        if (ov.loaded && typeof ov.loaded.then === 'function') {
+            ov.loaded.then(() => { if (session === s && state.phase === 'playing') reapplyMastery(s); });
+        }
     }
 
     function confirmLeave(s, link) {

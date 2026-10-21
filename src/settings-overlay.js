@@ -15,7 +15,7 @@ const DIALOG_ATTRS = [['role', 'dialog'], ['aria-modal', 'true'], ['aria-label',
 
 const warn = (e) => { console.warn('[build-a-band] loadSettings failed', e); };
 
-// openSettingsOverlay({ doc, win, onClose }) -> { kind: 'settings', close({ silent }) } | null
+// openSettingsOverlay({ doc, win, onClose }) -> { kind: 'settings', close({ silent }), loaded } | null
 export function openSettingsOverlay({ doc, win, onClose }) {
     const settings = doc.getElementById('settings');
     if (!settings) return null;
@@ -33,10 +33,12 @@ export function openSettingsOverlay({ doc, win, onClose }) {
     settings.prepend(back);
     try { back.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
 
+    // Settles (never rejects) once core's loadSettings has, so the caller can
+    // re-apply what its late _applyMastery overwrote.
+    let loaded = Promise.resolve();
     if (typeof win.loadSettings === 'function') {
         try {
-            const r = win.loadSettings();
-            if (r && typeof r.then === 'function') r.then(null, warn);
+            loaded = Promise.resolve(win.loadSettings()).then(() => {}, warn);
         } catch (e) { warn(e); }
     }
 
@@ -74,5 +76,5 @@ export function openSettingsOverlay({ doc, win, onClose }) {
         if (!silent && typeof onClose === 'function') onClose();
     }
 
-    return { kind: 'settings', close };
+    return { kind: 'settings', close, loaded };
 }

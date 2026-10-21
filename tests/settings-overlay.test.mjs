@@ -252,3 +252,32 @@ test('a silent close (teardown) leaves focus to the page', () => {
     overlay.close({ silent: true });
     assert.equal(doc.activeElement, next);
 });
+
+test('the overlay exposes the loadSettings promise', async () => {
+    let resolveLoad;
+    const { overlay } = setup({ loadSettings: () => new Promise((r) => { resolveLoad = r; }) });
+    let done = false;
+    overlay.loaded.then(() => { done = true; });
+    await flush();
+    assert.equal(done, false, 'pending while loadSettings is');
+    resolveLoad();
+    await flush();
+    assert.equal(done, true);
+    overlay.close({ silent: true });
+
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+        const rejected = setup({ loadSettings: () => Promise.reject(new Error('offline')) });
+        await rejected.overlay.loaded; // resolves, never rejects
+        rejected.overlay.close({ silent: true });
+        const thrown = setup({ loadSettings: () => { throw new Error('boom'); } });
+        await thrown.overlay.loaded;
+        thrown.overlay.close({ silent: true });
+    } finally {
+        console.warn = warn;
+    }
+    const plain = setup();
+    await plain.overlay.loaded;
+    plain.overlay.close({ silent: true });
+});
