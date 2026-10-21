@@ -99,7 +99,7 @@ export function mountSongPicker({ host, doc, fetchJson, getParts, getRecent, onP
     function refresh() {
         if (disposed) return;
         const q = query();
-        if (!q) { showRecent(); return; }
+        if (!q) { controller.cancel(); showRecent(); return; }
         controller.search(buildLibraryQuery({ q, filters, parts: getParts() || {} }));
     }
 

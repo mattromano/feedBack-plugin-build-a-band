@@ -137,6 +137,7 @@ test('clearing the box shows recent songs again and ignores the in-flight search
     const { host, type, timers, rows, picker } = setup({ recent });
     type('holiday');
     type('');
+    assert.equal(timers.pending(), 0, 'clearing the box cancels the pending search');
     timers.run();
     await flush();
     assert.equal(host.querySelector('.bab-results-label').textContent, 'Recent');

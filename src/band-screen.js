@@ -34,8 +34,11 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     let song = null;
     let picked = false; // setSong was called: the lastSong restore must not override it
     let disposed = false;
-    const screenEl = doc.getElementById(SCREEN_ID);
-    let visible = !!(screenEl && screenEl.classList.contains('active'));
+    const isActive = () => {
+        const el = doc.getElementById(SCREEN_ID);
+        return !!(el && el.classList.contains('active'));
+    };
+    let visible = isActive();
 
     function save(patch) {
         prefs = savePrefs(patch);
@@ -105,6 +108,9 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
             prefs = savePrefs({ lastSong: null });
         }
         render();
+        // Keep the recent list current when it is what the picker shows.
+        const box = $('input.bab-search');
+        if (box && !String(box.value || '').trim()) picker.refresh();
     }
 
     const picker = mountSongPicker({
@@ -145,17 +151,28 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
 
     // Space starts the song while the band screen is showing.
     listen(doc, 'keydown', (e) => {
-        if (!visible || !isGoKey(e, doc.activeElement)) return;
+        if (!visible || !isActive() || !isGoKey(e, doc.activeElement)) return;
         if (go() && e.preventDefault) e.preventDefault();
     });
 
-    const onScreen = (e) => {
+    // Core flips .active right after screen:changing but sends screen:changed
+    // only after some awaits, so leaving hides the screen on :changing.
+    const onChanging = (e) => {
+        const d = (e && e.detail) || {};
+        if (d.id !== SCREEN_ID) visible = false;
+    };
+    const onChanged = (e) => {
         const d = (e && e.detail) || {};
         visible = d.id === SCREEN_ID;
     };
     if (fb && typeof fb.on === 'function') {
-        fb.on('screen:changed', onScreen);
-        cleanups.push(() => { if (typeof fb.off === 'function') fb.off('screen:changed', onScreen); });
+        fb.on('screen:changing', onChanging);
+        fb.on('screen:changed', onChanged);
+        cleanups.push(() => {
+            if (typeof fb.off !== 'function') return;
+            fb.off('screen:changing', onChanging);
+            fb.off('screen:changed', onChanged);
+        });
     }
 
     render();

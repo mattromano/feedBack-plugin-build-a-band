@@ -166,3 +166,31 @@ test('song picker is mounted in .bab-picker: picking sets the song, part toggles
     bs.dispose();
     assert.equal(picker.children.length, 0, 'picker disposed with the screen');
 });
+
+test('screen:changing away hides the screen before screen:changed arrives', () => {
+    const { doc, fb, bs, gos } = setup();
+    bs.setSong(holiday);
+    fb.emit('screen:changing', { id: 'player', from: 'plugin-build_a_band' });
+    doc.fire('keydown', { code: 'Space' });
+    assert.equal(gos.length, 0);
+    assert.equal(bs.isVisible(), false);
+    bs.dispose();
+});
+
+test('Space does nothing when the plugin screen is not .active', () => {
+    const { doc, bs, gos } = setup();
+    bs.setSong(holiday);
+    doc.getElementById('plugin-build_a_band').classList.remove('active');
+    doc.fire('keydown', { code: 'Space' });
+    assert.equal(gos.length, 0);
+    bs.dispose();
+});
+
+test('picking while the search box is empty refreshes the recent list', () => {
+    const { root, bs } = setup();
+    bs.setSong(holiday);
+    const rows = root.querySelector('.bab-picker').querySelectorAll('li.bab-row');
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].querySelector('.bab-row-title').textContent, 'Holiday');
+    bs.dispose();
+});

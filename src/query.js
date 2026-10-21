@@ -57,6 +57,11 @@ export function createSearchController({
                 }
             }, delay);
         },
+        // Drops a pending search and ignores one already in flight.
+        cancel() {
+            cancelTimer();
+            latest++;
+        },
         dispose() {
             disposed = true;
             cancelTimer();
