@@ -1,0 +1,19 @@
+{
+  "id": "build_a_band",
+  "name": "Build-a-Band",
+  "version": "0.1.0",
+  "description": "Rock Band-style band mode: play together on a shared stage.",
+  "license": "MIT",
+  "nav": {
+    "label": "Build-a-Band",
+    "screen": "plugin-build_a_band"
+  },
+  "screen": "screen.html",
+  "script": "screen.js",
+  "scriptType": "module",
+  "styles": "assets/build-a-band.css",
+  "fullscreen": true,
+  "standards": [
+    "plugin-runtime-idempotent.v1"
+  ]
+}

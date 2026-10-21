@@ -1,0 +1,12 @@
+{
+  "name": "feedback-plugin-build-a-band",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Build-a-Band plugin for feedBack - tests only, no build step.",
+  "license": "MIT",
+  "scripts": {
+    "check": "node scripts/check-syntax.mjs",
+    "test": "node scripts/check-syntax.mjs && node --test \"tests/*.test.mjs\""
+  }
+}
