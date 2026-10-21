@@ -2,6 +2,8 @@
 // player is `ctl<N>` in `prefs.controllers`, next to the fixed guitar / drums / vocals
 // ids. No DOM, and nothing here reads `window` at import time.
 import { DIFFICULTIES } from './mappings.js';
+import { fiveFretPartFor } from './parts.js';
+import { fiveFretEntry } from './part-events.js';
 
 export const FIVE_FRET_PART_LABELS = Object.freeze({ guitar: 'Lead', rhythm: 'Rhythm', bass: 'Bass' });
 export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
@@ -16,6 +18,9 @@ export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
 //   eventPrefix                 bus event prefix: `<prefix>:band-pause` etc.
 //   pin(canvas, key, opts)      pins a lane (opts: part, difficulty, lefty); false when the API is missing
 //   unpin(canvas)               releases the lane
+//   partFor(item, c, opts)      the part this controller plays on the song ({ instrument, kind }), or null
+//   judgments                   the band-event suffixes that are judgments (`<prefix>:<suffix>`)
+//   entry(type, detail, t, id, last)  a judgment's band score entry (part-events.js)
 const fiveFretApi = () => globalThis.window?.feedBackFiveFret || null;
 
 export const CONTROLLER_KINDS = {
@@ -49,6 +54,9 @@ export const CONTROLLER_KINDS = {
             const api = fiveFretApi();
             if (api && typeof api.clearLane === 'function') api.clearLane(laneCanvas);
         },
+        partFor: fiveFretPartFor,
+        judgments: Object.freeze(['hit', 'miss', 'overstrum', 'sustain-end']),
+        entry: fiveFretEntry,
     },
 };
 

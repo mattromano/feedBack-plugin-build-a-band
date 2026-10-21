@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals, onsetTime, drumsOverdrive, vocalsOverdrive } from '../src/part-events.js';
+import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals, onsetTime, drumsOverdrive, vocalsOverdrive, fiveFretEntry } from '../src/part-events.js';
 
 test("guitar: only the default detector's counted judgments score", () => {
     const d = { isDefault: true, counted: true, hit: true, points: 100, multiplier: 2, streak: 12 };
@@ -95,4 +95,31 @@ test('drumsOverdrive keeps canActivate', () => {
     // Not a boolean: left out, so the session falls back to the fill rule.
     assert.deepEqual(drumsOverdrive({ starPower: { amount: 0.3, active: false, canActivate: 1 } }),
         { fill: 0.3, active: false });
+});
+
+test('fiveFretEntry maps types, score deltas and resets (by the resets count), halves the multiplier under star power', () => {
+    const d = (extra) => ({ canvas: {}, score: 0, combo: 0, multiplier: 1, spActive: false, resets: 1, ...extra });
+    // The lane's first event: its score counts from 0, whatever its resets count.
+    assert.deepEqual(fiveFretEntry('hit', d({ score: 50, combo: 1, noteTime: 1.5 }), 2, 'ctl1', null),
+        { part: 'ctl1', t: 2, kind: 'hit', points: 50, multiplier: 1, streak: 1, noteTime: 1.5 });
+    const last = { score: 50, resets: 1 };
+    assert.equal(fiveFretEntry('hit', d({ score: 150, combo: 2 }), 3, 'ctl1', last).points, 100);
+    assert.equal(fiveFretEntry('miss', d({ score: 150 }), 3, 'ctl1', { score: 150, resets: 1 }).kind, 'miss');
+    assert.equal(fiveFretEntry('miss', d({ score: 150 }), 3, 'ctl1', { score: 150, resets: 1 }).points, 0);
+    assert.equal(fiveFretEntry('overstrum', d({ score: 150 }), 3, 'ctl1', { score: 150, resets: 1 }).kind, 'overhit');
+    const sus = fiveFretEntry('sustain-end', d({ score: 180 }), 3, 'ctl1', { score: 150, resets: 1 });
+    assert.equal(sus.kind, 'sustain');
+    assert.equal(sus.points, 30);
+    assert.equal(sus.noteTime, null);
+    // A reset (the resets count moved): points count from the reset, even when the score went up.
+    assert.equal(fiveFretEntry('hit', d({ score: 40, resets: 2 }), 4, 'ctl1', { score: 150, resets: 1 }).points, 40);
+    assert.equal(fiveFretEntry('hit', d({ score: 400, resets: 2 }), 4, 'ctl1', { score: 150, resets: 1 }).points, 400);
+    // No reset, but a lower score: never negative.
+    assert.equal(fiveFretEntry('hit', d({ score: 40 }), 4, 'ctl1', { score: 150, resets: 1 }).points, 0);
+    // Star power doubles the lane multiplier; the band reads it without.
+    assert.equal(fiveFretEntry('hit', d({ score: 60, multiplier: 8, spActive: true }), 5, 'ctl2', null).multiplier, 4);
+    assert.equal(fiveFretEntry('hit', d({ score: 60, multiplier: 0 }), 5, 'ctl2', null).multiplier, 1);
+    // Not a judgment, or no detail.
+    for (const type of ['sp-phrase', 'sp-activate', 'band-pause', 'combo-reset']) assert.equal(fiveFretEntry(type, d(), 1, 'ctl1', null), null);
+    assert.equal(fiveFretEntry('hit', null, 1, 'ctl1', null), null);
 });
