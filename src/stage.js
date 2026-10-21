@@ -5,7 +5,7 @@
 import { findDrumArrangement } from './arrangements.js';
 import { clampSplit, computeStageLayout } from './layout.js';
 import { createLaneClock } from './lane-clock.js';
-import { savePrefs } from './prefs.js';
+import { clampLabelScale, savePrefs } from './prefs.js';
 import { getWsUrl } from './ws-url.js';
 
 const LABEL_STEP = 0.25;
@@ -23,7 +23,8 @@ function safe(fn) {
 // mountStage({ player, song, prefs, deps }) -> { unmount(), setSplit(pct) }
 // deps (all optional, default to the window globals):
 //   createHighway, getWsUrl, getDisplayTime, drumsApi, splitscreen,
-//   mainHighway, drumRenderer (factory returning a renderer), savePrefs.
+//   mainHighway, drumRenderer (factory returning a renderer), savePrefs,
+//   bus (core's window.feedBack event bus).
 export function mountStage({ player, song, prefs, deps = {} }) {
     const doc = player.ownerDocument;
     const win = doc.defaultView;
@@ -41,6 +42,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     const splitscreen = 'splitscreen' in deps ? deps.splitscreen : win.slopsmithSplitscreen;
     const drumRenderer = deps.drumRenderer || win.feedBackViz_drums;
     const persist = deps.savePrefs || savePrefs;
+    const bus = 'bus' in deps ? deps.bus : win.feedBack;
 
     // 1. Band mode and splitscreen never run at once.
     safe(() => splitscreen && splitscreen.stop());
@@ -76,6 +78,13 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         root.appendChild(slots.drums);
     }
 
+    // Fret-number size: band mode has its own (prefs.labelScale). Applied for
+    // this session only ({ persist: false }) so core's saved solo-play value is
+    // untouched, and the solo value is put back on unmount.
+    const soloLabelScale = safe(() => mainHw.getLabelScale());
+    let labelScale = clampLabelScale(prefs && prefs.labelScale);
+    safe(() => mainHw.setLabelScale(labelScale, { persist: false }));
+
     // Guitar lane chrome: fret-number label scale, shown on hover.
     const chrome = doc.createElement('div');
     chrome.className = 'bab-lane-chrome';
@@ -88,10 +97,11 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         b.title = title;
         b.addEventListener('click', (e) => {
             e.stopPropagation();
-            safe(() => {
-                const cur = Number(mainHw.getLabelScale()) || 1;
-                mainHw.setLabelScale(Math.round((cur + delta) * 100) / 100);
-            });
+            const next = clampLabelScale(Math.round((labelScale + delta) * 100) / 100);
+            if (next === labelScale) return;
+            labelScale = next;
+            safe(() => mainHw.setLabelScale(next, { persist: false }));
+            safe(() => persist({ labelScale: next }));
         });
         return b;
     };
@@ -128,6 +138,29 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     // 4-5. Main highway into the guitar slot (CSS positions #highway over it).
     safe(() => mainHw.setContainer(slots.guitar));
 
+    // The drum canvas core is actually drawing on. A renderer whose context
+    // type differs from the canvas's (the drums 3D view is webgl2) makes core
+    // clone the canvas into the slot (_replaceCanvas) and announce it with
+    // highway:canvas-replaced — during init, or on any later view switch.
+    // Follow it, as splitscreen does, so kit hits and teardown target the
+    // live element rather than the detached original.
+    function adoptCanvas(next) {
+        if (!next || next === drumCanvas) return;
+        drumCanvas = next;
+        if (drumHw) safe(() => drumsApi && drumsApi.setInputTarget(drumCanvas));
+    }
+    function onCanvasReplaced(e) {
+        const d = e && e.detail;
+        if (d && drumCanvas && d.oldCanvas === drumCanvas) adoptCanvas(d.newCanvas);
+    }
+    // Fallback for a core that swaps without announcing: the slot's canvas.
+    function slotCanvas() {
+        const kids = slots.drums ? Array.from(slots.drums.children || []) : [];
+        return kids.find((c) => c && c.tagName === 'CANVAS') || null;
+    }
+    const listenBus = !!(bus && typeof bus.on === 'function');
+    if (listenBus) bus.on('highway:canvas-replaced', onCanvasReplaced);
+
     // Drum lane: splitscreen's recreatePanelHighway pattern.
     const clock = createLaneClock({
         getTime: () => {
@@ -152,7 +185,10 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             // inited). A hand-rolled resize override can't reach the renderer.
             hw.setRenderer(drumRenderer());
             hw.init(drumCanvas, slots.drums);
-            hw.connect(wsUrl(song.filename, plan.drumIndex), { onSongInfo() {} });
+            if (drumCanvas.parentNode !== slots.drums) adoptCanvas(slotCanvas());
+            // secondary: parse and draw the drum chart without rebroadcasting
+            // it as the current song (song:loaded / song:ready / beats:loaded).
+            hw.connect(wsUrl(song.filename, plan.drumIndex), { onSongInfo() {}, secondary: true });
             hw.resize();
             clock.add(hw);
             clock.start();
@@ -163,6 +199,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             safe(() => clock.stop());
             if (drumHw) { const hw = drumHw; drumHw = null; safe(() => clock.remove(hw)); safe(() => hw.stop()); }
             safe(() => drumsApi && drumsApi.setInputTarget(null));
+            if (drumCanvas) safe(() => drumCanvas.remove());
             safe(() => slots.drums.remove());
             safe(() => divider.remove());
             drumCanvas = null;
@@ -243,6 +280,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             player.removeEventListener('pointerleave', onPointerLeave);
             win.removeEventListener('resize', onWindowResize);
             if (footerObserver) safe(() => footerObserver.disconnect());
+            if (listenBus) safe(() => bus.off('highway:canvas-replaced', onCanvasReplaced));
             // 1. Lane clock.
             safe(() => clock.stop());
             // 2. Drum highway (closes its WS, stops its draw loop) + canvas.
@@ -255,7 +293,9 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             if (drumCanvas) { safe(() => drumCanvas.remove()); drumCanvas = null; }
             // 3. Kit routing back to default.
             safe(() => drumsApi && drumsApi.setInputTarget(null));
-            // 4-6. Main highway back to viewport sizing.
+            // 4. The solo-play fret-number size, unpersisted (it is already saved).
+            if (Number.isFinite(soloLabelScale)) safe(() => mainHw.setLabelScale(soloLabelScale, { persist: false }));
+            // 5-7. Main highway back to viewport sizing.
             safe(() => mainHw.setContainer(null));
             player.classList.remove('bab-stage');
             safe(() => root.remove());

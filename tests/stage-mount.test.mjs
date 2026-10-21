@@ -52,10 +52,23 @@ function setup() {
     doc.ids['player-footer'] = footer;
 
     const log = [];
+    // Core's event bus: on/off/emit with a CustomEvent-like { detail }.
+    const busL = makeListeners();
+    const bus = {
+        on: (t, f) => busL.addEventListener(t, f),
+        off: (t, f) => busL.removeEventListener(t, f),
+        emit: (t, detail) => busL.fire(t, { detail }),
+        count: () => busL.count(),
+    };
     const mainHw = {
+        scale: 1.5, // the user's solo-play fret-number size
         resize: () => log.push('main.resize'),
         setContainer: (el) => log.push(el ? 'main.setContainer(slot)' : 'main.setContainer(null)'),
-        getLabelScale: () => 1, setLabelScale: (v) => log.push('label ' + v),
+        getLabelScale: () => mainHw.scale,
+        setLabelScale: (v, opts) => {
+            mainHw.scale = Math.max(0.75, Math.min(2.5, v));
+            log.push('label ' + v + (opts && opts.persist === false ? ' (session)' : ' (persisted)'));
+        },
     };
     const drumHws = [];
     const coreResize = () => log.push('drum.resize');
@@ -64,7 +77,7 @@ function setup() {
             getRenderScale: () => 1,
             setRenderer: (r) => log.push('drum.setRenderer'),
             init: (c, container) => { hw.initArgs = [c, container]; log.push('drum.init'); hw.resize(); },
-            connect: (url) => log.push('drum.connect ' + url),
+            connect: (url, opts) => { hw.connectOpts = opts; log.push('drum.connect ' + url); },
             setTime: () => {},
             stop: () => log.push('drum.stop'),
             resize: coreResize,
@@ -72,16 +85,17 @@ function setup() {
         drumHws.push(hw);
         return hw;
     };
-    const drumsApi = { setInputTarget: (c) => log.push(c ? 'drums.target(canvas)' : 'drums.target(null)') };
+    const targets = [];
+    const drumsApi = { setInputTarget: (c) => { targets.push(c); log.push(c ? 'drums.target(canvas)' : 'drums.target(null)'); } };
     const splitscreen = { stop: () => log.push('split.stop') };
     const deps = {
-        mainHighway: mainHw, createHighway, drumsApi, splitscreen,
+        mainHighway: mainHw, createHighway, drumsApi, splitscreen, bus,
         getWsUrl: (f, i) => `ws://x/${f}?arrangement=${i}`,
         getDisplayTime: () => 1.5,
         drumRenderer: () => ({}),
         savePrefs: (p) => log.push('save ' + JSON.stringify(p)),
     };
-    return { win, doc, player, log, deps, drumHws };
+    return { win, doc, player, log, deps, drumHws, mainHw, bus, targets };
 }
 
 const withDrums = { filename: 'a.psarc', arrangements: [{ name: 'Lead' }, { name: 'Drums' }] };
@@ -136,7 +150,7 @@ test('unmount restores everything in order and is idempotent', () => {
     const s = mountStage({ player, song: withDrums, prefs: {}, deps });
     log.length = 0;
     s.unmount();
-    assert.deepEqual(log, ['drum.stop', 'drums.target(null)', 'main.setContainer(null)', 'main.resize']);
+    assert.deepEqual(log, ['drum.stop', 'drums.target(null)', 'label 1.5 (session)', 'main.setContainer(null)', 'main.resize']);
     assert.ok(!player.classList.contains('bab-stage'));
     assert.equal(player.children.length, 0);
     assert.equal(win.count(), 0, 'window listeners removed');
@@ -172,13 +186,82 @@ test('drum lane failure falls back to guitar only and still tears down', () => {
     assert.equal(win.count(), 0);
 });
 
-test('fret number buttons step the label scale by 0.25', () => {
+test('fret number buttons step the band scale by 0.25 without touching the solo preference', () => {
     const { player, log, deps } = setup();
     const s = mountStage({ player, song: noDrums, prefs: {}, deps });
     const chrome = player.children[0].children[0].children[0];
     const [, minus, plus] = chrome.children;
+    log.length = 0;
     plus.fire('click', { stopPropagation() {} });
     minus.fire('click', { stopPropagation() {} });
-    assert.deepEqual(log.filter((l) => l.startsWith('label')), ['label 1.25', 'label 0.75']);
+    minus.fire('click', { stopPropagation() {} });
+    assert.deepEqual(log, [
+        'label 1.25 (session)', 'save {"labelScale":1.25}',
+        'label 1 (session)', 'save {"labelScale":1}',
+        'label 0.75 (session)', 'save {"labelScale":0.75}',
+    ]);
+    s.unmount();
+});
+
+test('mount applies the band fret-number scale; unmount restores the solo one', () => {
+    const { player, log, deps, mainHw } = setup();
+    const s = mountStage({ player, song: noDrums, prefs: { labelScale: 2 }, deps });
+    assert.equal(mainHw.scale, 2);
+    assert.ok(log.includes('label 2 (session)'));
+    s.unmount();
+    assert.equal(mainHw.scale, 1.5);
+    assert.ok(!log.some((l) => l.endsWith('(persisted)')), 'never writes the solo preference');
+});
+
+test('the drum lane connects as a secondary highway', () => {
+    const { player, deps, drumHws } = setup();
+    const s = mountStage({ player, song: withDrums, prefs: {}, deps });
+    assert.equal(drumHws[0].connectOpts.secondary, true);
+    assert.equal(typeof drumHws[0].connectOpts.onSongInfo, 'function');
+    s.unmount();
+});
+
+// Core's _replaceCanvas: a renderer with a different context type clones the
+// canvas into the slot during init and announces highway:canvas-replaced.
+function replacingInit(hw, doc, bus, { announce }) {
+    hw.init = (c, container) => {
+        hw.initArgs = [c, container];
+        const fresh = doc.createElement('canvas');
+        const kids = container.children;
+        kids[kids.indexOf(c)] = fresh;
+        fresh.parentNode = container;
+        c.parentNode = null;
+        hw.replacement = fresh;
+        if (announce) bus.emit('highway:canvas-replaced', { oldCanvas: c, newCanvas: fresh, contextType: 'webgl2' });
+    };
+}
+
+for (const announce of [true, false]) {
+    test(`a canvas replaced during init is the one targeted and removed (${announce ? 'event' : 'read back from slot'})`, () => {
+        const { player, doc, deps, bus, targets } = setup();
+        const make = deps.createHighway;
+        let hw;
+        deps.createHighway = () => { hw = make(); replacingInit(hw, doc, bus, { announce }); return hw; };
+        const s = mountStage({ player, song: withDrums, prefs: {}, deps });
+        const drums = player.children[0].children[2];
+        assert.ok(hw.replacement, 'fake init replaced the canvas');
+        assert.equal(targets.at(-1), hw.replacement, 'kit hits pinned to the live canvas');
+        s.unmount();
+        assert.equal(hw.replacement.parentNode, null, 'live canvas removed');
+        assert.ok(!drums.children.includes(hw.replacement));
+        assert.equal(bus.count(), 0, 'bus listener removed');
+    });
+}
+
+test('a later canvas replacement on the drum lane re-pins the input target', () => {
+    const { player, doc, deps, bus, targets, drumHws } = setup();
+    const s = mountStage({ player, song: withDrums, prefs: {}, deps });
+    const [oldCanvas] = drumHws[0].initArgs;
+    const fresh = doc.createElement('canvas');
+    // Another highway's replacement is ignored.
+    bus.emit('highway:canvas-replaced', { oldCanvas: doc.createElement('canvas'), newCanvas: doc.createElement('canvas') });
+    assert.equal(targets.at(-1), oldCanvas);
+    bus.emit('highway:canvas-replaced', { oldCanvas, newCanvas: fresh });
+    assert.equal(targets.at(-1), fresh);
     s.unmount();
 });
