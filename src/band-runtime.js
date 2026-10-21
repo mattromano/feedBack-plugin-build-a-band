@@ -841,6 +841,16 @@ export function createBandRuntime({
         answer.then(settle, () => settle(false));
     }
 
+    // Settings or the leave prompt goes without a resume or a focus move.
+    function closeOverlaySilently(s) {
+        if (s.overlay) {
+            const o = s.overlay;
+            s.overlay = null;
+            if (typeof o.close === 'function') safe(() => o.close({ silent: true }));
+        }
+        s.pauseToken = null;
+    }
+
     function lastModal() {
         const kids = doc.body && doc.body.children;
         const last = kids && kids.length ? kids[kids.length - 1] : null;
@@ -1086,6 +1096,8 @@ export function createBandRuntime({
             if (s.results) return;
             // The sidebar is for the playing song only (plan 7 R21).
             if (s.sidebar) { const sb = s.sidebar; safe(() => sb.close()); }
+            // So are Settings and the leave prompt: closed, resuming nothing.
+            closeOverlaySilently(s);
             const model = player && safe(() => resultsModel({
                 snapshot: s.score ? s.score.snapshot() : null,
                 prefs: s.prefs,
@@ -1115,12 +1127,7 @@ export function createBandRuntime({
         teardown(s) {
             // Plan 7, first and silently: nothing resumes, every class and
             // attribute is undone, and full screen is left (Play again keeps it).
-            if (s.overlay) {
-                const o = s.overlay;
-                s.overlay = null;
-                if (typeof o.close === 'function') safe(() => o.close({ silent: true }));
-            }
-            s.pauseToken = null;
+            closeOverlaySilently(s);
             if (s.sidebar) { const sb = s.sidebar; s.sidebar = null; safe(() => sb.destroy()); }
             destroyChrome(s);
             if (!s.keepHides) safe(() => fullScreen.exit());

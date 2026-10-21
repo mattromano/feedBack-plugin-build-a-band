@@ -3294,12 +3294,45 @@ test('every exit closes the leave prompt through its own cancel', async () => {
         if (exit === 'stop') fb.emit('song:stop', {});
         else if (exit === 'dispose') rt.dispose();
         else fb.emit('song:loading', { filename: 'Other.sloppak' });
-        assert.equal(prompts[0].modal.parentNode, null, `${exit}: the prompt is gone`);
-        assert.equal(doc.body.querySelector('.feedBack-modal'), null);
+        assert.ok(!prompts[0].modal.parentNode, `${exit}: the prompt is gone`);
+        assert.ok(!doc.body.querySelector('.feedBack-modal'), `${exit}: no modal left`);
         assert.equal(prompts[0].settled, true, `${exit}: the prompt settled`);
         await flush();
         assert.deepEqual(calls.resume, [], `${exit}: nothing resumes`);
         assert.deepEqual(calls.nav, [], `${exit}: the link is not followed`);
         rt.dispose();
     }
+});
+
+test('the song ending under Settings closes it before the results and resumes nothing', () => {
+    const { rt, fb, doc, player, calls, loadSong, keyWin, sidebar, navLinks, settingsScreen } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    sidebar.fire('click', { target: navLinks.settings });
+    assert.ok(bodyHas(doc, 'bab-settings-over'));
+    fb.emit('song:ended', {});
+    assert.ok(!bodyHas(doc, 'bab-settings-over'));
+    assert.equal(settingsScreen.getAttribute('role'), null);
+    assert.ok(player.querySelector('.bab-results'), 'the results show');
+    assert.deepEqual(calls.resume, []);
+    assert.equal(rt.stageUi().overlay, null);
+    keyWin('Escape', 'Escape');
+    assert.deepEqual(calls.resume, [], 'a later Escape resumes nothing');
+    rt.dispose();
+});
+
+test('the song ending under the leave prompt closes it before the results and resumes nothing', async () => {
+    const { rt, fb, doc, player, calls, loadSong, sidebar, navLinks, prompts } = setup();
+    rt.startSession({ song: ITEM, prefs: prefsWith() });
+    loadSong(ITEM);
+    sidebar.fire('click', { target: navLinks.songs });
+    fb.emit('song:ended', {});
+    assert.ok(!doc.body.querySelector('.feedBack-modal'), 'the prompt is gone');
+    assert.ok(player.querySelector('.bab-results'));
+    assert.equal(rt.stageUi().overlay, null);
+    prompts[0].resolve(true);
+    await flush();
+    assert.deepEqual(calls.resume, []);
+    assert.deepEqual(calls.nav, []);
+    rt.dispose();
 });
