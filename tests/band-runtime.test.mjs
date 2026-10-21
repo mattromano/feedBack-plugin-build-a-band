@@ -221,7 +221,9 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     }
     const fireWin = (type, detail) => win.dispatchEvent(new CustomEvent(type, { detail }));
     return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong, clock, chart, od, fireWin, audio,
-        makeRuntime, setSplit: (v) => { ssActive = v; } };
+        makeRuntime, setSplit: (v) => { ssActive = v; },
+        // The next mount's stage: with or without a drum lane beside guitar.
+        setDrumLane: (v) => { drumLane = v; } };
 }
 
 test('no Band button is injected any more', () => {
@@ -2451,6 +2453,7 @@ test('every exit path restores and releases the kit claim', async () => {
         'Play again': (e) => { e.fb.emit('song:ended', {}); e.rt.again(); },
         'song:stop': (e) => e.fb.emit('song:stop', {}),
         'screen:changing away': (e) => e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }),
+        'song change': (e) => e.fb.emit('song:loading', { filename: 'next.psarc' }),
         'dispose()': (e) => e.rt.dispose(),
     };
     for (const [name, exit] of Object.entries(exits)) {
@@ -2503,5 +2506,209 @@ test('pausing changes nothing', () => {
     timers.fire(100);
     assert.deepEqual(soundCommand(calls, 'restore'), []);
     assert.equal(rt.drumSound().muted, true);
+    rt.dispose();
+});
+
+// ── Task 3 review gaps ──
+
+const FAIL_DRUMS = 'build_a_band:fail:drums';
+const isFailDrums = (r) => !!r && (r.claimId === FAIL_DRUMS || !!(r.args && r.args.claimId === FAIL_DRUMS));
+const soundKinds = (calls) => soundCaps(calls).map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
+// 14 drums misses on the band's drum canvas, at display times from..from+13.
+function dropDrums(env, from = 1) {
+    for (let i = 0; i < 14; i++) {
+        env.clock.t = from + i;
+        env.fb.emit('drums:miss', { canvas: env.mounts[0].drumCanvas, multiplier: 1, combo: 0 });
+    }
+}
+
+test('the band-failed ending keeps the kit claim until teardown', async () => {
+    const env = setup();
+    const { rt, loadSong, calls } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: failPrefs({ drums: { soundMode: 'kit' } }) });
+    loadSong(STEM_ITEM);
+    dropGuitar(env);
+    dropDrums(env, 15);
+    assert.equal(rt.phase(), 'ending', 'band failed');
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute'], 'the results keep the claim');
+    env.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' });
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    assert.equal(rt.drumSound(), null);
+    rt.dispose();
+});
+
+test('a stems provider-ready while the results show or after teardown sends nothing', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, calls, fireWin } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+    loadSong(STEM_ITEM);
+    fb.emit('song:ended', {});
+    assert.equal(rt.phase(), 'ending');
+    fireWin('stems:state', { event: 'provider-ready', stemIds: ['guitar', 'drums'] });
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute'], 'results: nothing sent');
+    rt.next();
+    await flush();
+    const after = soundKinds(calls);
+    assert.deepEqual(after, ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    fireWin('stems:state', { event: 'provider-ready', stemIds: ['guitar', 'drums'] });
+    await flush();
+    assert.deepEqual(soundKinds(calls), after, 'after teardown: nothing sent');
+    rt.dispose();
+});
+
+test('drums dropping out of the band mid-song release the sound claim', async () => {
+    const env = setup();
+    const { rt, loadSong, mounts, calls, timers } = env;
+    const ss = fakeSplitscreen(env);
+    rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
+    loadSong(STEM_ITEM);
+    assert.equal(soundCommand(calls, 'mute').length, 1);
+    // The remounted stage falls back to a guitar lane only: drums leave the band.
+    env.setDrumLane(false);
+    ss.start();
+    timers.fire(50);
+    assert.equal(mounts.length, 2);
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar'], 'drums left the band');
+    assert.equal(rt.phase(), 'playing');
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    assert.equal(rt.drumSound(), null);
+    rt.dispose();
+    await flush();
+    assert.equal(capCalls(calls, 'release', isSound).length, 1, 'released once');
+});
+
+// ── Drum sound modes (plan 6 Task 4): Rock Band judgments drive the drum stem ──
+
+const rb = () => prefsWith({ drums: { soundMode: 'rockband' } });
+const miss = (canvas) => ({ canvas, multiplier: 1, combo: 0 });
+const hit = (canvas, combo = 1) => ({ canvas, points: 30, multiplier: 1, combo });
+
+test('Rock Band: a miss drops the drum stem, the next hit brings it back', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: rb() });
+    loadSong(STEM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    assert.deepEqual(soundCaps(calls), [], 'no sound dispatch at load');
+    fb.emit('drums:miss', miss(lane));
+    assert.deepEqual(soundCommand(calls, 'mute').map((r) => r.args), [{ id: 'drums', claimId: SOUND_CLAIM }]);
+    assert.equal(rt.drumSound().muted, true);
+    fb.emit('drums:miss', miss(lane));
+    await flush();
+    assert.equal(soundCommand(calls, 'mute').length, 1, 'a second miss sends nothing more');
+    fb.emit('drums:hit', hit(lane));
+    await flush();
+    assert.deepEqual(soundCommand(calls, 'restore').map((r) => r.args), [{ claimId: SOUND_CLAIM }]);
+    assert.equal(capCalls(calls, 'release', isSound).length, 1);
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    assert.equal(rt.drumSound().muted, false);
+    fb.emit('drums:hit', hit(lane, 2));
+    await flush();
+    assert.equal(soundCaps(calls).length, 4, 'a second hit sends nothing more');
+    rt.dispose();
+});
+
+test('Rock Band: an overhit drops it too, but not while paused', () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: rb() });
+    loadSong(STEM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    fb.isPlaying = false;
+    fb.emit('drums:overhit', { canvas: lane });
+    assert.deepEqual(soundCaps(calls), [], 'a paused overhit is ignored');
+    assert.equal(rt.drumSound().muted, false);
+    fb.isPlaying = true;
+    fb.emit('drums:overhit', { canvas: lane });
+    assert.equal(soundCommand(calls, 'mute').length, 1);
+    assert.equal(rt.drumSound().muted, true);
+    rt.dispose();
+});
+
+test("Rock Band: another canvas's judgments are ignored", () => {
+    const env = setup();
+    const { rt, fb, doc, loadSong, calls } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: rb() });
+    loadSong(STEM_ITEM);
+    fb.emit('drums:miss', miss(doc.createElement('canvas')));
+    assert.deepEqual(soundCaps(calls), []);
+    assert.equal(rt.drumSound().muted, false);
+    rt.dispose();
+});
+
+test('Rock Band: drums alone on #highway follow the mode too', () => {
+    const env = setup();
+    const { rt, fb, loadSong, calls, highwayCanvas } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: prefsWith({ guitar: { on: false }, drums: { soundMode: 'rockband' } }) });
+    loadSong(STEM_ITEM);
+    fb.emit('drums:miss', miss(highwayCanvas));
+    assert.deepEqual(soundCommand(calls, 'mute').map((r) => r.args), [{ id: 'drums', claimId: SOUND_CLAIM }]);
+    rt.dispose();
+});
+
+test('Rock Band: any seek brings the drums back', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: rb() });
+    loadSong(STEM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    const seeks = [{ from: 20, to: 5 }, { from: 5, to: 30 }, { from: 30, to: 10, reason: 'loop-wrap' }];
+    for (const [i, seek] of seeks.entries()) {
+        fb.emit('drums:miss', miss(lane));
+        assert.equal(rt.drumSound().muted, true, `muted before seek ${i}`);
+        fb.emit('song:seek', seek);
+        assert.equal(rt.drumSound().muted, false);
+        await flush();   // the restore queues behind the mute
+        assert.equal(soundCommand(calls, 'restore').length, i + 1, `seek ${JSON.stringify(seek)} restores`);
+    }
+    assert.equal(soundCommand(calls, 'mute').length, 3);
+    fb.emit('song:seek', { from: 10, to: 2 });
+    await flush();
+    assert.equal(soundCommand(calls, 'restore').length, 3, 'a seek with the drums in sends nothing');
+    rt.dispose();
+});
+
+test('Rock Band: a hit while the mute is still pending: the restore follows it', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls } = env;
+    const held = holdMutes(env);
+    rt.startSession({ song: STEM_ITEM, prefs: rb() });
+    loadSong(STEM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    fb.emit('drums:miss', miss(lane));
+    fb.emit('drums:hit', hit(lane));
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute']);
+    held[0]();
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    rt.dispose();
+});
+
+test('Rock Band stacked with fail mode: each claim follows its own rule', async () => {
+    const env = setup();
+    const { rt, fb, loadSong, mounts, calls } = env;
+    rt.startSession({ song: STEM_ITEM, prefs: failPrefs({ drums: { soundMode: 'rockband' } }) });
+    loadSong(STEM_ITEM);
+    const lane = mounts[0].drumCanvas;
+    dropDrums(env);
+    assert.equal(rt.snapshot().parts.drums.failed, true, 'drums dropped out');
+    await flush();
+    assert.deepEqual(soundCommand(calls, 'mute').map((r) => r.args), [{ id: 'drums', claimId: SOUND_CLAIM }]);
+    assert.deepEqual(stemsCommand(calls, 'mute').filter(isFailDrums).map((r) => r.args), [{ id: 'drums', claimId: FAIL_DRUMS }]);
+    fb.emit('drums:hit', hit(lane));
+    await flush();
+    assert.equal(soundCommand(calls, 'restore').length, 1, 'the dropped drummer still drives Rock Band');
+    assert.deepEqual(stemsCommand(calls, 'restore').filter(isFailDrums), [], 'the fail claim holds');
+    const sound = soundCaps(calls).length;
+    fb.emit('song:stop', {});
+    await flush();
+    assert.equal(stemsCommand(calls, 'restore').filter(isFailDrums).length, 1);
+    assert.equal(capCalls(calls, 'release', isFailDrums).length, 1);
+    assert.equal(soundCaps(calls).length, sound, 'nothing more for the sound claim');
     rt.dispose();
 });

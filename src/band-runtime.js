@@ -1018,7 +1018,9 @@ export function createBandRuntime({
         },
     };
     // Judgments into the band score (R3): each acts only while the session
-    // plays, then refreshes the HUD.
+    // plays, then refreshes the HUD. Judgments on the band's drum canvas also
+    // drive the Rock Band drum stem (plan 6 R9), a dropped-out drummer's too;
+    // an overhit while paused is a stray pad tap and is ignored (R10).
     const drumHandler = (type) => (e) => {
         const s = scoring();
         if (!s) return;
@@ -1028,6 +1030,10 @@ export function createBandRuntime({
         // Drums never take an overdrive factor (R4): their points already
         // include the drums engine's own star-power doubling.
         record(s, drumsEntry(type, e && e.detail, displayTime(s), canvas));
+        const d = e && e.detail;
+        if (!s.drumSound || !d || !canvas || d.canvas !== canvas) return;
+        if (type === 'overhit' && songPaused(s)) return;
+        if (s.drumSound.judge(type)) syncDrumSound(s);
     };
     for (const type of DRUM_JUDGMENTS) handlers['drums:' + type] = drumHandler(type);
     // Deploys (R18): drums star power on the band's drum canvas, karaoke's overdrive.
@@ -1069,6 +1075,9 @@ export function createBandRuntime({
         const s = scoring();
         const d = (e && e.detail) || {};
         if (!s || !Number.isFinite(d.from) || !Number.isFinite(d.to)) return;
+        // Any seek brings Rock Band drums back (plan 6 R11): the drums engine
+        // starts clean from the seek time.
+        if (s.drumSound && s.drumSound.seek()) syncDrumSound(s);
         // A loop wrap keeps the ledger; the looped phrases earn again (R8).
         if (d.reason === 'loop-wrap') {
             if (s.od) { const od = s.od; safe(() => od.loopWrap(d.to)); }
