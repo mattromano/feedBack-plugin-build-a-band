@@ -375,4 +375,27 @@ No new code. Silent unless Matt says otherwise.
 
 ## Review
 
-(Filled in after Task 10.)
+Built 2026-10-21, one task at a time, each reviewed, then a whole-branch review and one fix wave; all reviews ended clean.
+
+- **Branches (pushed, no PRs):**
+  - core `feature/five-fret-charts`, b6a5dd5..d4e7483;
+  - new repo [mattromano/feedBack-plugin-five-fret](https://github.com/mattromano/feedBack-plugin-five-fret) `main`, up to 686bb98.
+- **Tests:** core JS 1358, core Python 3097 passed (6 skipped), plugin 132.
+- **Task 10, done silently** with Matt's OK to restart the app:
+  - **Install:** core d4e7483 synced (only the 5 changed files; plugins untouched), and the plugin copied into `Resources/slopsmith/plugins/five_fret`. The app logged "Registered plugin 'five_fret' (5-Fret)".
+  - **Highway:** drawn on a separate `createHighway()` canvas fed from the WebSocket, with no audio at any point. For "Misery Business (5-fret test)", bass, at 30 s, it shows the tilted highway, gems, fret buttons and HUD header "BASS (5-FRET) · NO CONTROLLER · EXPERT" (screenshot `img/2026-10-21-plan2-five-fret-highway.png`). Both parts arrived in full (guitar 797, bass 752).
+  - **No controller connected:** the HUD showed "Connect a controller and press any button", and `claimCount()` was 0. The menu-leak check (Review Focus 1) is covered by unit tests only, since no physical controller was available.
+  - **Viz picker** lists "5-Fret".
+  - **Nothing else moved:** a normal song (`sloppak/haleimis.sloppak`) still loads Lead/Rhythm/Bass/Drums, and the test song still streams its drum tab. The player stayed paused throughout.
+- **Not done (needs Matt):**
+  - an audible play-through with a controller;
+  - the calibration clicks;
+  - the normal-player 5-Fret panel and controls screen, which were only exercised by unit tests.
+- **Calls made during the build** (full list in the shared notes ledger):
+  - gamepad mode hits only on presses (Clone Hero style);
+  - stars 0..6 with gold;
+  - YARG's solo term included in the star calculation;
+  - seeks restart scoring;
+  - the renderer holds a controller only while a part plays;
+  - hat-switch strum bars bindable;
+  - the controls code lives in `assets/controls.js`.
