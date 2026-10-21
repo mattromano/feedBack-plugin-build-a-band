@@ -213,8 +213,9 @@
     pointer-events: auto;
     background: #050508;
 }
-/* The lane holding the main highway (drums alone with vocals) stays
-   see-through and lets input reach #highway beneath it. */
+/* The lane holding the main highway stays see-through and lets input reach
+   #highway beneath it: this overrides the drum lane above when drums play
+   alone, with or without vocals. */
 #player .bab-lane.bab-lane-main {
     pointer-events: none;
     background: none;

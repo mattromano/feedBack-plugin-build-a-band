@@ -24,10 +24,11 @@ const TABLE = {
         left: () => [IDLE, ['teardown']],
     },
     // The results show (R16): Next song releases core's held exit and returns
-    // to the band screen; Play again drops it and replays (always last).
+    // to the band screen; Play again drops it and replays (always last),
+    // keeping the plugins' own score displays hidden into the replayed session.
     ending: {
         loading: () => [IDLE, ['hideResults', 'dropExit', 'teardown']],
-        again: () => [IDLE, ['hideResults', 'dropExit', 'teardown', 'replay']],
+        again: () => [IDLE, ['hideResults', 'dropExit', 'keepHides', 'teardown', 'replay']],
         next: () => [IDLE, ['hideResults', 'teardown', 'releaseExit', 'showBandScreen']],
         left: () => [IDLE, ['hideResults', 'dropExit', 'teardown']],
     },

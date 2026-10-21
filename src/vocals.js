@@ -76,12 +76,18 @@ function offKaraoke(api) {
     });
 }
 
-// Teardown, before the stage unmounts. Each step is guarded.
-export function stopVocals(api) {
+// Teardown, before the stage unmounts. Each step is guarded. keepHud leaves
+// karaoke's score HUD hidden for a Play again (the replay arms it again).
+export function stopVocals(api, { keepHud = false } = {}) {
     guard(() => api.stopMic());
     offKaraoke(api);
     guard(() => api.mountStrip(null));
     guard(() => api.setDifficulty(null));
     guard(() => api.setHearMyself(null));
+    if (!keepHud) showKaraokeHud(api);
+}
+
+// Karaoke's own score HUD back.
+export function showKaraokeHud(api) {
     guard(() => { if (typeof api.setScoreHudHidden === 'function') api.setScoreHudHidden(false); });
 }

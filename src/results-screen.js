@@ -133,13 +133,13 @@ export function showResultsScreen({ doc, win, host, model, onAgain, onNext }) {
         }
         if (e.key === 'r' || e.key === 'R') { swallow(); onAgain(); }
     }
-    win.addEventListener('keydown', onKey, true);
-
     root.setAttribute('tabindex', '-1');
     host.appendChild(root);
     focus(next);
     if (doc.activeElement !== next) focus(root);
 
+    // Registered last, so a throw above can't leak it.
+    win.addEventListener('keydown', onKey, true);
     let shown = true;
     return {
         hide() {

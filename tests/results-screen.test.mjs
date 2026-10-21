@@ -203,3 +203,13 @@ test('Escape is Next song', () => {
     assert.deepEqual([calls.again, calls.next], [0, 1]);
     assert.deepEqual(calls.player, [], "core's back shortcut doesn't see it");
 });
+
+test('a throw while attaching the dialog leaks no key listener', () => {
+    const doc = makeDoc();
+    const host = makeEl('div', doc);
+    host.appendChild = () => { throw new Error('host gone'); };
+    let added = 0;
+    const win = { addEventListener: () => { added++; }, removeEventListener: () => { added--; } };
+    assert.throws(() => showResultsScreen({ doc, win, host, model: MODEL, onAgain() {}, onNext() {} }), /host gone/);
+    assert.equal(added, 0);
+});

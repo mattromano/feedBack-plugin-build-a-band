@@ -11,7 +11,7 @@ import { drumArrIndex } from './arrangements.js';
 import { applyDevices } from './devices.js';
 import { planStage } from './stage.js';
 import { PART_TYPES, getPart, hasChart, songFacts } from './parts.js';
-import { karaokeApi, armVocals, startVocals, stopVocals } from './vocals.js';
+import { karaokeApi, armVocals, startVocals, stopVocals, showKaraokeHud } from './vocals.js';
 import { createBandScore } from './band-score.js';
 import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals } from './part-events.js';
 import { guitarStarThresholds } from './stars.js';
@@ -160,8 +160,13 @@ export function createBandRuntime({
             // Karaoke's totals from its latest karaoke:reset, until a phrase
             // supersedes them: re-applied after a rewind replays the ledger.
             vocalsReset: undefined,
-            // The plugins' own score displays this session hid.
+            // The plugins' own score displays this session hid (a replay
+            // inherits them from the session before).
             hidden: { nd: false, drums: new Set(), scorecard: false },
+            // Play again: teardown leaves the hides for the replayed session.
+            keepHides: false,
+            // Karaoke whose HUD stayed hidden for the replay.
+            vocalsKept: null,
             countInOverride: false,
         };
     }
@@ -262,17 +267,28 @@ export function createBandRuntime({
         })) || null;
     }
 
-    // Vocals that couldn't start leave the band, while nothing has been judged
-    // yet, so they never pin the band multiplier at x1.
-    function dropVocals(s) {
-        if (!s.score || !s.scoreParts.includes('vocals')) return;
-        const snap = s.score.snapshot();
-        if (Object.values(snap.parts).some((p) => p.hits + p.misses + p.overhits > 0)) return;
-        s.scoreParts = s.scoreParts.filter((id) => id !== 'vocals');
-        s.score = createBandScore({ parts: s.scoreParts });
-        if (s.guitarThresholds) s.score.setStarThresholds('guitar', s.guitarThresholds);
+    // A part that can't play leaves the band score (the ledger holds only the
+    // parts actually playing, so it never pins the band multiplier at x1),
+    // and its HUD goes with it; the results then have no card for it.
+    function dropPart(s, id) {
+        if (!s.score || !s.scoreParts.includes(id)) return;
+        s.scoreParts = s.scoreParts.filter((p) => p !== id);
+        s.score.dropPart(id);
+        // The drop replays the ledger: karaoke's latest reset applies again.
+        if (s.vocalsReset !== undefined) s.score.syncTotals('vocals', s.vocalsReset);
         if (s.hud) mountHud(s);
     }
+
+    // Vocals that couldn't start leave the band unless they have judged
+    // phrases of their own, whatever the other parts have judged.
+    function dropVocals(s) {
+        const v = s.score && s.score.snapshot().parts.vocals;
+        if (!v || v.hits + v.misses + v.overhits > 0) return;
+        dropPart(s, 'vocals');
+    }
+
+    // The drums plugin is loaded (its API or its renderer is there).
+    const drumsPluginLoaded = () => !!win.feedBackDrums || typeof win.feedBackViz_drums === 'function';
 
     // Drums' star power phrases for the results, from the band's drum canvas.
     function drumsStarPower(s) {
@@ -496,6 +512,12 @@ export function createBandRuntime({
                 s.score = createBandScore({ parts: s.scoreParts });
                 if (s.guitarThresholds) s.score.setStarThresholds('guitar', s.guitarThresholds);
             }
+            // Drums that can't play leave the band: beside guitar, the lane
+            // fell back to guitar only; alone, the drums plugin is missing.
+            if (s.scoreParts.includes('drums')) {
+                const lost = s.drumsOnly ? !drumsPluginLoaded() : !bandDrumCanvas(s);
+                if (lost) dropPart(s, 'drums');
+            }
             mountHud(s, song);
             startCountIn(s);
             applyHides(s);
@@ -595,7 +617,8 @@ export function createBandRuntime({
                 s.vocalsArmed = false;
                 s.vocalsStarted = false;
                 const api = s.karaoke;
-                safe(() => stopVocals(api));
+                safe(() => stopVocals(api, { keepHud: s.keepHides }));
+                if (s.keepHides) s.vocalsKept = api;
             }
             // 0b. The band HUD, count-in and toasts go; each plugin's own
             // score display comes back; core's count-in pref rules again.
@@ -603,7 +626,7 @@ export function createBandRuntime({
             if (s.hud) { const hud = s.hud; s.hud = null; safe(() => hud.destroy()); }
             if (s.countIn) { const c = s.countIn; s.countIn = null; safe(() => c.destroy()); }
             safe(() => doc.body.classList.remove(BAND_SONG_CLASS));
-            undoHides(s);
+            if (!s.keepHides) undoHides(s);
             if (s.countInOverride) {
                 s.countInOverride = false;
                 if (typeof fb.setSongCountInOverride === 'function') safe(() => fb.setSongCountInOverride(null));
@@ -646,10 +669,23 @@ export function createBandRuntime({
             if (el && el.classList.contains('active')) return;
             if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN));
         },
+        // Play again: teardown left the plugins' displays hidden, so the
+        // replayed session takes them over (no flash of their own HUDs).
+        keepHides(s) {
+            s.keepHides = true;
+        },
         // Play again: the same library item with the prefs Go was given, through
         // the normal Go path. Always the last effect: the session is idle by now.
         replay(s) {
-            const started = startSession({ song: s.item, prefs: s.goPrefs });
+            const started = begin(s.item, s.goPrefs, s.keepHides ? s.hidden : null);
+            // Refused: nothing took the hides over, so they're undone here.
+            if (!started && s.keepHides) undoHides(s);
+            // Karaoke's hide passes on only when the replay armed karaoke again.
+            const next = started ? session : null;
+            if (s.keepHides && s.vocalsKept && !(next && next.vocalsArmed && next.karaoke === s.vocalsKept)) {
+                const api = s.vocalsKept;
+                safe(() => showKaraokeHud(api));
+            }
             if (started && typeof started.then === 'function') {
                 started.catch((e) => console.warn('[build-a-band] Play again failed to start the song', e));
             }
@@ -672,8 +708,14 @@ export function createBandRuntime({
     }
 
     function startSession({ song, prefs } = {}) {
+        return begin(song, prefs, null);
+    }
+
+    // hidden: the hides a replayed session inherits (undone at its teardown).
+    function begin(song, prefs, hidden) {
         if (state.phase !== 'idle' || !song || !song.filename) return false;
         const s = newSession(song, effectivePrefs(sessionPrefs(prefs, song), song, win), prefs);
+        if (hidden) s.hidden = hidden;
         session = s;
         dispatch({ type: 'go', filename: song.filename });
         if (state.phase === 'idle') return false;

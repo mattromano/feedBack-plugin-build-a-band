@@ -17,7 +17,7 @@ const rows = [
     ['playing loading', st('playing'), { type: 'loading' }, 'idle', ['teardown']],
     ['ending loading', st('ending'), { type: 'loading' }, 'idle', ['hideResults', 'dropExit', 'teardown']],
     ['playing ended', st('playing'), { type: 'ended' }, 'ending', ['holdExit', 'showResults']],
-    ['ending again', st('ending'), { type: 'again' }, 'idle', ['hideResults', 'dropExit', 'teardown', 'replay']],
+    ['ending again', st('ending'), { type: 'again' }, 'idle', ['hideResults', 'dropExit', 'keepHides', 'teardown', 'replay']],
     ['ending next', st('ending'), { type: 'next' }, 'idle', ['hideResults', 'teardown', 'releaseExit', 'showBandScreen']],
     ['ending exitTimer is gone', st('ending'), { type: 'exitTimer' }, 'ending', []],
     ['again while playing', st('playing'), { type: 'again' }, 'playing', []],

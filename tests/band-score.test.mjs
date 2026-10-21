@@ -210,3 +210,47 @@ test('entries for parts not playing are ignored', () => {
     assert.equal(s.score, 0);
     assert.deepEqual(Object.keys(s.parts), ['guitar']);
 });
+
+test('dropPart: the band multiplier ignores the dropped part, and its bonus is replayed', () => {
+    const b = createBandScore({ parts: ['guitar', 'drums'] });
+    b.record(e({ part: 'guitar', kind: 'hit', t: 1, points: 100, multiplier: 3, streak: 20 }));
+    assert.equal(b.snapshot().bandMultiplier, 1, 'drums never judged: pinned at x1');
+    assert.equal(b.snapshot().bonus, 0);
+    b.dropPart('drums');
+    const s = b.snapshot();
+    assert.equal(s.bandMultiplier, 3);
+    assert.equal(s.bonus, Math.round(100 * BAND_BONUS_STEP * 2), 'replayed without drums');
+    b.record(e({ part: 'guitar', kind: 'hit', t: 2, points: 100, multiplier: 3, streak: 21 }));
+    assert.equal(b.snapshot().parts.guitar.score, 200);
+    b.record(e({ part: 'drums', kind: 'hit', t: 3, points: 50 }));
+    assert.equal(b.snapshot().score, 200 + 2 * Math.round(100 * BAND_BONUS_STEP * 2), 'a dropped part no longer records');
+});
+
+test('dropPart filters out the part\'s entries, survives a rewind, and is idempotent', () => {
+    const b = createBandScore({ parts: PARTS });
+    b.setStarThresholds('guitar', [10, 20, 30, 40, 50, 60]);
+    b.record(e({ part: 'drums', kind: 'hit', t: 1, points: 30, multiplier: 2, streak: 5 }));
+    b.record(e({ part: 'guitar', kind: 'hit', t: 2, points: 50, multiplier: 1, streak: 1 }));
+    b.record(e({ part: 'vocals', kind: 'phrase', t: 3, points: 200, multiplier: 1, streak: 1, passed: true, accuracy: 0.9, rating: 'Great' }));
+    b.dropPart('drums');
+    const once = b.snapshot();
+    assert.deepEqual(Object.keys(once.parts), ['guitar', 'vocals']);
+    assert.equal(once.score, 250);
+    b.dropPart('drums');
+    b.dropPart('nope');
+    assert.deepEqual(b.snapshot(), once);
+    b.rewindTo(2.5);
+    assert.deepEqual(Object.keys(b.snapshot().parts), ['guitar', 'vocals'], 'a rewind does not bring it back');
+    assert.equal(b.snapshot().score, 50);
+    assert.ok(Number.isFinite(b.snapshot().parts.guitar.stars), 'other parts keep their thresholds');
+});
+
+test('dropPart: the results snapshot lists no card for the dropped part', async () => {
+    const { resultsModel } = await import('../src/results.js');
+    const b = createBandScore({ parts: ['guitar', 'drums'] });
+    b.record(e({ part: 'guitar', kind: 'hit', t: 1, points: 50 }));
+    b.dropPart('drums');
+    const prefs = { parts: { guitar: { on: true, difficulty: 'medium' }, drums: { on: true, difficulty: 'medium' } } };
+    const model = resultsModel({ snapshot: b.snapshot(), prefs, song: {}, oneLevel: false, drumsExtra: null });
+    assert.deepEqual(model.cards.map((c) => c.part), ['guitar']);
+});

@@ -49,7 +49,7 @@ const ITEM = { filename: 'My Song.sloppak', arrangements: [{ index: 0, name: 'Le
 const DRUM_ITEM = { filename: 'Beat.sloppak', arrangements: [{ index: 0, name: 'Lead' }, { index: 1, name: 'Drums' }] };
 
 function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 },
-    karaoke = true, karaokePitch = true, mountFails = false } = {}) {
+    karaoke = true, karaokePitch = true, mountFails = false, drumLane = true } = {}) {
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
@@ -128,6 +128,8 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
             stopMic: () => { rec('stopMic'); },
             setDifficulty: (id) => { rec('setDifficulty', id); return true; },
             setHearMyself: (on) => { rec('setHearMyself', on); return true; },
+            // Recorded with the other plugins' hide switches.
+            setScoreHudHidden: (v) => { calls.hides.push(['karaoke', v]); return true; },
         };
     }
     const mounts = [];
@@ -142,13 +144,15 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         root.className = 'bab-stage-root';
         p.appendChild(root);
         const lanes = {};
-        for (const id of ['guitar', 'drums']) {
+        // drumLane false: the real stage's fallback to a guitar lane only.
+        const laneParts = on('guitar') && !drumLane ? ['guitar'] : ['guitar', 'drums'];
+        for (const id of laneParts) {
             if (!on(id)) continue;
             lanes[id] = doc.createElement('div');
             lanes[id].className = 'bab-lane';
             root.appendChild(lanes[id]);
         }
-        const drumCanvas = on('guitar') && on('drums') ? doc.createElement('canvas') : null;
+        const drumCanvas = on('guitar') && on('drums') && drumLane ? doc.createElement('canvas') : null;
         if (drumCanvas) lanes.drums.appendChild(drumCanvas);
         const stripSlot = on('vocals') ? doc.createElement('div') : null;
         if (stripSlot) root.appendChild(stripSlot);
@@ -161,8 +165,9 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     };
     const timers = manualTimers();
     const fetchJson = async (url) => { calls.fetch.push(url); return settings; };
-    const rt = createBandRuntime({ win, doc, mountStage, loadPrefs: () => prefsWith(), storage, fetchJson,
+    const makeRuntime = () => createBandRuntime({ win, doc, mountStage, loadPrefs: () => prefsWith(), storage, fetchJson,
         setTimer: timers.setTimer, clearTimer: timers.clearTimer });
+    const rt = makeRuntime();
 
     // Core's playSong side: loading, then the song becomes current and is ready.
     function loadSong(item, { hasPhraseData = true } = {}) {
@@ -174,7 +179,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     }
     const fireWin = (type, detail) => win.dispatchEvent(new CustomEvent(type, { detail }));
     return { rt, fb, doc, win, calls, mounts, storage, timers, player, highwayCanvas, bandScreen, loadSong, clock, fireWin,
-        setSplit: (v) => { ssActive = v; } };
+        makeRuntime, setSplit: (v) => { ssActive = v; } };
 }
 
 test('no Band button is injected any more', () => {
@@ -988,7 +993,11 @@ test('every way a session ends gives each display back and clears the count-in o
     for (const [name, exit] of Object.entries(exits)) {
         const env = setup();
         env.rt.startSession({ song: FULL_ITEM, prefs: prefsWith({ vocals: SINGER }) });
-        env.loadSong(FULL_ITEM);
+        env.fb.emit('count-in:tick', { n: 1, total: 4 });
+        env.loadSong(FULL_ITEM, { hasPhraseData: false });
+        assert.ok(env.player.querySelector('.bab-toasts'), `${name}: a toast is up`);
+        assert.ok(env.player.querySelector('.bab-countin'), `${name}: the count-in is up`);
+        assert.ok(env.calls.hides.some((h) => h[0] === 'karaoke' && h[1] === true), name);
         exit(env);
         assert.equal(env.rt.phase(), 'idle', name);
         const last = new Map();
@@ -1000,6 +1009,9 @@ test('every way a session ends gives each display back and clears the count-in o
         assert.equal(env.doc.body.classList.contains('bab-band-song'), false, name);
         assert.equal(env.player.querySelector('.bab-hud'), null, name);
         assert.equal(env.player.querySelector('.bab-part-hud'), null, name);
+        assert.equal(env.player.querySelector('.bab-toasts'), null, `${name}: toasts cleared`);
+        assert.equal(env.player.querySelector('.bab-countin'), null, `${name}: count-in gone`);
+        assert.equal(last.get('karaoke'), false, `${name}: karaoke's own HUD back`);
         env.rt.dispose();
     }
 });
@@ -1291,13 +1303,35 @@ test("the band's count-in shows over the player and goes at teardown", () => {
     rt.dispose();
 });
 
-test('dispose removes the scoring listeners', () => {
-    const { rt, fb, win } = setup();
-    rt.dispose();
-    const before = rt.snapshot();
-    win.dispatchEvent(new CustomEvent('notedetect:hit', { detail: guitarHit() }));
-    fb.emit('drums:hit', {});
-    assert.equal(before, null);
+test('dispose removes every listener: a second runtime on the same bus scores once', () => {
+    const env = setup();
+    const { fb, win, loadSong, player, fireWin, mounts } = env;
+    // Every listener a runtime holds on the bus and on window: [where, event, fn].
+    let held = [];
+    const track = (where, addFn, removeFn) => [
+        (ev, fn, o) => { held.push([where, ev, fn]); addFn(ev, fn, o); },
+        (ev, fn, o) => { held = held.filter((h) => !(h[0] === where && h[1] === ev && h[2] === fn)); removeFn(ev, fn, o); },
+    ];
+    [fb.on, fb.off] = track('bus', fb.on, fb.off);
+    [win.addEventListener, win.removeEventListener] = track('win', win.addEventListener, win.removeEventListener);
+    const live = { get size() { return held.length; }, [Symbol.iterator]: () => held.map((h) => h[0] + ':' + h[1])[Symbol.iterator]() };
+    const first = env.makeRuntime();
+    assert.ok(live.size > 0);
+    first.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    first.dispose();
+    assert.deepEqual([...live], [], 'nothing left listening');
+    const second = env.makeRuntime();
+    second.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    fireWin('notedetect:hit', guitarHit());
+    fb.emit('drums:hit', { canvas: mounts.at(-1).drumCanvas, points: 30, multiplier: 1, combo: 1 });
+    assert.equal(second.snapshot().score, 80);
+    assert.equal(first.snapshot(), null);
+    assert.equal(player.querySelectorAll('.bab-hud').length, 1, 'one band HUD');
+    assert.equal(scoreText(player), '80');
+    second.dispose();
+    env.rt.dispose();
 });
 
 test('guitar star thresholds apply when the stage mounts after splitscreen went down', () => {
@@ -1394,5 +1428,125 @@ test('results that cannot show fall through to Next song, so the held exit is re
     assert.equal(calls.hold, 1);
     assert.equal(calls.release, 1);
     assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    rt.dispose();
+});
+
+// ── Parts that can't play leave the band (final review I1) ──
+
+test('a drum lane that failed to start leaves the band: ×N from the other parts, no drums HUD or card', () => {
+    const { rt, fb, loadSong, player, fireWin } = setup({ drumLane: false });
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
+    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1, 'no drums HUD');
+    fireWin('notedetect:hit', guitarHit({ multiplier: 3, streak: 20 }));
+    assert.equal(rt.snapshot().bandMultiplier, 3);
+    fb.emit('song:ended', {});
+    assert.deepEqual(player.querySelector('.bab-results').querySelectorAll('.bab-card').map((c) => c.getAttribute('data-part')), ['guitar']);
+    rt.dispose();
+});
+
+test('drums alone with the drums plugin missing leaves the band', async () => {
+    const { rt, win, loadSong, player } = setup();
+    delete win.feedBackDrums;
+    delete win.feedBackViz_drums;
+    const item = { ...DRUM_ITEM, filename: 'BeatSing.sloppak', has_vocal_pitch: true };
+    rt.startSession({ song: item, prefs: prefsWith({ guitar: { on: false }, vocals: SINGER }) });
+    loadSong(item);
+    await flush();
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['vocals']);
+    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1, 'the strip HUD only');
+    rt.dispose();
+});
+
+test('drums alone with the drums plugin present stays in the band', () => {
+    const { rt, loadSong } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith({ guitar: { on: false } }) });
+    loadSong(DRUM_ITEM);
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['drums']);
+    rt.dispose();
+});
+
+test("vocals' mic failing after guitar judgments still drops vocals", async () => {
+    const { rt, win, loadSong, player, fireWin } = setup();
+    let fail;
+    win.lyricsKaraoke.startMic = () => new Promise((r) => { fail = () => r('error'); });
+    rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(PITCH_ITEM);
+    await flush();
+    fireWin('notedetect:hit', guitarHit({ multiplier: 2, streak: 10 }));
+    assert.equal(rt.snapshot().bandMultiplier, 1, 'vocals still pins it while it may start');
+    fail();
+    await flush();
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
+    assert.equal(rt.snapshot().bandMultiplier, 2);
+    assert.equal(rt.snapshot().parts.guitar.score, 50, 'the guitar judgment is kept');
+    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1, 'the strip HUD goes');
+    rt.dispose();
+});
+
+// ── Play again keeps the plugins' own HUDs hidden (final review M2) ──
+
+test("Play again never shows the plugins' own HUDs between the two sessions", async () => {
+    const { rt, fb, calls, loadSong } = setup();
+    rt.startSession({ song: FULL_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(FULL_ITEM);
+    await flush();
+    fb.emit('song:ended', {});
+    const n = calls.hides.length;
+    rt.again();
+    assert.ok(calls.hides.slice(n).every((h) => h.at(-1) === true), 'nothing shown again at the replay teardown');
+    loadSong(FULL_ITEM);
+    await flush();
+    assert.ok(calls.hides.slice(n).every((h) => h.at(-1) === true), JSON.stringify(calls.hides.slice(n).map((h) => [h[0], h.at(-1)])));
+    fb.emit('song:stop', {});
+    const last = new Map();
+    for (const h of calls.hides) last.set(h.length === 3 ? h[1] : h[0], h.at(-1));
+    assert.ok([...last.values()].every((v) => v === false), 'a real exit still gives every display back');
+    rt.dispose();
+});
+
+test('a Play again that fails to start still gives the displays back', async () => {
+    const { rt, fb, win, calls, loadSong } = setup();
+    rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    loadSong(DRUM_ITEM);
+    fb.emit('song:ended', {});
+    win.playSong = () => Promise.reject(new Error('load failed'));
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+        rt.again();
+        await flush();
+    } finally { console.warn = warn; }
+    assert.equal(rt.phase(), 'idle');
+    const last = new Map();
+    for (const h of calls.hides) last.set(h.length === 3 ? h[1] : h[0], h.at(-1));
+    assert.ok(last.size >= 3);
+    assert.ok([...last.values()].every((v) => v === false));
+    rt.dispose();
+});
+
+test('stopVocals keepHud leaves karaoke\'s score HUD hidden for a replay', async () => {
+    const { stopVocals } = await import('../src/vocals.js');
+    const seen = [];
+    const api = { stopMic() {}, setKaraokeMode: () => Promise.resolve(false), mountStrip() {}, setDifficulty() {}, setHearMyself() {},
+        setScoreHudHidden: (v) => seen.push(v) };
+    stopVocals(api, { keepHud: true });
+    assert.deepEqual(seen, []);
+    stopVocals(api);
+    assert.deepEqual(seen, [false]);
+});
+
+test("a replay that doesn't arm karaoke again gives karaoke's HUD back", async () => {
+    const { rt, fb, win, calls, loadSong } = setup();
+    rt.startSession({ song: FULL_ITEM, prefs: prefsWith({ vocals: SINGER }) });
+    loadSong(FULL_ITEM);
+    await flush();
+    fb.emit('song:ended', {});
+    const karaoke = win.lyricsKaraoke;
+    delete win.lyricsKaraoke;
+    rt.again();
+    assert.deepEqual(calls.hides.filter((h) => h[0] === 'karaoke').at(-1), ['karaoke', false]);
+    win.lyricsKaraoke = karaoke;
     rt.dispose();
 });

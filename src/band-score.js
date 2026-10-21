@@ -84,7 +84,7 @@ function accuracyOf(p) {
 }
 
 export function createBandScore({ parts }) {
-    const ids = Array.isArray(parts) ? parts.slice() : [];
+    let ids = Array.isArray(parts) ? parts.slice() : [];
     const thresholds = new Map();
     let entries = [];
     let state = freshState(ids);
@@ -103,6 +103,15 @@ export function createBandScore({ parts }) {
         },
         rewindTo(t) {
             entries = entries.filter((entry) => !(entry.t > t));
+            replay();
+        },
+        // A part that can't play leaves the band: its entries go and the rest
+        // replay, so it never pins the band multiplier (plan 4 R4). Idempotent.
+        dropPart(id) {
+            if (!ids.includes(id)) return;
+            ids = ids.filter((p) => p !== id);
+            thresholds.delete(id);
+            entries = entries.filter((entry) => entry.part !== id);
             replay();
         },
         syncTotals(part, totals) {
