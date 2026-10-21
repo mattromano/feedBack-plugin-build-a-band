@@ -443,6 +443,10 @@ body.bab-band-song #count-in-overlay { display: none !important; }
 #player .bab-results *, #player .bab-results *::before, #player .bab-results *::after { box-sizing: border-box; }
 #player .bab-results-inner { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
 #player .bab-results-head { text-align: center; margin-bottom: 26px; }
+#player .bab-results-failed {
+    margin: 0 0 14px; font-size: 30px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+    color: #ff5a4a; text-shadow: 0 0 18px #ff3b2f66;
+}
 #player .bab-results-stars { display: inline-flex; gap: 8px; filter: drop-shadow(0 0 20px #f5c54266); }
 #player .bab-results-stars .bab-star { width: 40px; height: 40px; }
 #player .bab-results-stars .bab-star-fill { height: 40px; }

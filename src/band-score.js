@@ -1,6 +1,7 @@
 // Band score ledger: every judgment is a time-stamped entry, and all derived state (part scores,
 // band multiplier and bonus, streaks, crowd meters, stars) is a replay of the entries in order,
-// so a backward seek can drop later entries and rebuild (plan 4 R2, R4, R6).
+// so a backward seek can drop later entries and rebuild (plan 4 R2, R4, R6). Fail mode and rescue
+// (plan 5 R12) are derived the same way, so a rewind or dropPart replays them consistently.
 import { starsFromScore } from './yarg-rules.js';
 import { clampStars, bandStars } from './stars.js';
 
@@ -8,6 +9,7 @@ export const BAND_BONUS_STEP = 0.075;
 export const MAX_BAND_MULTIPLIER = 4;
 export const CROWD = Object.freeze({
     start: 0.66, hit: 0.02, miss: -0.05, overhit: -0.03, phrasePass: 0.08, phraseFail: -0.10,
+    rescue: 0.4,
 });
 
 const num = (v, fallback) => (Number.isFinite(v) ? v : fallback);
@@ -18,6 +20,7 @@ function freshPart() {
         score: 0, bonus: 0, multiplier: 1, streak: 0, bestStreak: 0,
         hits: 0, misses: 0, overhits: 0, crowd: CROWD.start, stars: null,
         phraseAccuracies: [], ratings: new Map(),
+        failed: false, drops: 0, saves: 0, deploys: 0,
     };
 }
 
@@ -29,7 +32,7 @@ function freshState(parts) {
 
 function bandMultiplier(state) {
     let lowest = Infinity;
-    for (const p of state.parts.values()) lowest = Math.min(lowest, p.multiplier);
+    for (const p of state.parts.values()) if (!p.failed) lowest = Math.min(lowest, p.multiplier);
     return Math.min(MAX_BAND_MULTIPLIER, Math.max(1, Number.isFinite(lowest) ? lowest : 1));
 }
 
@@ -43,9 +46,27 @@ function crowdStep(entry) {
     }
 }
 
-function apply(entry, state, thresholds) {
+// Any bandmate still playing who deploys brings every dropped part back (R12).
+function applyDeploy(p, state, failMode) {
+    p.deploys++;
+    if (failMode !== 'fail' || p.failed) return;
+    for (const other of state.parts.values()) {
+        if (!other.failed) continue;
+        other.failed = false;
+        other.crowd = CROWD.rescue;
+        other.saves++;
+    }
+}
+
+function apply(entry, state, thresholds, failMode) {
     const p = state.parts.get(entry.part);
     if (!p) return;
+    if (entry.kind === 'deploy') {
+        applyDeploy(p, state, failMode);
+        return;
+    }
+    // A dropped-out part's judgments are ignored entirely (R12).
+    if (p.failed) return;
     const scored = Math.round(num(entry.points, 0) * num(entry.factor, 1));
     p.score += scored;
     p.multiplier = num(entry.multiplier, 1);
@@ -67,6 +88,10 @@ function apply(entry, state, thresholds) {
     if (Number.isFinite(entry.stars)) p.stars = clampStars(entry.stars);
     if (thresholds.has(entry.part)) p.stars = starsFromScore(p.score, thresholds.get(entry.part));
     p.crowd = clamp01(p.crowd + crowdStep(entry));
+    if (failMode === 'fail' && p.crowd === 0) {
+        p.failed = true;
+        p.drops++;
+    }
     const n = bandMultiplier(state);
     if (scored > 0) {
         const bonus = Math.round(scored * BAND_BONUS_STEP * (n - 1));
@@ -83,7 +108,7 @@ function accuracyOf(p) {
     return judged ? p.hits / judged : null;
 }
 
-export function createBandScore({ parts }) {
+export function createBandScore({ parts, failMode = 'nofail' }) {
     let ids = Array.isArray(parts) ? parts.slice() : [];
     const thresholds = new Map();
     let entries = [];
@@ -91,7 +116,7 @@ export function createBandScore({ parts }) {
 
     function replay() {
         state = freshState(ids);
-        for (const entry of entries) apply(entry, state, thresholds);
+        for (const entry of entries) apply(entry, state, thresholds, failMode);
     }
 
     return {
@@ -99,7 +124,7 @@ export function createBandScore({ parts }) {
             if (!entry || !state.parts.has(entry.part)) return;
             const copy = { ...entry };
             entries.push(copy);
-            apply(copy, state, thresholds);
+            apply(copy, state, thresholds, failMode);
         },
         rewindTo(t) {
             entries = entries.filter((entry) => !(entry.t > t));
@@ -133,13 +158,18 @@ export function createBandScore({ parts }) {
             }
         },
         snapshot() {
-            const out = { score: 0, bonus: state.bonus, bandMultiplier: bandMultiplier(state), stars: null, parts: {} };
+            const out = {
+                score: 0, bonus: state.bonus, bandMultiplier: bandMultiplier(state), stars: null, parts: {},
+                bandFailed: failMode === 'fail' && state.parts.size > 0
+                    && [...state.parts.values()].every((p) => p.failed),
+            };
             for (const [id, p] of state.parts) {
                 out.score += p.score;
                 out.parts[id] = {
                     score: p.score, bonus: p.bonus, multiplier: p.multiplier, streak: p.streak,
                     bestStreak: p.bestStreak, hits: p.hits, misses: p.misses, overhits: p.overhits,
                     crowd: p.crowd, stars: p.stars, accuracy: accuracyOf(p),
+                    failed: p.failed, drops: p.drops, saves: p.saves, deploys: p.deploys,
                     phrases: [...p.ratings].map(([rating, r]) => ({ rating, count: r.count, meanAccuracy: r.sum / r.count }))
                         .sort((a, b) => b.meanAccuracy - a.meanAccuracy),
                 };

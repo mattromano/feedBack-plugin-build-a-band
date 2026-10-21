@@ -21,7 +21,7 @@ function notesHit(p) {
     return formatScore(num(p.hits)) + ' / ' + formatScore(num(p.hits) + num(p.misses));
 }
 
-function partStats(id, p, drumsExtra) {
+function baseStats(id, p, drumsExtra) {
     const score = ['Score', formatScore(num(p.score))];
     if (id === 'vocals') {
         // Ratings are karaoke's own strings, ordered by mean phrase accuracy (R3, R17).
@@ -40,6 +40,14 @@ function partStats(id, p, drumsExtra) {
             stats.push(['Star power phrases', formatScore(drumsExtra.phrasesHit) + ' / ' + formatScore(drumsExtra.phrasesTotal)]);
         }
     }
+    return stats;
+}
+
+// Plan 5 R22: every card adds its overdrive and drop-out counts, only when above 0.
+function partStats(id, p, drumsExtra) {
+    const stats = baseStats(id, p, drumsExtra);
+    if (num(p.deploys) > 0) stats.push(['Overdrives', formatScore(num(p.deploys))]);
+    if (num(p.drops) > 0) stats.push(['Dropped out', formatScore(num(p.drops))]);
     return stats;
 }
 
@@ -72,10 +80,10 @@ export function pickAwards(cards) {
     });
 }
 
-// resultsModel({ snapshot, prefs, song: {title, artist}, oneLevel, drumsExtra: {phrasesHit, phrasesTotal} | null })
-//   -> { stars, starDisplay, score, title, subtitle, cards }
+// resultsModel({ snapshot, prefs, song: {title, artist}, oneLevel, drumsExtra: {phrasesHit, phrasesTotal} | null,
+//   failed }) -> { stars, starDisplay, score, title, subtitle, failed, heading, cards }
 // One card per part that is on and in the snapshot, in part order (guitar, drums, vocals).
-export function resultsModel({ snapshot, prefs, song, oneLevel, drumsExtra }) {
+export function resultsModel({ snapshot, prefs, song, oneLevel, drumsExtra, failed = false }) {
     const snap = snapshot || {};
     const parts = snap.parts || {};
     const pp = (prefs && prefs.parts) || {};
@@ -110,6 +118,8 @@ export function resultsModel({ snapshot, prefs, song, oneLevel, drumsExtra }) {
         score: num(snap.score),
         title: text(s.title),
         subtitle: [text(s.title), text(s.artist)].filter(Boolean).join(' · '),
+        failed: !!failed,
+        heading: failed ? 'Band failed' : '',
         cards,
     };
 }

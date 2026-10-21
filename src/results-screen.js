@@ -44,11 +44,14 @@ export function showResultsScreen({ doc, win, host, model, onAgain, onNext }) {
     const root = el('div', 'bab-results');
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
-    root.setAttribute('aria-label', m.title ? 'Results: ' + m.title : 'Results');
+    const label = m.title ? 'Results: ' + m.title : 'Results';
+    root.setAttribute('aria-label', m.heading ? m.heading + '. ' + label : label);
     const inner = el('div', 'bab-results-inner', root);
 
-    // Header: band stars (the HUD's five-star display), band score, song.
+    // Header: the Band failed heading (plan 5 R12), band stars (the HUD's five-star display),
+    // band score, song.
     const head = el('div', 'bab-results-head', inner);
+    if (m.heading) el('h2', 'bab-results-failed', head).textContent = m.heading;
     const stars = el('div', 'bab-results-stars', head);
     stars.setAttribute('aria-hidden', 'true');
     const sd = m.starDisplay || { full: 0, partial: 0, gold: false };

@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals } from '../src/part-events.js';
+import { guitarEntry, drumsEntry, vocalsEntry, vocalsTotals, onsetTime, drumsOverdrive, vocalsOverdrive } from '../src/part-events.js';
 
 test("guitar: only the default detector's counted judgments score", () => {
     const d = { isDefault: true, counted: true, hit: true, points: 100, multiplier: 2, streak: 12 };
-    assert.deepEqual(guitarEntry(d, 5), { part: 'guitar', t: 5, kind: 'hit', points: 100, multiplier: 2, streak: 12 });
+    assert.deepEqual(guitarEntry(d, 5), { part: 'guitar', t: 5, kind: 'hit', points: 100, multiplier: 2, streak: 12, noteTime: null });
     assert.equal(guitarEntry({ ...d, isDefault: false }, 5), null);
     assert.equal(guitarEntry({ ...d, counted: false }, 5), null);
     assert.equal(guitarEntry(null, 5), null);
@@ -18,7 +18,7 @@ test('guitar: a miss scores nothing', () => {
 
 test('guitar: non-finite fields fall back', () => {
     assert.deepEqual(guitarEntry({ isDefault: true, counted: true, hit: true, points: 'x' }, 1),
-        { part: 'guitar', t: 1, kind: 'hit', points: 0, multiplier: 1, streak: 0 });
+        { part: 'guitar', t: 1, kind: 'hit', points: 0, multiplier: 1, streak: 0, noteTime: null });
 });
 
 test("drums: only the band's canvas, only judgments", () => {
@@ -60,4 +60,29 @@ test('vocalsTotals reads a reset', () => {
     assert.equal(vocalsTotals(null), null);
     assert.deepEqual(vocalsTotals({ multiplier: 1, streak: 0, stars: 0 }), { multiplier: 1, streak: 0, stars: 0 });
     assert.deepEqual(vocalsTotals({ score: 10 }), { multiplier: 1, streak: 0, stars: null });
+});
+
+test('guitarEntry keeps noteTime', () => {
+    const d = { isDefault: true, counted: true, hit: true, points: 100 };
+    assert.equal(guitarEntry({ ...d, noteTime: 4.2 }, 5).noteTime, 4.2);
+    assert.equal(guitarEntry(d, 5).noteTime, null);
+    assert.equal(guitarEntry({ ...d, noteTime: NaN }, 5).noteTime, null);
+});
+
+test('onsetTime', () => {
+    assert.equal(onsetTime({ isDefault: true, t: 3 }), 3);
+    assert.equal(onsetTime({ isDefault: false, t: 3 }), null);
+    assert.equal(onsetTime({ isDefault: true, t: NaN }), null);
+    assert.equal(onsetTime({ t: 3 }), null);
+    assert.equal(onsetTime(null), null);
+});
+
+test('drumsOverdrive / vocalsOverdrive', () => {
+    assert.deepEqual(drumsOverdrive({ starPower: { amount: 0.75, active: true } }), { fill: 0.75, active: true });
+    assert.deepEqual(drumsOverdrive({ starPower: { amount: 3, active: 0 } }), { fill: 1, active: false });
+    assert.equal(drumsOverdrive(null), null);
+    assert.equal(drumsOverdrive({}), null);
+    assert.deepEqual(vocalsOverdrive({ fill: 2, active: false, ready: true }), { fill: 1, active: false, ready: true });
+    assert.deepEqual(vocalsOverdrive({ fill: -1, active: true, ready: false }), { fill: 0, active: true, ready: false });
+    assert.equal(vocalsOverdrive(null), null);
 });

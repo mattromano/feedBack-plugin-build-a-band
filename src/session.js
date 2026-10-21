@@ -21,6 +21,8 @@ const TABLE = {
     playing: {
         loading: () => [IDLE, ['teardown']],
         ended: (s) => [{ phase: 'ending', filename: s.filename }, ['holdExit', 'showResults']],
+        // Fail mode (plan 5 R12): every part dropped out, so the song stops into the results.
+        failed: (s) => [{ phase: 'ending', filename: s.filename }, ['pauseSong', 'showResults']],
         left: () => [IDLE, ['teardown']],
     },
     // The results show (R16): Next song releases core's held exit and returns

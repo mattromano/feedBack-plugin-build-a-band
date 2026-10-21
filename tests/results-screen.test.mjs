@@ -213,3 +213,17 @@ test('a throw while attaching the dialog leaks no key listener', () => {
     assert.throws(() => showResultsScreen({ doc, win, host, model: MODEL, onAgain() {}, onNext() {} }), /host gone/);
     assert.equal(added, 0);
 });
+
+test('a failed band shows the heading', () => {
+    const { host } = setup({ ...MODEL, heading: 'Band failed' });
+    const root = host.querySelector('div.bab-results');
+    const h = root.querySelector('.bab-results-failed');
+    assert.ok(h);
+    assert.equal(h.textContent, 'Band failed');
+    const head = root.querySelector('.bab-results-head');
+    assert.equal(head.children[0], h, 'above the stars');
+    assert.ok(root.getAttribute('aria-label').startsWith('Band failed'));
+    const plain = setup({ ...MODEL, heading: '' }).host.querySelector('div.bab-results');
+    assert.equal(plain.querySelector('.bab-results-failed'), null);
+    assert.equal(plain.getAttribute('aria-label'), 'Results: Everlong');
+});

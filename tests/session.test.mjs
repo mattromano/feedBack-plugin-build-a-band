@@ -88,3 +88,13 @@ test('reduceSession does not mutate its input', () => {
     assert.doesNotThrow(() => reduceSession(frozen, { type: 'left' }));
     assert.deepEqual(frozen, { phase: 'playing', filename: 'a' });
 });
+
+test('band failed ends the song into the results', () => {
+    const r = step(st('playing'), { type: 'failed' });
+    assert.equal(r.state.phase, 'ending');
+    assert.equal(r.state.filename, 'a.psarc');
+    assert.deepEqual(r.effects, ['pauseSong', 'showResults']);
+    const idle = step(st('idle', null), { type: 'failed' });
+    assert.equal(idle.state.phase, 'idle');
+    assert.deepEqual(idle.effects, []);
+});

@@ -135,3 +135,23 @@ test('phrase entries without a string rating are skipped', () => {
     const m = resultsModel({ snapshot: { score: 0, parts: { vocals } }, prefs: prefsOn({ vocals: true }), song: {}, oneLevel: false, drumsExtra: null });
     assert.deepEqual(m.cards[0].stats.find(([label]) => label === 'Phrases'), ['Phrases', '2 Strong']);
 });
+
+test('band failed heading and overdrive stats', () => {
+    const base = { snapshot: SNAPSHOT, prefs: prefsOn({ guitar: true }), song: {}, oneLevel: false, drumsExtra: null };
+    const failed = resultsModel({ ...base, failed: true });
+    assert.equal(failed.failed, true);
+    assert.equal(failed.heading, 'Band failed');
+    const ok = resultsModel(base);
+    assert.equal(ok.failed, false);
+    assert.equal(ok.heading, '');
+    const snap = { ...SNAPSHOT, parts: { guitar: part({ hits: 9, misses: 1, deploys: 2, drops: 1 }) } };
+    const g = resultsModel({ ...base, snapshot: snap }).cards[0];
+    assert.deepEqual(g.stats.slice(-2), [['Overdrives', '2'], ['Dropped out', '1']]);
+    const zero = { ...SNAPSHOT, parts: { guitar: part({ deploys: 0, drops: 0 }) } };
+    const labels = resultsModel({ ...base, snapshot: zero }).cards[0].stats.map(([l]) => l);
+    assert.ok(!labels.includes('Overdrives'));
+    assert.ok(!labels.includes('Dropped out'));
+    const v = resultsModel({ ...base, prefs: prefsOn({ vocals: true }),
+        snapshot: { ...SNAPSHOT, parts: { vocals: part({ deploys: 1, drops: 3 }) } } }).cards[0];
+    assert.deepEqual(v.stats.slice(-2), [['Overdrives', '1'], ['Dropped out', '3']]);
+});
