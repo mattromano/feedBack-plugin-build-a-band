@@ -1,16 +1,14 @@
 // The app sidebar over the stage (plan 7 R7, R8). While body.bab-sidebar-open is set,
 // the plugin CSS shows #v3-sidebar fixed above #player. Opening it never pauses.
 // While open it is a modal dialog (role="dialog", aria-modal="true"), so drum keys
-// stand down under it (plan 7 R14); closing puts the earlier attributes back.
+// stand down under it (plan 7 R14), named "Menu" unless it has a name; closing puts
+// the earlier attributes back, and focus left inside it goes back where it was.
 // Nav links are taken over in the capture phase and handed to onNavigate; follow()
 // re-clicks one with the takeover bypassed so shell's own handler runs.
+import { contains, restoreFocus } from './modal-open.js';
+
 const OPEN_CLASS = 'bab-sidebar-open';
 const MODAL_ATTRS = [['role', 'dialog'], ['aria-modal', 'true']];
-
-function contains(root, node) {
-    for (let n = node; n; n = n.parentNode) if (n === root) return true;
-    return false;
-}
 
 // createSidebarOverlay({ doc, onNavigate })
 //   -> { open(via), close(), toggle(via), isOpen(), follow(link), destroy() }
@@ -21,6 +19,7 @@ export function createSidebarOverlay({ doc, onNavigate }) {
     let following = false;
     let destroyed = false;
     let saved = null;
+    let prevFocus = null;
 
     function onClick(e) {
         if (following) return;
@@ -56,16 +55,20 @@ export function createSidebarOverlay({ doc, onNavigate }) {
             return true;
         }
         open = true;
-        saved = MODAL_ATTRS.map(([k]) => [k, sidebar.getAttribute(k)]);
+        prevFocus = doc.activeElement;
+        saved = [...MODAL_ATTRS, ['aria-label']].map(([k]) => [k, sidebar.getAttribute(k)]);
         for (const [k, v] of MODAL_ATTRS) sidebar.setAttribute(k, v);
+        if (!sidebar.getAttribute('aria-label')) sidebar.setAttribute('aria-label', 'Menu');
         doc.body.classList.add(OPEN_CLASS);
         setEdge(via === 'edge');
         return true;
     }
 
-    function close() {
+    // A followed link's navigation owns focus, so follow() closes without restoring it.
+    function close({ keepFocus = false } = {}) {
         if (!open) return;
         open = false;
+        const focusInside = contains(sidebar, doc.activeElement);
         setEdge(false);
         for (const [k, v] of saved) {
             if (v === null) sidebar.removeAttribute(k);
@@ -73,11 +76,13 @@ export function createSidebarOverlay({ doc, onNavigate }) {
         }
         saved = null;
         doc.body.classList.remove(OPEN_CLASS);
+        if (focusInside && !keepFocus) restoreFocus(doc, prevFocus);
+        prevFocus = null;
     }
 
     return {
         open: openIt,
-        close,
+        close: () => close(),
         toggle(via) {
             if (open) close();
             else openIt(via);
@@ -87,7 +92,7 @@ export function createSidebarOverlay({ doc, onNavigate }) {
         follow(link) {
             following = true;
             try { link.click(); } finally { following = false; }
-            close();
+            close({ keepFocus: true });
         },
         destroy() {
             if (destroyed) return;

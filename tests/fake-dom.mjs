@@ -1,7 +1,7 @@
 // A small fake DOM for the band screen and song picker tests, in the style of
 // stage-mount.test.mjs: elements with attributes, classList, listeners and
-// simple compound selectors (tag, #id, .class, [attr] / [attr="v"]; no
-// combinators). parseHtml() reads the plugin's own static screen.html.
+// simple compound selectors (tag, #id, .class, [attr] / [attr="v"]; comma
+// lists, no combinators). parseHtml() reads the plugin's own static screen.html.
 
 function makeListeners() {
     const map = new Map();
@@ -31,6 +31,7 @@ function parseSelector(sel) {
 }
 
 function matches(el, sel) {
+    if (sel.includes(',')) return sel.split(',').some((s) => matches(el, s.trim()));
     const m = parseSelector(sel);
     if (m.tag && el.tagName !== m.tag) return false;
     if (m.id && el.getAttribute('id') !== m.id) return false;
@@ -112,6 +113,8 @@ export function makeDoc() {
     doc.createElement = (t) => makeEl(t, doc);
     doc.body = makeEl('body', doc);
     doc.getElementById = (id) => doc.body.querySelector('#' + id);
+    doc.querySelectorAll = (sel) => [doc.body, ...doc.body.querySelectorAll(sel)].filter((e) => matches(e, sel));
+    doc.querySelector = (sel) => doc.querySelectorAll(sel)[0] || null;
     return doc;
 }
 

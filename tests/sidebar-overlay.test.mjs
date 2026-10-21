@@ -55,6 +55,7 @@ test('while open the sidebar is a modal dialog, so drum keys stand down; closed 
     const { sidebar, overlay, doc } = setup();
     sidebar.setAttribute('aria-label', 'Main');
     overlay.open();
+    assert.equal(sidebar.getAttribute('aria-label'), 'Main');
     assert.equal(sidebar.getAttribute('role'), 'dialog');
     assert.equal(sidebar.getAttribute('aria-modal'), 'true');
     assert.equal(doc.body.querySelectorAll('[aria-modal="true"]').length, 1);
@@ -63,6 +64,42 @@ test('while open the sidebar is a modal dialog, so drum keys stand down; closed 
     assert.equal(sidebar.hasAttribute('aria-modal'), false);
     assert.equal(sidebar.getAttribute('aria-label'), 'Main');
     assert.equal(doc.body.querySelectorAll('[aria-modal="true"]').length, 0);
+});
+
+test('an unnamed sidebar is named Menu while open', () => {
+    const { sidebar, overlay } = setup();
+    overlay.open();
+    assert.equal(sidebar.getAttribute('aria-label'), 'Menu');
+    overlay.close();
+    assert.equal(sidebar.hasAttribute('aria-label'), false);
+});
+
+test('focus left inside the sidebar goes back where it was on close', () => {
+    const { doc, sidebar, settingsLink, overlay } = setup();
+    const stageBtn = doc.createElement('button');
+    doc.body.appendChild(stageBtn);
+    stageBtn.focus();
+    overlay.open();
+    settingsLink.focus();
+    overlay.close();
+    assert.equal(doc.activeElement, stageBtn);
+    // Focus that never went into the sidebar is left alone.
+    const other = doc.createElement('button');
+    doc.body.appendChild(other);
+    overlay.open();
+    other.focus();
+    overlay.close();
+    assert.equal(doc.activeElement, other);
+    // Gone from the page: the player gets it.
+    const player = doc.createElement('div');
+    player.id = 'player';
+    doc.body.appendChild(player);
+    overlay.open();
+    settingsLink.focus();
+    other.remove();
+    overlay.close();
+    assert.equal(doc.activeElement, player);
+    assert.ok(sidebar);
 });
 
 test('an existing role on the sidebar is put back on close', () => {

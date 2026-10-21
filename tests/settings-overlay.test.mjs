@@ -156,3 +156,65 @@ test('loadSettings rejecting is caught', async () => {
         console.warn = warn;
     }
 });
+
+// Core's _confirmDialog (Settings' own Reset opens one): a body-level modal outside #settings.
+function addConfirm(doc, { hidden = false } = {}) {
+    const modal = doc.createElement('div');
+    modal.className = 'feedBack-modal';
+    modal.setAttribute('role', 'alertdialog');
+    modal.setAttribute('aria-modal', 'true');
+    if (hidden) modal.setAttribute('hidden', '');
+    const cancel = doc.createElement('button');
+    modal.appendChild(cancel);
+    doc.body.appendChild(modal);
+    return { modal, cancel };
+}
+
+test('Esc while a confirm dialog is open leaves Settings open and the event alone', () => {
+    const { doc, win, calls, settings } = setup();
+    const { cancel } = addConfirm(doc);
+    const e = win.key('Escape', cancel);
+    assert.equal(e.defaultPrevented, false);
+    assert.equal(e.stopped, false);
+    assert.equal(calls.close, 0);
+    assert.equal(doc.body.classList.contains('bab-settings-over'), true);
+    assert.equal(settings.getAttribute('aria-modal'), 'true');
+});
+
+test("Space on the confirm's Cancel button isn't swallowed", () => {
+    const { doc, win } = setup();
+    const { cancel } = addConfirm(doc);
+    const e = win.key(' ', cancel);
+    assert.equal(e.defaultPrevented, false);
+    assert.equal(e.stopped, false);
+    assert.equal(win.key('ArrowLeft', doc.body).defaultPrevented, false);
+});
+
+test('a hidden modal in the page does not stand the keys down', () => {
+    const { doc, win, calls } = setup();
+    addConfirm(doc, { hidden: true });
+    assert.equal(win.key(' ', doc.body).defaultPrevented, true);
+    assert.equal(win.key('Escape', doc.body).defaultPrevented, true);
+    assert.equal(calls.close, 1);
+});
+
+test('closing puts focus back where it was, else on the player', () => {
+    const doc = makeDoc();
+    const player = doc.createElement('div');
+    player.id = 'player';
+    const stageBtn = doc.createElement('button');
+    player.appendChild(stageBtn);
+    const settings = doc.createElement('div');
+    settings.id = 'settings';
+    doc.body.append(player, settings);
+    const win = makeWin();
+    stageBtn.focus();
+    const first = openSettingsOverlay({ doc, win, onClose() {} });
+    assert.notEqual(doc.activeElement, stageBtn);
+    first.close();
+    assert.equal(doc.activeElement, stageBtn);
+    const second = openSettingsOverlay({ doc, win, onClose() {} });
+    stageBtn.remove();
+    second.close({ silent: true });
+    assert.equal(doc.activeElement, player);
+});

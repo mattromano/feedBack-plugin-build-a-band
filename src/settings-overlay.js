@@ -3,17 +3,15 @@
 // tears the song down. As a modal dialog it makes core's shortcuts skip keys inside
 // it, gamepad-nav keep focus in it and drums stand down. Core's own back button is
 // hidden by the CSS; ours goes first and takes focus. Esc closes; the player's keys
-// aimed at the page behind are swallowed; media keys are held.
+// aimed at the page behind are swallowed; media keys are held. While another modal
+// is up (core's _confirmDialog from Settings' own Reset) the keys are its own.
+// Closing puts focus back where it was, else on the player.
 import { holdMediaKeys } from './media-keys.js';
 import { PLAYER_KEYS } from './results-screen.js';
+import { contains, otherModalOpen, restoreFocus } from './modal-open.js';
 
 const OVER_CLASS = 'bab-settings-over';
 const DIALOG_ATTRS = [['role', 'dialog'], ['aria-modal', 'true'], ['aria-label', 'Settings']];
-
-function contains(root, node) {
-    for (let n = node; n; n = n.parentNode) if (n === root) return true;
-    return false;
-}
 
 const warn = (e) => { console.warn('[build-a-band] loadSettings failed', e); };
 
@@ -22,6 +20,7 @@ export function openSettingsOverlay({ doc, win, onClose }) {
     const settings = doc.getElementById('settings');
     if (!settings) return null;
 
+    const prevFocus = doc.activeElement;
     const saved = DIALOG_ATTRS.map(([k]) => [k, settings.getAttribute(k)]);
     for (const [k, v] of DIALOG_ATTRS) settings.setAttribute(k, v);
     doc.body.classList.add(OVER_CLASS);
@@ -44,7 +43,7 @@ export function openSettingsOverlay({ doc, win, onClose }) {
     const releaseMedia = holdMediaKeys(win.navigator);
 
     function onKey(e) {
-        if (!e) return;
+        if (!e || otherModalOpen(doc, win, settings)) return;
         if (e.key === 'Escape' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
             e.preventDefault();
             e.stopPropagation();
@@ -70,6 +69,7 @@ export function openSettingsOverlay({ doc, win, onClose }) {
             else settings.setAttribute(k, v);
         }
         doc.body.classList.remove(OVER_CLASS);
+        restoreFocus(doc, prevFocus);
         if (!silent && typeof onClose === 'function') onClose();
     }
 
