@@ -28,9 +28,12 @@ const stopTracks = (stream) => {
 };
 
 // createLevelMeter({ deviceId, via, mediaDevices, AudioContext, onLevel,
-//                    onState, schedule, cancel }) -> { stop() }
+//                    onState, schedule, cancel, frameSize? }) -> { stop() }
 // onState: 'live' | 'no-access' | 'check-in-game'.
-export function createLevelMeter({ deviceId, via, mediaDevices, AudioContext, onLevel, onState, schedule, cancel }) {
+// frameSize: the analyser's fftSize; readings are then paced to one per
+// frameSize / sampleRate seconds and onLevel(level, ctx.currentTime) gets the
+// audio clock. Without it, onLevel(level) fires every frame.
+export function createLevelMeter({ deviceId, via, mediaDevices, AudioContext, onLevel, onState, schedule, cancel, frameSize }) {
     let stopped = false;
     let frame = null;
     let stream = null;
@@ -65,16 +68,24 @@ export function createLevelMeter({ deviceId, via, mediaDevices, AudioContext, on
             stream = s;
             ctx = new AudioContext();
             const analyser = ctx.createAnalyser();
-            analyser.fftSize = 1024;
+            analyser.fftSize = frameSize || 1024;
             // Source -> analyser only. The analyser has no output connection.
             ctx.createMediaStreamSource(stream).connect(analyser);
             const buf = new Float32Array(analyser.fftSize);
             onState('live');
+            const interval = frameSize ? frameSize / ctx.sampleRate : 0;
+            let lastAt = -Infinity;
             const tick = () => {
                 frame = null;
                 if (stopped) return;
-                analyser.getFloatTimeDomainData(buf);
-                onLevel(rmsLevel(buf));
+                if (!frameSize) {
+                    analyser.getFloatTimeDomainData(buf);
+                    onLevel(rmsLevel(buf));
+                } else if (ctx.currentTime - lastAt >= interval) {
+                    lastAt = ctx.currentTime;
+                    analyser.getFloatTimeDomainData(buf);
+                    onLevel(rmsLevel(buf), ctx.currentTime);
+                }
                 if (!stopped) frame = schedule(tick);
             };
             frame = schedule(tick);

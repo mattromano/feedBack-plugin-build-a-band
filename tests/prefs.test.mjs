@@ -1,6 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadPrefs, savePrefs, pushRecent, clampZoom } from '../src/prefs.js';
+import {
+    loadPrefs, savePrefs, pushRecent, clampZoom,
+    MIC_HIT_DB_MIN, MIC_HIT_DB_MAX, MIC_HIT_DB_STEP, MIC_HIT_DB_DEFAULT, clampMicHitDb,
+} from '../src/prefs.js';
 
 function stub(initial = {}) {
     const m = new Map(Object.entries(initial));
@@ -52,7 +55,7 @@ test('labelScale is validated: finite, clamped to 0.75-2.5', () => {
 const PART_DEFAULTS = {
     guitar: { on: true, deviceKey: '', arrangement: 'Lead', difficulty: 'medium' },
     drums: { on: true, deviceKey: '', difficulty: 'medium', soundMode: 'song' },
-    vocals: { on: true, deviceId: '', difficulty: 'medium', hearMyself: false },
+    vocals: { on: true, deviceId: '', difficulty: 'medium', hearMyself: false, micHitDb: -30 },
 };
 
 test('plan 1 prefs gain the plan 2 defaults', () => {
@@ -120,4 +123,22 @@ test('zoom defaults to 1 per lane and is clamped', () => {
     assert.equal(clampZoom(0.1), 0.7);
     assert.equal(clampZoom(1.1 + 0.1), 1.2);
     assert.deepEqual(loadPrefs(stub({ [KEY]: '{"zoom":"big"}' })).zoom, { guitar: 1, drums: 1 });
+});
+
+test('micHitDb defaults, clamps and rounds', () => {
+    assert.deepEqual([MIC_HIT_DB_MIN, MIC_HIT_DB_MAX, MIC_HIT_DB_STEP, MIC_HIT_DB_DEFAULT], [-48, -12, 3, -30]);
+    const s = stub();
+    assert.equal(loadPrefs(s).parts.vocals.micHitDb, -30, 'missing');
+    assert.equal(clampMicHitDb(-70), -48);
+    assert.equal(clampMicHitDb(0), -12);
+    assert.equal(clampMicHitDb(-29.6), -30);
+    assert.equal(clampMicHitDb('x'), -30);
+    assert.equal(clampMicHitDb(undefined), -30);
+    assert.equal(clampMicHitDb(NaN), -30);
+    const bad = stub({ [KEY]: JSON.stringify({ parts: { vocals: { micHitDb: -70 } } }) });
+    assert.equal(loadPrefs(bad).parts.vocals.micHitDb, -48);
+    savePrefs({ parts: { vocals: { micHitDb: -24 } } }, s);
+    assert.equal(loadPrefs(s).parts.vocals.micHitDb, -24);
+    assert.equal(loadPrefs(s).parts.vocals.hearMyself, false, 'other vocals fields untouched');
+    assert.equal('micHitDb' in loadPrefs(s).parts.guitar, false);
 });

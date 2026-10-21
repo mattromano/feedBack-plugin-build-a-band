@@ -28,6 +28,13 @@ const NEEDS_MIC_ACCESS = 'Allow microphone access to list inputs';
 const GO_FAILED = "Couldn't start the song";
 const PAD_FLASH_MS = 120;
 const LIT_LEVEL = 0.02;
+// Mic-hit check: one reading per karaoke block (2048 samples), a flash per hit.
+const MIC_FRAME = 2048;
+const MIC_HIT_FLASH_MS = 300;
+const METER_FLOOR_DB = 60;
+const NEEDS_KARAOKE = 'Needs Lyrics Karaoke';
+const TAP_THE_MIC = 'Tap the mic';
+const meterPct = (db) => `${Math.min(1, Math.max(0, (db + METER_FLOOR_DB) / METER_FLOOR_DB)) * 100}%`;
 
 function defaultStorage(win) {
     try { return win && win.localStorage; } catch (_) { return undefined; }
@@ -67,6 +74,9 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     let goAttempt = 0; // a late result from an older Go is ignored
     let goError = '';
     const inputNote = {}; // part id -> device note (e.g. mic access needed)
+    let mic = null; // the vocals mic-hit check: { block, slider, level, tick, light, text }
+    let micDetector = null; // karaoke's shared detector, alive while the vocals meter runs
+    let micFlashTimer = null;
     const isActive = () => {
         const el = doc.getElementById(SCREEN_ID);
         return !!(el && el.classList.contains('active'));
@@ -90,6 +100,25 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
             span.textContent = c.label;
             chips.appendChild(span);
         }
+    }
+
+    // The detector comes from karaoke, so the check is unusable without it.
+    const micHitApi = () => {
+        const api = karaokeApi(win);
+        const mh = api && api.micHit;
+        return mh && typeof mh.createDetector === 'function' ? mh : null;
+    };
+
+    function renderMicHit() {
+        const m = mic;
+        if (!m) return;
+        const usable = !!micHitApi();
+        const db = prefs.parts.vocals.micHitDb;
+        m.block.classList.toggle('bab-disabled', !usable);
+        m.slider.disabled = !usable;
+        m.slider.value = String(db);
+        m.tick.style.setProperty('left', meterPct(db));
+        m.text.textContent = usable ? TAP_THE_MIC : NEEDS_KARAOKE;
     }
 
     function renderSeg(seg, value, disabledValues = []) {
@@ -118,6 +147,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
             }
             $('.bab-note', col).textContent = [c.note, inputNote[part.id]].filter(Boolean).join(' \u00b7 ');
         }
+        renderMicHit();
         renderSeg($('.bab-seg[data-field="failMode"]'), prefs.failMode);
         $('input.bab-fullscreen').checked = !!prefs.fullScreenStage;
         $('.bab-hint').textContent = goError || model.goHint;
@@ -240,7 +270,30 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
             if (flashTimer !== null) { clearTimeout(flashTimer); flashTimer = null; }
             if (io.drums) io.drums.sig.classList.remove('bab-hit');
         }
+        if (id === 'vocals') stopMicHit();
         setSignal(id, null);
+    }
+
+    function stopMicHit() {
+        micDetector = null;
+        if (micFlashTimer !== null) { clearTimeout(micFlashTimer); micFlashTimer = null; }
+        if (!mic) return;
+        mic.light.classList.remove('bab-hit');
+        mic.level.style.setProperty('width', '0%');
+    }
+
+    // One vocals reading: the live level bar, then the shared detector. The
+    // level only ever comes from the silent analyser; nothing is played.
+    function micReading(level, t) {
+        if (!mic) return;
+        const db = 20 * Math.log10(Math.max(level, 1e-5));
+        mic.level.style.setProperty('width', meterPct(db));
+        if (!micDetector) return;
+        const at = Number.isFinite(t) ? t : Date.now() / 1000;
+        if (!micDetector.push(db, at)) return;
+        mic.light.classList.add('bab-hit');
+        if (micFlashTimer !== null) clearTimeout(micFlashTimer);
+        micFlashTimer = setTimeout(() => { micFlashTimer = null; mic.light.classList.remove('bab-hit'); }, MIC_HIT_FLASH_MS);
     }
 
     function stopLights() {
@@ -276,10 +329,16 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         const raf = win && win.requestAnimationFrame;
         if (via !== 'session' && (!md || !AC || typeof raf !== 'function')) { setSignal(id, 'check-in-game'); return; }
         const p = io[id];
+        if (id === 'vocals') {
+            const mh = micHitApi();
+            micDetector = mh ? mh.createDetector({ thresholdDb: prefs.parts.vocals.micHitDb }) : null;
+        }
         lights[id] = createLevelMeter({
             deviceId: key, via, mediaDevices: md, AudioContext: AC,
-            onLevel: (v) => {
+            frameSize: id === 'vocals' ? MIC_FRAME : undefined,
+            onLevel: (v, t) => {
                 if (!shown()) { stopLights(); return; }
+                if (id === 'vocals') micReading(v, t);
                 p.light.style.setProperty('--bab-level', Math.min(1, v * 5).toFixed(3));
                 p.sig.classList.toggle('bab-lit', v > LIT_LEVEL);
             },
@@ -404,6 +463,22 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         setSignal(part.id, null);
         renderDevices(part.id);
         listen(select, 'change', () => pickDevice(part.id, select.value));
+    }
+
+    // Mic-hit sensitivity: the slider saves and retunes the live detector.
+    const micBlock = $('.bab-michit');
+    if (micBlock) {
+        const meter = $('.bab-michit-meter', micBlock);
+        mic = {
+            block: micBlock, slider: $('.bab-michit-db', micBlock), level: $('i', meter),
+            tick: $('b', meter), light: $('.bab-michit-light', micBlock), text: $('.bab-michit-text', micBlock),
+        };
+        listen(mic.slider, 'change', () => {
+            const v = Number(mic.slider.value);
+            if (!Number.isFinite(v)) { render(); return; }
+            save({ parts: { vocals: { micHitDb: v } } });
+            if (micDetector) micDetector.setThreshold(prefs.parts.vocals.micHitDb);
+        });
     }
 
     // Space starts the song while the band screen is showing.

@@ -146,6 +146,30 @@
 .bab-screen .bab-signal.bab-hit { color: var(--bab-text); }
 .bab-screen .bab-signal.bab-hit .bab-light::after { width: 100%; background: var(--bab-c); }
 .bab-screen .bab-signal.bab-warn .bab-signal-label { color: #e0a33d; }
+
+/* Mic-hit sensitivity check: slider, live level with the threshold tick, flash light */
+.bab-screen .bab-michit {
+    display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 8px;
+    font-size: 12px; color: var(--bab-dim);
+}
+.bab-screen .bab-michit-db { width: 100%; accent-color: var(--bab-c); }
+.bab-screen .bab-michit-meter {
+    position: relative; grid-column: 1 / -1; height: 8px; overflow: hidden;
+    border-radius: 4px; background: var(--bab-field); border: 1px solid var(--bab-line);
+}
+.bab-screen .bab-michit-meter i {
+    position: absolute; inset: 0 auto 0 0; width: 0; background: var(--bab-ok);
+}
+.bab-screen .bab-michit-meter b {
+    position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--bab-c);
+}
+.bab-screen .bab-michit-light {
+    justify-self: start; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--bab-field); border: 1px solid var(--bab-line);
+}
+.bab-screen .bab-michit-light.bab-hit { background: var(--bab-c); border-color: var(--bab-c); box-shadow: 0 0 8px var(--bab-c); }
+.bab-screen .bab-michit-text { grid-column: 2; }
+.bab-screen .bab-michit.bab-disabled { opacity: 0.5; }
 .bab-screen .bab-addslot {
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
     padding: 10px; font-size: 12px; text-align: center; color: var(--bab-dim);

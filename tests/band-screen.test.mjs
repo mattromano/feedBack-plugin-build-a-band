@@ -631,3 +631,114 @@ test('the guitar column note: Note Detection missing, then no input picked', asy
     assert.equal(b.col('guitar').querySelector('.bab-note').textContent, 'Pick an input to score your guitar');
     b.bs.dispose();
 });
+
+// ── Mic-hit sensitivity check (Plan 5 Task 12) ────────────────────────────
+
+// karaoke's real detector rule, minimal: level >= threshold, rise >= 25 dB, 0.3 s apart.
+function fakeMicHit(created = []) {
+    return {
+        riseDb: 25, defaultDb: -30, minDb: -48, maxDb: -12,
+        createDetector({ thresholdDb }) {
+            let threshold = thresholdDb;
+            let prev = null;
+            const d = {
+                pushes: [],
+                push(db, t) {
+                    d.pushes.push([db, t]);
+                    const hit = prev !== null && db >= threshold && db - prev >= 25;
+                    prev = db;
+                    return hit;
+                },
+                setThreshold(db) { threshold = db; return true; },
+                threshold: () => threshold,
+                reset() { prev = null; },
+            };
+            created.push(d);
+            return d;
+        },
+    };
+}
+const micKaraoke = (created) => ({ ...karaokeFake(), micHit: fakeMicHit(created) });
+
+// The vocals meter's context is the second one opened (guitar's is first).
+const vocalsCtx = (d) => d.audio.contexts[1];
+
+// A vocals mic whose analyser reads the next level in `levels` each frame.
+function micWin(levels) {
+    const d = deviceWin();
+    class Ctx extends d.audio.FakeAudioContext {
+        constructor() { super(); this.sampleRate = 48000; this.currentTime = 0; }
+        createAnalyser() {
+            const a = super.createAnalyser();
+            let i = 0; // per context: the guitar meter reads its own
+            a.getFloatTimeDomainData = (b) => { b.fill(levels[Math.min(i++, levels.length - 1)]); };
+            return a;
+        }
+    }
+    d.winExtra.AudioContext = Ctx;
+    return d;
+}
+
+test('the mic-hit check lights on a hit and saves the level', async () => {
+    const created = [];
+    const d = micWin([0.001, 0.03]);
+    const { col, bs, prefs } = setup({ stored: withDevices, winExtra: { ...d.winExtra, lyricsKaraoke: micKaraoke(created) } });
+    await flush();
+    const block = col('vocals').querySelector('.bab-michit');
+    const slider = block.querySelector('.bab-michit-db');
+    const light = block.querySelector('.bab-michit-light');
+    assert.equal(slider.value, '-30');
+    assert.equal(block.querySelector('.bab-michit-text').textContent, 'Tap the mic');
+    assert.equal(block.classList.contains('bab-disabled'), false);
+    slider.value = '-33';
+    slider.fire('change');
+    assert.equal(prefs().parts.vocals.micHitDb, -33);
+    assert.equal(slider.value, '-33');
+    assert.equal(block.querySelector('.bab-michit-meter').querySelector('b').style.props.left, `${(27 / 60) * 100}%`);
+    d.runFrames(); // -60 dB
+    assert.equal(light.classList.contains('bab-hit'), false);
+    assert.ok(parseFloat(block.querySelector('.bab-michit-meter').querySelector('i').style.props.width) < 0.001, 'silence is an empty bar');
+    vocalsCtx(d).currentTime = 0.1;
+    d.runFrames(); // -30.46 dB
+    assert.ok(light.classList.contains('bab-hit'));
+    const [db] = created[0].pushes[1];
+    assert.ok(Math.abs(db - 20 * Math.log10(0.03)) < 1e-6);
+    assert.equal(created[0].pushes[1][1], 0.1, 'the ctx time goes to the detector');
+    assert.equal(created[0].threshold(), -33, 'the slider updates the detector');
+    const w = block.querySelector('.bab-michit-meter').querySelector('i').style.props.width;
+    assert.equal(w, `${((db + 60) / 60) * 100}%`);
+    assert.equal(vocalsCtx(d).analysers[0].fftSize, 2048);
+    assert.equal(vocalsCtx(d).analysers[0].connectCalls, 0);
+    bs.dispose();
+    assert.equal(light.classList.contains('bab-hit'), false, 'dispose clears the flash');
+});
+
+test('without karaoke the check is disabled', () => {
+    const { col, bs } = setup();
+    const block = col('vocals').querySelector('.bab-michit');
+    assert.ok(block.classList.contains('bab-disabled'));
+    assert.equal(block.querySelector('.bab-michit-db').disabled, true);
+    assert.equal(block.querySelector('.bab-michit-text').textContent, 'Needs Lyrics Karaoke');
+    bs.dispose();
+    const old = setup({ winExtra: { lyricsKaraoke: karaokeFake() } }); // karaoke without micHit
+    const b2 = old.col('vocals').querySelector('.bab-michit');
+    assert.ok(b2.classList.contains('bab-disabled'));
+    assert.equal(b2.querySelector('.bab-michit-db').disabled, true);
+    old.bs.dispose();
+});
+
+test('leaving the screen stops the check', async () => {
+    const created = [];
+    const d = micWin([0.001, 0.03, 0.03]);
+    const { col, fb, bs } = setup({ stored: withDevices, winExtra: { ...d.winExtra, lyricsKaraoke: micKaraoke(created) } });
+    await flush();
+    d.runFrames();
+    assert.equal(created[0].pushes.length, 1);
+    fb.emit('screen:changing', { id: 'some-other-screen' });
+    vocalsCtx(d).currentTime = 1;
+    d.runFrames();
+    assert.equal(created[0].pushes.length, 1, 'no further reading reaches the check');
+    assert.equal(col('vocals').querySelector('.bab-michit-light').classList.contains('bab-hit'), false);
+    assert.deepEqual(liveStreams(d), []);
+    bs.dispose();
+});

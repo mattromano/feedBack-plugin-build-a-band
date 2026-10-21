@@ -10,7 +10,7 @@ const DEFAULTS = Object.freeze({ split: 62, labelScale: 1, zoom: Object.freeze({
 const PART_DEFAULTS = Object.freeze({
     guitar: Object.freeze({ on: true, deviceKey: '', arrangement: 'Lead', difficulty: 'medium' }),
     drums: Object.freeze({ on: true, deviceKey: '', difficulty: 'medium', soundMode: 'song' }),
-    vocals: Object.freeze({ on: true, deviceId: '', difficulty: 'medium', hearMyself: false }),
+    vocals: Object.freeze({ on: true, deviceId: '', difficulty: 'medium', hearMyself: false, micHitDb: -30 }),
 });
 const ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass'];
 const SOUND_MODES = ['song', 'rockband', 'kit'];
@@ -22,6 +22,17 @@ export const LABEL_SCALE_MAX = 2.5;
 export const ZOOM_MIN = 0.7;
 export const ZOOM_MAX = 1.3;
 export const ZOOM_STEP = 0.1;
+// Mic-hit sensitivity (dBFS), shared with Lyrics Karaoke's detector range.
+export const MIC_HIT_DB_MIN = -48;
+export const MIC_HIT_DB_MAX = -12;
+export const MIC_HIT_DB_STEP = 3;
+export const MIC_HIT_DB_DEFAULT = -30;
+
+// Rounded and clamped; non-numbers fall back to the default.
+export function clampMicHitDb(v) {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return MIC_HIT_DB_DEFAULT;
+    return Math.min(MIC_HIT_DB_MAX, Math.max(MIC_HIT_DB_MIN, Math.round(v)));
+}
 
 // Same range core's setLabelScale clamps to. Non-numbers fall back to 1.
 export function clampLabelScale(v) {
@@ -54,6 +65,7 @@ function normalizePart(id, raw) {
     out.difficulty = oneOf(r.difficulty, DIFFICULTIES, d.difficulty);
     if (id === 'drums') out.soundMode = oneOf(r.soundMode, SOUND_MODES, d.soundMode);
     if (id === 'vocals') out.hearMyself = bool(r.hearMyself, d.hearMyself);
+    if (id === 'vocals') out.micHitDb = 'micHitDb' in r ? clampMicHitDb(r.micHitDb) : d.micHitDb;
     return out;
 }
 

@@ -11,6 +11,8 @@ function fakeAudio() {
     class FakeAudioContext {
         constructor() {
             this.destination = { kind: 'destination' };
+            this.sampleRate = 48000;
+            this.currentTime = 0;
             this.closed = 0;
             this.analysers = [];
             contexts.push(this);
@@ -48,7 +50,7 @@ function deferred() {
     return { promise, resolve, reject };
 }
 
-function setup({ gum, via = 'browser' } = {}) {
+function setup({ gum, via = 'browser', frameSize } = {}) {
     const audio = fakeAudio();
     const timers = makeTimers();
     const levels = [];
@@ -60,7 +62,8 @@ function setup({ gum, via = 'browser' } = {}) {
     };
     const meter = createLevelMeter({
         deviceId: 'd1', via, mediaDevices, AudioContext: audio.FakeAudioContext,
-        onLevel: (v) => levels.push(v), onState: (s) => states.push(s),
+        frameSize,
+        onLevel: (...a) => levels.push(frameSize ? a : a[0]), onState: (s) => states.push(s),
         schedule: timers.setTimer, cancel: timers.clearTimer,
     });
     return { ...audio, timers, levels, states, gumCalls, stream, meter };
@@ -147,5 +150,33 @@ test('a desktop session source reports check-in-game without opening the mic', a
     assert.equal(t.gumCalls.length, 0);
     assert.equal(t.contexts.length, 0);
     t.meter.stop();
+    t.meter.stop();
+});
+
+test('frameSize sets the analyser and paces readings', async () => {
+    const t = setup({ frameSize: 2048 });
+    await flush();
+    const ctx = t.contexts[0];
+    const analyser = ctx.analysers[0];
+    assert.equal(analyser.fftSize, 2048);
+    for (let f = 0; f <= 9; f++) {
+        ctx.currentTime = f / 60;
+        t.timers.run();
+    }
+    assert.equal(t.levels.length, 4, 'frames 0, 3, 6 and 9');
+    assert.deepEqual(t.levels.map((l) => l[0]), [0.5, 0.5, 0.5, 0.5]);
+    assert.deepEqual(t.levels.map((l) => l[1]), [0, 3 / 60, 6 / 60, 9 / 60], 'each reading carries the ctx time');
+    assert.equal(analyser.connectCalls, 0, 'analyser.connect was called');
+    for (const c of t.connects) assert.notEqual(c.to, ctx.destination);
+    t.meter.stop();
+});
+
+test('without frameSize the analyser and reading rate are unchanged', async () => {
+    const t = setup();
+    await flush();
+    const ctx = t.contexts[0];
+    assert.equal(ctx.analysers[0].fftSize, 1024);
+    for (let f = 0; f < 4; f++) { ctx.currentTime = f / 60; t.timers.run(); }
+    assert.deepEqual(t.levels, [0.5, 0.5, 0.5, 0.5]);
     t.meter.stop();
 });
