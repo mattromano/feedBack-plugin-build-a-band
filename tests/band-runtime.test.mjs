@@ -125,15 +125,17 @@ test('no Band button is injected any more', () => {
     rt.dispose();
 });
 
-test('Go plays the chosen guitar arrangement from the band screen', () => {
+test('Go plays the chosen guitar arrangement from the band screen', async () => {
     const { rt, calls } = setup();
     const prefs = prefsWith({ guitar: { arrangement: 'Bass' } });
-    assert.equal(rt.startSession({ song: ITEM, prefs }), true);
+    const started = rt.startSession({ song: ITEM, prefs });
+    assert.equal(typeof started.then, 'function', 'a started session returns a promise');
     assert.deepEqual(calls.playSong, [['My%20Song.sloppak', 1]]);
     assert.deepEqual(calls.setReturnScreen, ['plugin-build_a_band']);
     assert.equal(rt.phase(), 'armed');
     assert.equal(rt.startSession({ song: ITEM, prefs }), false);
     assert.equal(calls.playSong.length, 1);
+    assert.equal(await started, true);
     rt.dispose();
 });
 
@@ -310,4 +312,22 @@ test('dispose ends a running session and removes every listener', () => {
     assert.equal(calls.hold, 0);
     assert.equal(mounts.length, 1);
     assert.equal(calls.setMastery.length, masteryCalls);
+});
+
+test('a failed playSong rejects startSession and returns the runtime to idle', async () => {
+    for (const fail of [
+        () => Promise.reject(new Error('load failed')),
+        () => { throw new Error('sync failure'); },
+    ]) {
+        const { rt, win, calls } = setup();
+        const real = win.playSong;
+        win.playSong = (f, i) => { calls.playSong.push([f, i]); return fail(); };
+        await assert.rejects(rt.startSession({ song: ITEM, prefs: prefsWith() }), /failure|failed/);
+        assert.equal(rt.phase(), 'idle');
+        win.playSong = real;
+        const again = rt.startSession({ song: ITEM, prefs: prefsWith() });
+        assert.equal(await again, true, 'the next Go starts');
+        assert.equal(rt.phase(), 'armed');
+        rt.dispose();
+    }
 });

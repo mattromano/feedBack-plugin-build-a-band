@@ -17,7 +17,7 @@ function memStorage(init = {}) {
     return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)) };
 }
 
-function setup({ active = true, stored = null, library = [], winExtra = {} } = {}) {
+function setup({ active = true, stored = null, library = [], winExtra = {}, onGo = null } = {}) {
     const doc = makeDoc();
     const screen = makeEl('div', doc);
     screen.setAttribute('id', 'plugin-build_a_band');
@@ -38,7 +38,7 @@ function setup({ active = true, stored = null, library = [], winExtra = {} } = {
     const bs = createBandScreen({
         root, doc, win: { ...winExtra, feedBack: { ...fb, ...(winExtra.feedBack || {}) } }, storage,
         loadPrefs: () => loadPrefs(storage), savePrefs: (p) => savePrefs(p, storage),
-        onGo: (item, prefs) => gos.push({ item, prefs }),
+        onGo: (item, prefs) => { gos.push({ item, prefs }); return onGo ? onGo(item, prefs) : undefined; },
         fetchJson: async (url) => { urls.push(url); return { songs: library }; },
     });
     const col = (id) => root.querySelector(`.bab-col[data-part="${id}"]`);
@@ -481,5 +481,71 @@ test('blank-id audio inputs ask for microphone access in the column note', async
     assert.ok(col('vocals').querySelector('.bab-note').textContent.endsWith('Allow microphone access to list inputs'));
     assert.equal(col('drums').querySelector('.bab-note').textContent, '');
     assert.equal(col('guitar').querySelector('select').querySelectorAll('option').length, 1, 'placeholder only');
+    bs.dispose();
+});
+
+// A failed Go is logged with console.warn; keep test output clean.
+async function quietWarn(fn) {
+    const warn = console.warn;
+    const warned = [];
+    console.warn = (...a) => warned.push(a);
+    try { await fn(); } finally { console.warn = warn; }
+    return warned;
+}
+
+test('a failed Go releases the latch, restores the drums light and says so', async () => {
+    const modes = {
+        throw: () => { throw new Error('boom'); },
+        reject: () => Promise.reject(new Error('load failed')),
+        false: () => false,
+        'resolves false': () => Promise.resolve(false),
+    };
+    for (const [mode, fail] of Object.entries(modes)) {
+        const warned = await quietWarn(async () => {
+            const d = deviceWin();
+            let failing = true;
+            const { root, bs, gos } = setup({
+                stored: withDevices, winExtra: d.winExtra,
+                onGo: () => (failing ? fail() : Promise.resolve(true)),
+            });
+            await flush();
+            await flush();
+            bs.setSong(holiday);
+            const hint = root.querySelector('.bab-hint');
+            d.hit([0x99, 38, 100]);
+            await flush();
+            await flush();
+            assert.equal(gos.length, 1, mode);
+            assert.equal(hint.textContent, "Couldn't start the song", mode);
+            assert.equal(d.listeners.size, 1, `${mode}: drums light back`);
+            failing = false;
+            d.hit([0x99, 38, 100]);
+            assert.equal(gos.length, 2, `${mode}: the next Go works`);
+            assert.equal(hint.textContent, 'Press Space or hit any pad to start', `${mode}: message cleared`);
+            await flush();
+            root.querySelector('.bab-go').click();
+            assert.equal(gos.length, 2, `${mode}: latched after a good Go`);
+            assert.equal(d.listeners.size, 0);
+            bs.dispose();
+        });
+        assert.equal(warned.length, mode === 'throw' || mode === 'reject' ? 1 : 0, mode);
+    }
+});
+
+test('the drums light stays off after Go: device picks and in-flight list loads', async () => {
+    const d = deviceWin();
+    const { root, col, bs, gos } = setup({ stored: withDevices, winExtra: d.winExtra });
+    bs.setSong(holiday);
+    root.querySelector('.bab-go').click(); // before the device lists finish loading
+    assert.equal(gos.length, 1);
+    await flush();
+    await flush();
+    assert.equal(d.calls.open.length, 0, 'in-flight loadDevices does not reopen the pad light');
+    const sel = col('drums').querySelector('select');
+    sel.value = 'webmidi:kit';
+    sel.fire('change');
+    await flush();
+    assert.equal(d.calls.open.length, 0, 'a device pick does not reopen it either');
+    assert.equal(d.listeners.size, 0);
     bs.dispose();
 });

@@ -32,7 +32,8 @@ function init() {
             root, win: window, doc: document, loadPrefs, savePrefs,
             onGo: (item, prefs) => {
                 savePrefs(prefs);
-                runtime.startSession({ song: item, prefs });
+                // false or a rejection releases the band screen's Go latch.
+                return runtime.startSession({ song: item, prefs });
             },
         });
     }

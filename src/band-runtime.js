@@ -34,7 +34,10 @@ function sessionPrefs(prefs, item) {
 const isOn = (prefs, id) => !!(prefs && prefs.parts && prefs.parts[id] && prefs.parts[id].on);
 
 // createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer })
-//   -> { dispose(), isMounted(), startSession({ song, prefs }): boolean, phase() }
+//   -> { dispose(), isMounted(), startSession({ song, prefs }): false | Promise<true>, phase() }
+// startSession returns false when it refuses (a session is running, no song);
+// otherwise a promise of core's playSong that rejects, after the session went
+// back to idle, when playSong throws or rejects.
 export function createBandRuntime({
     win, doc, mountStage, loadPrefs, storage = win.localStorage, fetchJson,
     setTimer = win.setTimeout, clearTimer = win.clearTimeout,
@@ -63,6 +66,7 @@ export function createBandRuntime({
             toast: null,
             toastTimer: null,
             canvasListener: false,
+            played: null,
         };
     }
 
@@ -130,7 +134,11 @@ export function createBandRuntime({
                 arrIndex = i >= 0 ? i : undefined;
             }
             safe(() => fb.setReturnScreen(BAND_SCREEN));
-            win.playSong(encodeURIComponent(s.item.filename), arrIndex);
+            try {
+                s.played = Promise.resolve(win.playSong(encodeURIComponent(s.item.filename), arrIndex));
+            } catch (e) {
+                s.played = Promise.reject(e);
+            }
         },
         mount(s) {
             const player = doc.getElementById('player');
@@ -227,9 +235,15 @@ export function createBandRuntime({
 
     function startSession({ song, prefs } = {}) {
         if (state.phase !== 'idle' || !song || !song.filename) return false;
-        session = newSession(song, sessionPrefs(prefs, song));
+        const s = newSession(song, sessionPrefs(prefs, song));
+        session = s;
         dispatch({ type: 'go', filename: song.filename });
-        return state.phase !== 'idle';
+        if (state.phase === 'idle') return false;
+        return (s.played || Promise.resolve()).then(() => true, (e) => {
+            // The song never started: undo this session, then report it.
+            if (session === s) dispatch({ type: 'left' });
+            throw e;
+        });
     }
 
     const handlers = {

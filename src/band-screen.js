@@ -23,6 +23,7 @@ const DEVICE_PLACEHOLDER = { guitar: 'Choose an input', drums: 'Choose your kit'
 const SIGNAL_LABEL = { guitar: 'Signal', drums: 'Hit a pad', vocals: 'Level' };
 const STATE_LABEL = { 'no-access': 'no access', 'check-in-game': 'check in game' };
 const NEEDS_MIC_ACCESS = 'Allow microphone access to list inputs';
+const GO_FAILED = "Couldn't start the song";
 const PAD_FLASH_MS = 120;
 const LIT_LEVEL = 0.02;
 
@@ -59,6 +60,8 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     // Go fires once per showing: a burst of pad hits or Space + pad must not
     // start the song twice while core is still switching screens.
     let launched = false;
+    let goAttempt = 0; // a late result from an older Go is ignored
+    let goError = '';
     const inputNote = {}; // part id -> device note (e.g. mic access needed)
     const isActive = () => {
         const el = doc.getElementById(SCREEN_ID);
@@ -113,15 +116,37 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         }
         renderSeg($('.bab-seg[data-field="failMode"]'), prefs.failMode);
         $('input.bab-fullscreen').checked = !!prefs.fullScreenStage;
-        $('.bab-hint').textContent = model.goHint;
+        $('.bab-hint').textContent = goError || model.goHint;
         $('.bab-go').disabled = !model.goEnabled;
     }
 
+    // onGo may throw, return false, or return a promise that rejects or
+    // resolves false: any of those releases the latch so Go works again.
     function go() {
         if (disposed || launched || !bandScreenModel({ prefs, item: song }).goEnabled) return false;
         launched = true;
+        const attempt = ++goAttempt;
         stopLight('drums');
-        onGo(song, prefs);
+        if (goError) { goError = ''; render(); }
+        const failed = (err) => {
+            if (disposed || attempt !== goAttempt || !launched) return;
+            if (err !== undefined) console.warn('[build-a-band] Go failed', err);
+            launched = false;
+            goError = GO_FAILED;
+            render();
+            startLight('drums');
+        };
+        let result;
+        try {
+            result = onGo(song, prefs);
+        } catch (e) {
+            failed(e);
+            return true;
+        }
+        if (result === false) failed();
+        else if (result && typeof result.then === 'function') {
+            result.then((ok) => { if (ok === false) failed(); }, (e) => failed(e));
+        }
         return true;
     }
 
@@ -265,6 +290,7 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
         const pp = prefs.parts[id];
         const key = pp && pp[DEVICE_FIELD[id]];
         if (!pp || !pp.on || !key) return;
+        if (id === 'drums' && launched) return; // Go fired: pads must not start it again
         if (id === 'drums') startPadLight(key);
         else startMeter(id, key);
     }
@@ -307,6 +333,8 @@ export function createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, f
     function show() {
         visible = true;
         launched = false;
+        goAttempt++;
+        if (goError) { goError = ''; render(); }
         showGen++;
         stopLights();
         if (shown()) loadDevices(showGen);
