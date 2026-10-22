@@ -455,7 +455,117 @@ No new code. Nothing plays. Never start playback, previews or count-ins.
 
 ## Review
 
-(Filled in when built: commits, test counts, spec gate, the reducer table and decision, tune and holdout numbers per generator version, the verdict, the `showAutoCharts` default, and the real-app notes.)
+Built 2026-10-21 with subagent-driven development: a fresh implementer per task, a task review after each, and a final whole-branch review on the most capable model followed by one fix wave. Nothing is merged; the coordinating session merges.
+
+**Branches (pushed to origin):**
+- Core `feature/five-fret-autochart` (worktree `.worktrees/core-p5`, cut from `feature/five-fret-charts` @ d4e7483), 12 commits, head **d89d11f**:
+  9043ac6 pitch events + beat grid · e9de3f2 lane assignment · d489616 Expert auto-chart · e52ff6c, ae563d4 lower levels (+ ms-rounding tolerance fix) · a449cf5 metrics + pass line · 67f3cae, 35eb103 benchmark script (+ safety fix) · a0bb599 auto-chart command + CHANGELOG · 0930451, 9605c93 tune rounds 1–2 · d89d11f final-review fixes (generator v4).
+- Plugin `feature/auto-chart-gate` (worktree `.worktrees/fivefret-p5`, cut from `main` @ 686bb98), 3 commits, head **00d9dc6**: 87b9536 gate, 1ca7c00 test fix, 00d9dc6 hint text. `main` is untouched.
+
+**Tests:**
+- Core full suite: 3207 passed, 6 skipped. The base had 3097 passed, so this adds 110 tests and introduces no failures.
+- Spec gate: OK. There is no schema change.
+- Plugin: `node --test tests/*.test.js` gives 138/138. The plugin has no `package.json`, so `npm test` does not exist.
+
+**Reducer benchmark (Task 9 Step 1, commit 35eb103, `--split all`, 804 s).**
+- Pairing counts: 2334 packs, 831 staged, 1371 song-parts paired, 40 unpaired.
+- Skipped: no_drum_source 1418, no_five_fret_parts 97, gp_no_folder 54, windows_path_unmapped 30, null_warp 1.
+- The comparison runs over 1269 real chart parts that have hand-charted levels; 645 of them are in the holdout half. Holdout medians:
+
+| level | reducer | direction ↑ | lane closeness ↓ | chord size ↑ | \|log density\| ↓ | fret-limit violations |
+|---|---|---|---|---|---|---|
+| hard | simple | 0.984 | 0.063 | 1.000 | 0.181 | 0 |
+| hard | onyx | 0.970 | 0.071 | 1.000 | 0.112 | 0 |
+| medium | simple | 0.900 | 0.359 | 0.997 | 0.351 | 0 |
+| medium | onyx | 0.851 | 0.407 | 1.000 | 0.161 | 0 |
+| easy | simple | 0.758 | 0.438 | 1.000 | 0.422 | 0 |
+| easy | onyx | 0.723 | 0.468 | 1.000 | 0.336 | 0 |
+
+**Decision: `DEFAULT_REDUCER` stays `"simple"`.** `"onyx"` beats it on at most 2 of the 4 medians at each level (density everywhere, plus chord size at Medium). It loses on direction and lane closeness.
+
+**Tuning (tune half only):**
+- **v1** (n 680):
+  - Expert: direction 0.862, lane closeness 0.674, chord size 0.965.
+  - Density: Hard 1.024, Medium 0.883, Easy **0.717 ✗**.
+  - Fret-limit violations: 0 / 0.
+- **Round 1, v2:** Easy padding goes from 2 to 1.5 beats (grid unit and jump time stay at 2). Easy density is then 0.795.
+  - The other candidates were unit 1 / padding 1 and unit 2 / padding 1, both giving 1.382.
+  - In the same commit, the per-level constants were split into Onyx's four values. Hard and Medium are unchanged, verified as identical note lists.
+- **Round 2, v3:** Easy padding goes to **1.25 beats**, giving Easy density 0.810. Padding 1.125 tied at 0.810, and the tie went to the larger padding.
+- Round 3 was not used.
+- **v4** is not a tuning round. It holds the final-review fixes:
+  - HOPO/tap thresholds get a float tolerance;
+  - a slide/bend sustain is kept only when its untrimmed length is ≥ 3/8 beat;
+  - the full GPL credit is added.
+
+**Holdout verdict (pass line unchanged).**
+
+| check | level | v1 | v3 | v4 | line |
+|---|---|---|---|---|---|
+| song-parts | | 691 | 691 | 691 | ≥ 20 |
+| direction | Expert | 0.863 | 0.863 | 0.863 | ≥ 0.70 |
+| lane closeness | Expert | 0.671 | 0.671 | 0.671 | ≤ 1.0 |
+| chord size | Expert | 0.964 | 0.964 | 0.964 | ≥ 0.60 |
+| density ratio | Hard | 1.005 | 1.005 | 1.005 | 0.80–1.20 |
+| density ratio | Medium | 0.865 | 0.865 | 0.865 | 0.80–1.20 |
+| density ratio | Easy | **0.698 ✗** | 0.805 | 0.805 | 0.80–1.20 |
+| fret-limit violations | Medium / Easy | 0 / 0 | 0 / 0 | 0 / 0 | 0 |
+| **verdict** | | FAIL | **PASS** | **PASS** | |
+
+Notes on the verdict:
+- In every column, 46 holdout rows were left out of the density medians because the real chart lacks hand-charted lower levels.
+- HOPO agreement (not gating): Expert 0.943.
+- Baselines (context only):
+  - Expert direction: `stay` 0.415, `absolute` 0.744, auto 0.863.
+  - Expert lane closeness: `stay` 0.948, `absolute` 0.873, auto 0.671.
+
+**Disclosure:**
+- The v1 holdout numbers came from Step 1's `--split all` reducer run, which printed the holdout verdict alongside its reducer tables. Tuning still used only tune-half numbers.
+- The v3 and v4 holdout runs are the official runs, one per generator version.
+- The Easy pass is marginal: 0.805 against a 0.80 line.
+
+**Recommendation (ruling 6, so no default changes):**
+- **What the benchmark supports:** on its pass line the auto charts are ready to be offered behind the setting. Showing them by default is Matt's call. Easy charts are the thinnest part.
+- **What stays as is:** `showAutoCharts` stays **false** in `five_fret.settings.v1`. The checkbox hint now reads "Generated from the Rocksmith arrangements; off by default until approved".
+
+**Real-app check (Task 10): not done in this session.**
+- The coordinator is doing one combined app check for Plans 3–5.
+- Installing an unmerged plugin branch here could clobber the parallel sessions' installs.
+- Showing an auto part in the app still needs auto-chart files merged into packs. That is Plan 4's writer with `--auto`, after the coordinator merges. `scripts/five_fret_autochart.py` only writes to `--out`.
+
+**For the coordinator:**
+- Plan 4's tool needs `--auto`, which calls this command's `auto_parts` / `write_pack`.
+- `scripts/five_fret_autochart.py` decides "skip-chart" from the loader's validated part list. A real chart that fails validation would therefore be planned as "write". Before wiring `--auto`, read `source.kind` from the raw manifest/JSON instead.
+- `pickPart` now takes `opts = { exact?, showAuto? }`. `exact` is accepted and ignored, because Plan 3 defines what it means.
+
+**Artifacts in the shared notes folder** (`side-session-notes/local_a67a5a90-…/5fret-plan5-bench/`):
+- `holdout-v4-report.md` and `holdout-v3-report.md`;
+- `tune-v1-report.md`;
+- `reducers.md`;
+- `svg/` (v3) and `svg-v4/`: six lane strips each (two best, two median, two worst by Expert direction).
+
+**Rulings made while building:**
+- **Worktrees and push targets:** dispatch overrides.
+- **A:** `assign_lanes` takes `grid=` and quantises gaps to 1/32 beat.
+- **B:** `PitchEvent.power` is computed from the pitches before simplifying.
+- **C:** `score_levels` scores only real levels that are present. Density exclusions are counted.
+- **D:** the auto-chart command reuses the benchmark's staging.
+- **E:** the auto-chart command writes to `--out` only. It picks the arrangement by Plan 4's rule first, then the Combo/bass fallbacks.
+- **F:** `pickPart` takes `opts`.
+- **G:** Task 10 is deferred to the coordinator.
+- **H:** the report goes to the notes folder in the a67a5a90 session.
+- **Groups and padding:** groups are time-sorted for padding (ruling 1 reading).
+- **Onyx `fixOne` tie rule:** kept as written.
+- **Task 4 Onyx-faithful choices:**
+  - the grace merge also applies to chords;
+  - open notes stay open until a lane limit applies;
+  - `only_missing` keeps Plan 1's semantics.
+- **Fret-limit checks:** they count every row, in any split.
+- **`--reducers` scope:** only drum-folder-paired packs.
+- **`feedpak_version` bump:** left to Plan 4's writer.
+- **Plugin hint text:** reworded.
+
+The full ledger lines, with what each ruling costs if wrong, are in this session's report.
 
 ## Builder-check rulings (binding; they override the tasks and decisions above where they differ)
 
