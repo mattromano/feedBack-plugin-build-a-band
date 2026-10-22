@@ -4182,11 +4182,54 @@ test("a drums controller's stars follow the real drummer's rule", async () => {
     // No thresholds reported yet: the engine's own stars.
     fb.emit('drums:hit', drEv(lane, { points: 100, stars: 2.5 }));
     assert.equal(rt.snapshot().parts.ctl1.stars, 2.5);
-    // Once the lane reports its full-chart thresholds, they measure the band's score.
+    // Once the lane reports thresholds, they measure the band's score.
     const full = [60, 120, 200, 450, 750, 1090];
     od.drums = (c) => (c === lane ? { starPower: { amount: 0, active: false }, starThresholds: full } : null);
     fb.emit('drums:hit', drEv(lane, { points: 200, stars: 1 }));
     assert.equal(rt.snapshot().parts.ctl1.stars, starsFromScore(300, full));
+    rt.dispose();
+});
+
+test('a drums controller lane moves from partial to full-chart thresholds (M6)', async () => {
+    const env = setup();
+    const { rt, fb, mounts, od, clock } = env;
+    await goCtl(env, padPrefs(), DRUM_ITEM);
+    const lane = mounts[0].ctlCanvas.ctl1;
+    const partial = [6, 12, 20, 45, 75, 109];
+    const full = [60, 120, 200, 450, 750, 1090];
+    let th = partial;
+    od.drums = (c) => (c === lane ? { starPower: { amount: 0, active: false }, starThresholds: th } : null);
+    // The song started mid-chart: the engine reports the rest's thresholds first.
+    clock.t = 30;
+    fb.emit('drums:hit', drEv(lane, { points: 100 }));
+    assert.equal(rt.snapshot().parts.ctl1.stars, starsFromScore(100, partial));
+    // A seek back to the start: the engine now reports the full chart's; they win.
+    fb.emit('song:seek', { from: 31, to: 0 });
+    th = full;
+    clock.t = 1;
+    fb.emit('drums:hit', drEv(lane, { points: 300 }));
+    assert.equal(rt.snapshot().parts.ctl1.stars, starsFromScore(300, full));
+    // A later seek forward reports partial ones again: the full set stays.
+    th = partial;
+    clock.t = 40;
+    fb.emit('drums:hit', drEv(lane, { points: 100 }));
+    assert.equal(rt.snapshot().parts.ctl1.stars, starsFromScore(400, full));
+    rt.dispose();
+});
+
+test("the real drum lane's judgments never rebuild the controller lanes", async () => {
+    const env = setup();
+    const { rt, fb, mounts } = env;
+    await goCtl(env, padPrefs(), DRUM_ITEM);
+    const m = mounts[0];
+    let reads = 0;
+    const get = m.getLaneCanvas;
+    m.getLaneCanvas = (id) => { reads++; return get(id); };
+    for (const type of ['hit', 'miss', 'overhit', 'sp-activate']) fb.emit('drums:' + type, drEv(m.drumCanvas, { points: 10 }));
+    assert.equal(reads, 0, 'no lane lookups for the real drummer');
+    assert.equal(rt.snapshot().parts.drums.hits, 1);
+    fb.emit('drums:hit', drEv(m.ctlCanvas.ctl1, { points: 10 }));
+    assert.equal(rt.snapshot().parts.ctl1.hits, 1, 'the controller lane still scores');
     rt.dispose();
 });
 

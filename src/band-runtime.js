@@ -20,7 +20,7 @@ import { stemIdFor, muteStem, restoreStem, SOUND_CLAIM_ID, STEM_SOUND_CLAIM_PREF
 import { createDrumSound } from './drum-sound.js';
 import { createStemSound } from './stem-sound.js';
 import { OD_CALLOUT } from './hud-model.js';
-import { guitarStarThresholds } from './stars.js';
+import { guitarStarThresholds, fullChartThresholds } from './stars.js';
 import { createBandHud } from './hud.js';
 import { createToastStack } from './toasts.js';
 import { createCountInOverlay } from './count-in-overlay.js';
@@ -225,7 +225,7 @@ export function createBandRuntime({
             // Controller players (Plan 3): the connected controllerKeys read at
             // Go (null until listControllers answers), whether they were
             // applied, lane canvas -> player id, and per player { kind,
-            // canvas, last: { score, resets } | null, starsSet }.
+            // canvas, last: { score, resets } | null, thresholds: the stars kept | null }.
             connected: null,
             controllersSettled: false,
             ctlCanvas: new Map(),
@@ -726,10 +726,9 @@ export function createBandRuntime({
     // value (the full chart) and measures the ledger's drums score with them.
     function syncDrumsThresholds(s) {
         const th = safe(() => { const st = drumsState(s); return st && st.starThresholds; });
-        if (!Array.isArray(th) || !th.length || !Number.isFinite(th[th.length - 1])) return;
-        const prev = s.drumsThresholds;
-        if (prev && !(th[th.length - 1] > prev[prev.length - 1])) return;
-        s.drumsThresholds = th.slice();
+        const next = fullChartThresholds(s.drumsThresholds, th);
+        if (!next) return;
+        s.drumsThresholds = next;
         safe(() => s.score.setStarThresholds('drums', s.drumsThresholds));
         refreshHud(s, true);
     }

@@ -6,6 +6,7 @@
 // no DOM and plays nothing. Per-session state lives on the session object:
 // s.ctl, s.ctlCanvas, s.hidden.ctl, s.connected.
 import { kindFor, isControllerId } from './controller-model.js';
+import { fullChartThresholds } from './stars.js';
 
 const LANE_EVENTS = ['sp-activate', 'band-pause', 'band-back-hold'];
 
@@ -41,7 +42,7 @@ export function createControllerLanes({
         let p = s.ctl.get(id);
         if (!p) {
             const c = s.prefs.controllers.find((x) => x.id === id);
-            p = { kind: c ? kindOf(kinds, s.prefs, c) : null, canvas: null, last: null, starsSet: false };
+            p = { kind: c ? kindOf(kinds, s.prefs, c) : null, canvas: null, last: null, thresholds: null };
             s.ctl.set(id, p);
         }
         return p;
@@ -72,6 +73,9 @@ export function createControllerLanes({
     // or a stale entry (the stage swapped a canvas without telling us).
     function laneOwner(s, canvas) {
         if (!canvas || !hasLanes()) return null;
+        // The real drum lane's canvas (the hottest drums path) is never a controller's.
+        const stage = getStage();
+        if (typeof stage.getDrumCanvas === 'function' && safe(() => stage.getDrumCanvas()) === canvas) return null;
         const id = s.ctlCanvas.get(canvas);
         if (id && safe(() => laneCanvasOf(id)) === canvas) return id;
         refreshLanes(s);
@@ -103,14 +107,18 @@ export function createControllerLanes({
         return api.getInstanceState(canvas);
     }
 
-    // Stars over the full chart (Decision 8): the engine's starThresholds, set
-    // once the lane reports them.
+    // Stars over the full chart (Decision 8): the engine's starThresholds. By
+    // default set once the lane reports them; a kind with `thresholds: 'largest'`
+    // (drums, whose engine rebuilds from a seek) re-reads them on every judgment
+    // and keeps the set with the largest final value, as the real drummer does (M6).
     function syncLaneThresholds(s, id, p) {
-        if (p.starsSet) return;
+        const largest = !!p.kind && p.kind.thresholds === 'largest';
+        if (p.thresholds && !largest) return;
         const th = safe(() => { const st = laneState(s, id); return st && st.starThresholds; });
-        if (!Array.isArray(th) || !th.length || !Number.isFinite(th[th.length - 1])) return;
-        p.starsSet = true;
-        safe(() => s.score.setStarThresholds(id, th.slice()));
+        const next = fullChartThresholds(largest ? p.thresholds : null, th);
+        if (!next) return;
+        p.thresholds = next;
+        safe(() => s.score.setStarThresholds(id, next.slice()));
     }
 
     // The connected controllerKeys, read once per session through each kind's

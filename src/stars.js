@@ -46,3 +46,13 @@ export function starDisplay(stars) {
     const full = Math.min(5, Math.floor(s));
     return { full, partial: full < 5 ? s - full : 0, gold: false };
 }
+
+// M6 (R20): after a seek an engine's star thresholds cover only the rest of the
+// chart, so the band keeps the set with the largest final value (the full chart).
+// The thresholds to keep after a report `th`: a copy of `th` when it is valid and
+// beats `prev` (or there is none), else null (keep `prev`).
+export function fullChartThresholds(prev, th) {
+    if (!Array.isArray(th) || !th.length || !Number.isFinite(th[th.length - 1])) return null;
+    if (Array.isArray(prev) && prev.length && !(th[th.length - 1] > prev[prev.length - 1])) return null;
+    return th.slice();
+}

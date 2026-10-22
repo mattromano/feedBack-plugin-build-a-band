@@ -25,6 +25,8 @@ export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
 //   partFor(item, c, opts)      the part this controller plays on the song ({ instrument, kind }), or null
 //   judgments                   the band-event suffixes that are judgments (`<prefix>:<suffix>`)
 //   entry(type, detail, t, id, last)  a judgment's band score entry (part-events.js)
+//   thresholds                  optional: 'largest' re-reads the lane's star thresholds on every
+//                               judgment and keeps the full chart's (M6); default: the first set
 const fiveFretApi = () => globalThis.window?.feedBackFiveFret || null;
 const drumsApi = () => globalThis.window?.feedBackDrums || null;
 
@@ -110,6 +112,8 @@ export const CONTROLLER_KINDS = {
         partFor: drumsControllerPartFor,
         judgments: Object.freeze(['hit', 'miss', 'overhit']),
         entry: (type, detail, t, id) => drumsEntry(type, detail, t, detail && detail.canvas, id),
+        // Its engine rebuilds from a seek with the rest of the chart's thresholds (M6).
+        thresholds: 'largest',
     },
 };
 
