@@ -30,6 +30,13 @@ test('stemIdFor picks the part\'s stem and never other', () => {
     assert.equal(stemIdFor('drums', {}, null), null);
 });
 
+test("stemIdFor('drums') serves a drums controller", () => {
+    const drummer = { playsAs: 'drums', part: 'drums', soundMode: 'rockband' };
+    assert.equal(stemIdFor('drums', drummer, ['guitar', 'drums', 'bass']), 'drums');
+    assert.equal(stemIdFor('drums', drummer, ['guitar', 'other']), null);
+    assert.equal(stemIdFor('drums_controller', drummer, ['drums']), null, 'the part id is not a stem kind');
+});
+
 test('muteStem claims, then mutes by id', async () => {
     const caps = fakeCaps();
     const ok = await muteStem({ caps, part: 'drums', stemId: 'drums' });

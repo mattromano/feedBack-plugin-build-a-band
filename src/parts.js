@@ -97,3 +97,24 @@ export function hasChart(part, itemOrSong, partPrefs) {
     if (typeof r === 'number') return r >= 0;
     return r === true;
 }
+
+// A controller playing drums (Plan 6 Decision 13): the drum lane's instrument, played
+// from a game controller or a plastic kit, coloured apart from the real drummer's red.
+export const DRUMS_CONTROLLER_PART = Object.freeze({
+    id: 'drums_controller', instrument: 'drums', inputKind: 'controller', label: 'Drums', icon: 'drum',
+    color: '#f28c28', difficulties: DIFFICULTIES,
+});
+
+// A drums controller plays the song's drum chart (a drum arrangement or a drum tab), else nothing.
+export function drumsControllerPartFor(itemOrSong) {
+    return hasChart(getPart('drums'), itemOrSong) ? { instrument: 'drums', kind: 'chart' } : null;
+}
+
+// The part a joined controller plays on this song, by what it plays as; null while
+// undecided or when the song has no chart for it. opts reach fiveFretPartFor (showAuto).
+export function controllerPartFor(itemOrSong, controller, opts) {
+    const playsAs = controller && controller.playsAs;
+    if (playsAs === 'five_fret') return fiveFretPartFor(itemOrSong, controller, opts);
+    if (playsAs === 'drums') return drumsControllerPartFor(itemOrSong);
+    return null;
+}

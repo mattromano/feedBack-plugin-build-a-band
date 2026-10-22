@@ -1,8 +1,8 @@
 // Controller players: pure data helpers for the Build-a-Band join list. A controller
 // player is `ctl<N>` in `prefs.controllers`, next to the fixed guitar / drums / vocals
 // ids. No DOM, and nothing here reads `window` at import time.
-import { DIFFICULTIES } from './mappings.js';
-import { fiveFretPartFor } from './parts.js';
+import { DIFFICULTIES, drumsDifficultyId } from './mappings.js';
+import { fiveFretPartFor, drumsControllerPartFor } from './parts.js';
 import { fiveFretEntry } from './part-events.js';
 
 export const FIVE_FRET_PART_LABELS = Object.freeze({ guitar: 'Lead', rhythm: 'Rhythm', bass: 'Bass' });
@@ -22,23 +22,26 @@ export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
 //   judgments                   the band-event suffixes that are judgments (`<prefix>:<suffix>`)
 //   entry(type, detail, t, id, last)  a judgment's band score entry (part-events.js)
 const fiveFretApi = () => globalThis.window?.feedBackFiveFret || null;
+const drumsApi = () => globalThis.window?.feedBackDrums || null;
+
+// The binding kind the plugin's controller listing gives the key, or null.
+async function listedKind(api, controllerKey) {
+    if (!api || typeof api.listControllers !== 'function') return null;
+    try {
+        const list = await api.listControllers();
+        const hit = (Array.isArray(list) ? list : []).find((c) => c && c.controllerKey === controllerKey);
+        return (hit && hit.kind) || null;
+    } catch (_) {
+        return null;
+    }
+}
 
 export const CONTROLLER_KINDS = {
     five_fret: {
         label: '5-Fret',
         parts: ['guitar', 'rhythm', 'bass'],
         api: fiveFretApi,
-        async resolveBinding(controllerKey) {
-            const api = fiveFretApi();
-            if (!api || typeof api.listControllers !== 'function') return null;
-            try {
-                const list = await api.listControllers();
-                const hit = (Array.isArray(list) ? list : []).find((c) => c && c.controllerKey === controllerKey);
-                return (hit && hit.kind) || null;
-            } catch (_) {
-                return null;
-            }
-        },
+        resolveBinding: (controllerKey) => listedKind(fiveFretApi(), controllerKey),
         setupHref() {
             const api = fiveFretApi();
             if (api && typeof api.openControls === 'function') api.openControls({ returnTo: 'plugin-build_a_band' });
@@ -58,7 +61,44 @@ export const CONTROLLER_KINDS = {
         judgments: Object.freeze(['hit', 'miss', 'overstrum', 'sustain-end']),
         entry: fiveFretEntry,
     },
+    // Plan 6: a game controller or plastic kit on its own drum lane (feedBackDrums
+    // setController). Its judgments and score entry arrive with Task B6.
+    drums: {
+        label: 'Drums',
+        parts: ['drums'],
+        api: drumsApi,
+        resolveBinding: (controllerKey) => listedKind(drumsApi(), controllerKey),
+        setupHref() {
+            const api = drumsApi();
+            if (api && typeof api.openControls === 'function') api.openControls({ returnTo: 'plugin-build_a_band' });
+        },
+        laneRenderer: () => globalThis.window?.feedBackViz_drums || null,
+        eventPrefix: 'drums',
+        pin(laneCanvas, controllerKey, opts) {
+            const api = drumsApi();
+            if (!api || typeof api.setController !== 'function') return false;
+            if (!api.setController(controllerKey, laneCanvas)) return false;
+            if (typeof api.setDifficulty === 'function') api.setDifficulty(drumsDifficultyId(opts && opts.difficulty), laneCanvas);
+            return true;
+        },
+        unpin(laneCanvas) {
+            const api = drumsApi();
+            if (!api) return;
+            if (typeof api.clearController === 'function') api.clearController(laneCanvas);
+            if (typeof api.clearDifficulty === 'function') api.clearDifficulty(laneCanvas);
+        },
+        partFor: drumsControllerPartFor,
+    },
 };
+
+const isKind = (k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(CONTROLLER_KINDS, k);
+
+// The part a kind starts on: Drums plays drums; 5-Fret takes the first free part.
+function partForKind(kind, others) {
+    if (kind === 'drums') return 'drums';
+    if (kind === 'five_fret') return defaultPart(others);
+    return null;
+}
 
 export function isControllerId(id) {
     return typeof id === 'string' && /^ctl\d+$/.test(id);
@@ -78,23 +118,54 @@ export function defaultPart(controllers) {
     return ['guitar', 'bass', 'rhythm'].find((p) => !held.has(p)) || 'guitar';
 }
 
-// The kind a controller plays as: an explicit choice that names a registered kind,
-// else five_fret while that is the only kind.
-export function kindFor(prefs, controllerKey) {
-    const kinds = prefs && prefs.controllerKinds;
-    const k = kinds && Object.prototype.hasOwnProperty.call(kinds, controllerKey) ? kinds[controllerKey] : null;
-    return typeof k === 'string' && Object.prototype.hasOwnProperty.call(CONTROLLER_KINDS, k) ? k : 'five_fret';
+// The kinds a controller can play as (Decision 12), 5-Fret first, from each plugin's
+// binding kind for it (null when the plugin is missing or has no binding):
+// a drum kit plays drums only, a guitar 5-Fret only (both when it is also set up as a
+// kit), a plain gamepad either.
+export function playableKinds(fiveFretKind, drumsKind) {
+    if (fiveFretKind === 'guitar' && drumsKind === 'kit') return ['five_fret', 'drums'];
+    if (drumsKind === 'kit') return ['drums'];
+    if (fiveFretKind === 'guitar') return ['five_fret'];
+    return [fiveFretKind ? 'five_fret' : null, drumsKind ? 'drums' : null].filter(Boolean);
 }
 
-export function joinController(controllers, { controllerKey, name } = {}) {
+// The kind a controller plays as: its joined entry's playsAs, else its explicit
+// remembered choice (prefs.controllerKinds), else the only kind in `playable`
+// (default: every registered kind), else null (undecided).
+export function kindFor(prefs, controllerKey, playable = Object.keys(CONTROLLER_KINDS)) {
+    const list = prefs && Array.isArray(prefs.controllers) ? prefs.controllers : [];
+    const entry = list.find((c) => c && c.key === controllerKey);
+    if (entry && isKind(entry.playsAs)) return entry.playsAs;
+    const kinds = prefs && prefs.controllerKinds;
+    const k = kinds && Object.prototype.hasOwnProperty.call(kinds, controllerKey) ? kinds[controllerKey] : null;
+    if (isKind(k)) return k;
+    const only = Array.isArray(playable) ? playable.filter(isKind) : [];
+    return only.length === 1 ? only[0] : null;
+}
+
+// kinds: the playable kinds (playableKinds); one plays as that, two as the remembered
+// choice (the caller passes prefs.controllerKinds[key]) else undecided (null). The join
+// manager lists 5-Fret controllers only until Task B3, hence the default.
+export function joinController(controllers, { controllerKey, name, kinds = ['five_fret'], remembered } = {}) {
     const list = Array.isArray(controllers) ? controllers : [];
     if (typeof controllerKey !== 'string' || !controllerKey) return list.slice();
     if (list.some((c) => c && c.key === controllerKey)) return list.slice();
+    const playable = Array.isArray(kinds) ? kinds.filter(isKind) : [];
+    const playsAs = playable.length === 1 ? playable[0] : (playable.includes(remembered) ? remembered : null);
     return [...list, {
         key: controllerKey, id: nextPlayerId(list), name: typeof name === 'string' ? name : '',
-        playsAs: 'five_fret', part: defaultPart(list), difficulty: DIFFICULTIES[1],
-        lefty: false, partAudio: PART_AUDIO_MODES[0], on: true,
+        playsAs, part: partForKind(playsAs, list), difficulty: DIFFICULTIES[1],
+        lefty: false, partAudio: PART_AUDIO_MODES[0], soundMode: 'rockband', on: true,
     }];
+}
+
+// Changes what a joined controller plays as, its part reset to the kind's default.
+// The caller also saves the choice: prefs.controllerKinds[key] = kind.
+export function setPlaysAs(controllers, key, kind) {
+    const list = Array.isArray(controllers) ? controllers : [];
+    if (!isKind(kind)) return list.slice();
+    const others = list.filter((c) => !c || c.key !== key);
+    return list.map((c) => (c && c.key === key ? { ...c, playsAs: kind, part: partForKind(kind, others) } : c));
 }
 
 export function leaveController(controllers, key) {

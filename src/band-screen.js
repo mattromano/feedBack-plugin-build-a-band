@@ -15,6 +15,9 @@ import { icon } from './icons.js';
 import { createJoinManager } from './join.js';
 import { createControllerColumns } from './controller-columns.js';
 import { CONTROLLER_KINDS, kindFor, joinController, leaveController, updateController } from './controller-model.js';
+// The join manager lists and joins 5-Fret controllers only (Task B3 adds drums), so an
+// unjoined pad's kind (its mapper, its Set up screen) is 5-Fret's.
+const JOIN_KINDS = Object.freeze(['five_fret']);
 
 const SCREEN_ID = 'plugin-build_a_band';
 const SOUND_MODES_NEEDING_STEM = ['rockband', 'kit'];
@@ -274,7 +277,7 @@ export function createBandScreen({
 
     // Controls / Set up: the controller kind's own setup screen, which returns here.
     function openControllerSetup(key) {
-        const kind = CONTROLLER_KINDS[kindFor(prefs, key)];
+        const kind = CONTROLLER_KINDS[kindFor(prefs, key, JOIN_KINDS)];
         try { if (kind && typeof kind.setupHref === 'function') kind.setupHref(); } catch (_) { /* plugin gone */ }
     }
 
@@ -290,7 +293,7 @@ export function createBandScreen({
     function startJoin() {
         stopJoin();
         joinManager = createJoinManager({
-            gamepadInput: gamepadInput(), kinds: CONTROLLER_KINDS, kindFor: (key) => kindFor(prefs, key),
+            gamepadInput: gamepadInput(), kinds: CONTROLLER_KINDS, kindFor: (key) => kindFor(prefs, key, JOIN_KINDS),
             setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h),
             onJoin: (j) => save({ controllers: joinController(prefs.controllers, j) }),
             onLeave: (key) => save({ controllers: leaveController(prefs.controllers, key) }),

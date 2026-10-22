@@ -48,3 +48,13 @@ test("playerStyle for parts matches today's labels; controllers get Bass (5-Fret
     const missing = playerStyle('ctl9', p);
     assert.equal(missing.calloutKind, 'five_fret');
 });
+
+test('playerStyle for a drums controller', () => {
+    const p = prefs({}, [ctl({ id: 'ctl2', playsAs: 'drums', part: 'drums', difficulty: 'expert', name: 'Xbox' })]);
+    assert.deepEqual(playerStyle('ctl2', p), {
+        name: 'Drums', tag: 'Drums (Controller) · Expert · Xbox', color: '#f28c28', icon: 'drum', calloutKind: 'drums',
+    });
+    assert.equal(playerStyle('ctl2', p, { sourceKind: 'auto' }).tag, 'Drums (Controller) · Expert · Xbox', 'no AUTO CHART on drums');
+    const unnamed = prefs({}, [ctl({ id: 'ctl2', playsAs: 'drums', part: 'drums', difficulty: 'easy', name: '' })]);
+    assert.equal(playerStyle('ctl2', unnamed).tag, 'Drums (Controller) · Easy');
+});

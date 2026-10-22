@@ -1259,7 +1259,7 @@ function ctlSetup({ pads = [gpad(0, 'Xbox', 1)], plugin = true, watch = true, sh
     return { ...t, input, api, setupCols, confirmRows, joinslot };
 }
 const ctlPrefs = (controllers, extra = {}) => ({
-    controllers: controllers.map((c, i) => ({ id: `ctl${i + 1}`, name: c.key.split('#')[0], ...c })), ...extra,
+    controllers: controllers.map((c, i) => ({ id: `ctl${i + 1}`, name: c.key.split('#')[0], playsAs: 'five_fret', ...c })), ...extra,
 });
 const noParts = { parts: { guitar: { on: false }, drums: { on: false }, vocals: { on: false } } };
 const ffSong = {

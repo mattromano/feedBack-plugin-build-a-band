@@ -2,6 +2,7 @@
 // access is guarded: private windows / blocked storage must never throw.
 import { DIFFICULTIES } from './mappings.js';
 import { CONTROLLER_KINDS, PART_AUDIO_MODES, isControllerId } from './controller-model.js';
+import { DRUM_SOUND_MODES } from './drum-sound.js';
 
 const KEY = 'build_a_band.prefs.v1';
 
@@ -96,7 +97,8 @@ const isKind = (k) => typeof k === 'string' && Object.prototype.hasOwnProperty.c
 
 // Joined controller players, in join order. Drops entries with no string key or a duplicate
 // key; an invalid or duplicate id is re-issued (the smallest free ctl<N>); each field falls
-// back to its default.
+// back to its default. playsAs is a registered kind or null (undecided, no part); the part
+// must be one of that kind's parts; soundMode is a drum sound mode, default rockband.
 function normalizeControllers(v) {
     const seenKeys = new Set();
     const kept = [];
@@ -119,13 +121,15 @@ function normalizeControllers(v) {
             id = 'ctl' + n;
             usedIds.add(id);
         }
-        const playsAs = isKind(e.playsAs) ? e.playsAs : 'five_fret';
+        const playsAs = isKind(e.playsAs) ? e.playsAs : null;
+        const parts = playsAs ? CONTROLLER_KINDS[playsAs].parts : null;
         return {
             key: e.key, id, name: str(e.name, ''), playsAs,
-            part: oneOf(e.part, CONTROLLER_KINDS[playsAs].parts, CONTROLLER_KINDS[playsAs].parts[0]),
+            part: parts ? oneOf(e.part, parts, parts[0]) : null,
             difficulty: oneOf(e.difficulty, DIFFICULTIES, 'medium'),
             lefty: bool(e.lefty, false),
             partAudio: oneOf(e.partAudio, PART_AUDIO_MODES, PART_AUDIO_MODES[0]),
+            soundMode: oneOf(e.soundMode, DRUM_SOUND_MODES, 'rockband'),
             on: bool(e.on, true),
         };
     });

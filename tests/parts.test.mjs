@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { PART_TYPES, getPart, songFacts, hasChart, fiveFretPartFor, FIVE_FRET_PART } from '../src/parts.js';
+import {
+    PART_TYPES, getPart, songFacts, hasChart, fiveFretPartFor, FIVE_FRET_PART, DRUMS_CONTROLLER_PART, controllerPartFor,
+} from '../src/parts.js';
 
 test('registry order and kinds', () => {
     assert.deepEqual(PART_TYPES.map((p) => [p.id, p.inputKind]),
@@ -80,6 +82,30 @@ test('FIVE_FRET_PART describes the controller part', () => {
         color: '#2ecc40', difficulties: ['easy', 'medium', 'hard', 'expert'],
     });
     assert.equal(PART_TYPES.length, 3);
+});
+
+test('DRUMS_CONTROLLER_PART describes the drums controller part', () => {
+    assert.deepEqual(DRUMS_CONTROLLER_PART, {
+        id: 'drums_controller', instrument: 'drums', inputKind: 'controller', label: 'Drums', icon: 'drum',
+        color: '#f28c28', difficulties: ['easy', 'medium', 'hard', 'expert'],
+    });
+    assert.ok(Object.isFrozen(DRUMS_CONTROLLER_PART));
+});
+
+test('controllerPartFor: drums needs a drum chart (hasChart)', () => {
+    const drummer = { playsAs: 'drums', part: 'drums' };
+    assert.deepEqual(controllerPartFor({ arrangements: [{ name: 'Drums' }] }, drummer), { instrument: 'drums', kind: 'chart' });
+    assert.deepEqual(controllerPartFor({ has_drum_tab: true, arrangements: [{ name: 'Lead' }] }, drummer),
+        { instrument: 'drums', kind: 'chart' }, 'a drum tab counts');
+    assert.equal(controllerPartFor({ arrangements: [{ name: 'Lead' }] }, drummer), null, 'chartFrom -1: no chart');
+    assert.equal(controllerPartFor({}, drummer), null);
+    const song = { arrangements: [{ name: 'Drums' }], five_fret_parts: ['bass:chart', 'guitar:auto'] };
+    assert.deepEqual(controllerPartFor(song, { playsAs: 'five_fret', part: 'bass' }), { instrument: 'bass', kind: 'chart' });
+    assert.deepEqual(controllerPartFor(song, { playsAs: 'five_fret', part: 'guitar' }), { instrument: 'bass', kind: 'chart' });
+    assert.deepEqual(controllerPartFor(song, { playsAs: 'five_fret', part: 'guitar' }, { showAuto: true }),
+        { instrument: 'guitar', kind: 'auto' }, 'opts reach fiveFretPartFor');
+    assert.equal(controllerPartFor(song, { playsAs: null, part: null }), null, 'undecided');
+    assert.equal(controllerPartFor(song, null), null);
 });
 
 function guitarFrom(item) { return getPart('guitar').chartFrom(item, { arrangement: 'Lead' }); }

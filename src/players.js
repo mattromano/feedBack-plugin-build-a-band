@@ -1,6 +1,6 @@
 // Who is playing and how each player looks, keyed by player id: the fixed guitar /
 // drums / vocals ids and the controller ids (ctl1, ...). Pure, no DOM.
-import { getPart, FIVE_FRET_PART } from './parts.js';
+import { getPart, FIVE_FRET_PART, DRUMS_CONTROLLER_PART } from './parts.js';
 import { isControllerId, FIVE_FRET_PART_LABELS } from './controller-model.js';
 import { difficultyLabel } from './hud-model.js';
 
@@ -17,10 +17,16 @@ export function playingIds(prefs) {
 }
 
 // name: the part's label (the results card). tag: the lane's header line. The fixed
-// parts reproduce the HUD's labels; a controller reads `Bass (5-Fret) · Expert · <name>`.
+// parts reproduce the HUD's labels; a controller reads `Bass (5-Fret) · Expert · <name>`,
+// a drums controller `Drums (Controller) · Expert · <name>`.
 export function playerStyle(id, prefs, { oneLevel = false, sourceKind = '' } = {}) {
     if (isControllerId(id)) {
         const c = ((prefs && prefs.controllers) || []).find((x) => x && x.id === id) || {};
+        if (c.playsAs === 'drums') {
+            const d = DRUMS_CONTROLLER_PART;
+            const tag = [d.label + ' (Controller)', difficultyLabel(c.difficulty), c.name].filter(Boolean).join(' · ');
+            return { name: d.label, tag, color: d.color, icon: d.icon, calloutKind: 'drums' };
+        }
         const name = (FIVE_FRET_PART_LABELS[c.part] || FIVE_FRET_PART_LABELS.guitar) + ' (' + FIVE_FRET_PART.label + ')';
         const tag = [name, difficultyLabel(c.difficulty), c.name, sourceKind === 'auto' ? 'AUTO CHART' : '']
             .filter(Boolean).join(' · ');
