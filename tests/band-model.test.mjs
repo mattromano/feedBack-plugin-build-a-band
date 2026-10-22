@@ -268,6 +268,23 @@ test('part audio greyed without the part\'s stem', () => {
     assert.equal(m.controllers[0].partAudio, 'rockband');
 });
 
+test('an unsplit song keeps Rock Band part audio (it muffles the whole song); My kit only stays greyed', () => {
+    for (const stem_ids of [[], ['full']]) {
+        const m = model([ctl({ part: 'bass' })], { controllerStatus: status('pad#1'), showAuto: true,
+            item: { five_fret_parts: ['guitar:chart', 'bass:chart'], stem_ids } });
+        assert.equal(m.controllers[0].partAudioDisabled, false, JSON.stringify(stem_ids));
+        assert.equal(m.controllers[0].note, '');
+        const unsplitDrums = { ...drumSong, stem_ids };
+        const rb = dmodel([dctl()], { item: unsplitDrums }).controllers[0];
+        assert.deepEqual(rb.soundModeDisabled, ['kit']);
+        assert.equal(rb.soundMode, 'rockband');
+        assert.equal(rb.note, '');
+        const kit = dmodel([dctl({ soundMode: 'kit' })], { item: unsplitDrums }).controllers[0];
+        assert.equal(kit.soundMode, 'song');
+        assert.equal(kit.note, 'My kit only needs a drum stem');
+    }
+});
+
 // ---- drums controllers ----
 const dctl = (o) => ctl({ key: 'kit#1', id: 'ctl3', name: 'Kit', playsAs: 'drums', part: 'drums', soundMode: 'rockband', ...o });
 const drumSong = { arrangements: [], five_fret_parts: ['guitar:chart'], stem_ids: ['guitar', 'drums'], has_drum_tab: true };

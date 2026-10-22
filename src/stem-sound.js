@@ -15,24 +15,44 @@
 //     overhit drops the stem, any one's hit brings it back.
 //   - A real drummer on the drums stem owns it: its v1 sound mode and fail claim
 //     govern the stem, and this machine never mutes it.
+// The full mix (an unsplit song: no stems, or only the `full` stem):
+//   - With `fullMix`, every player with no stem of its own is on FULL_MIX, a
+//     stem like any other: the same drop, restore and fail rules, so a real part
+//     or an Always play controller on it keeps the song playing. The runtime
+//     muffles the whole song for it instead of muting a stem.
+//   - My kit only has no stem on an unsplit song, so it plays as Song drums
+//     (as the band screen shows it): a kit member keeps the full mix playing.
 import { dropoutStep } from './drum-sound.js';
 
-// createStemSound({ members: [{ id, stemId, controller, mode: 'rockband'|'always'|'kit' }] })
-// Members with no stemId are ignored. judge, setFailed and seek return the stem
-// ids whose muted() changed.
-export function createStemSound({ members } = {}) {
+// The pseudo stem id of the whole song's mix (never a stems id).
+export const FULL_MIX = '@full-mix';
+
+// Whether a song plays one unsplit mix: no stems, or only the `full` stem.
+export function isUnsplit(stemIds) {
+    const ids = Array.isArray(stemIds) ? stemIds.filter((id) => typeof id === 'string') : [];
+    return ids.every((id) => id.toLowerCase() === 'full');
+}
+
+// createStemSound({ members: [{ id, stemId, controller, mode: 'rockband'|'always'|'kit' }], fullMix })
+// Members with no stemId are ignored, or with fullMix put on FULL_MIX. judge,
+// setFailed and seek return the stem ids whose muted() changed.
+export function createStemSound({ members, fullMix = false } = {}) {
     // stemId -> { players: member[], rockband: bool (drops), kit: bool (muted all song), dropped: bool }
     const stems = new Map();
     const stemOf = new Map();
     for (const m of Array.isArray(members) ? members : []) {
-        if (!m || typeof m.stemId !== 'string' || !m.stemId) continue;
-        if (!stems.has(m.stemId)) stems.set(m.stemId, { players: [], rockband: true, kit: true, dropped: false });
-        const st = stems.get(m.stemId);
+        if (!m) continue;
+        const own = typeof m.stemId === 'string' && m.stemId ? m.stemId : null;
+        const stemId = own || (fullMix === true ? FULL_MIX : null);
+        if (!stemId) continue;
+        if (!stems.has(stemId)) stems.set(stemId, { players: [], rockband: true, kit: stemId !== FULL_MIX, dropped: false });
+        const st = stems.get(stemId);
         st.players.push(m);
         const ctl = m.controller === true;
-        if (!(ctl && (m.mode === 'rockband' || m.mode === 'kit'))) st.rockband = false;
-        if (!(ctl && m.mode === 'kit')) st.kit = false;
-        if (ctl) stemOf.set(m.id, m.stemId);
+        const mode = stemId === FULL_MIX && m.mode === 'kit' ? 'always' : m.mode;
+        if (!(ctl && (mode === 'rockband' || mode === 'kit'))) st.rockband = false;
+        if (!(ctl && mode === 'kit')) st.kit = false;
+        if (ctl) stemOf.set(m.id, stemId);
     }
     // The real drummer's stem is left alone (Ruling 9).
     for (const [stemId, st] of stems) {

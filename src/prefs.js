@@ -170,6 +170,8 @@ export function normalizePrefs(raw) {
             vocals: normalizePart('vocals', parts.vocals),
         },
         failMode: oneOf(r.failMode, FAIL_MODES, 'nofail'),
+        // The Rock Band miss clunk for controller players in Rock Band part audio.
+        missSound: bool(r.missSound, true),
         fullScreenStage: bool(r.fullScreenStage, true),
         lastSong: normalizeSong(r.lastSong),
         recentSongs: normalizeRecent(r.recentSongs),

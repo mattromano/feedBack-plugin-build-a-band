@@ -49,7 +49,7 @@ test('bandIsSetUp: missing or partial prefs do not throw', () => {
 
 // ---- registerMainMode (Task 11) ----
 
-function fakeWin({ phase = 'idle', onScreen = false, noRegister = false } = {}) {
+function fakeWin({ phase = 'idle', onScreen = false, noRegister = false, cardActions = null } = {}) {
     const calls = [];
     const specs = [];
     const listeners = [];
@@ -61,6 +61,7 @@ function fakeWin({ phase = 'idle', onScreen = false, noRegister = false } = {}) 
             ui: noRegister ? {} : { registerPlayMode(spec) { specs.push(spec); return () => { unregisters++; }; } },
             on(t, f) { listeners.push([t, f]); calls.push(['on', t]); },
             off(t, f) { calls.push(['off', t, listeners.some((l) => l[0] === t && l[1] === f)]); },
+            ...(cardActions ? { libraryCardActions: cardActions } : {}),
         },
     };
     const screen = {
@@ -169,4 +170,29 @@ test('registerMainMode: dispose unregisters and offs once; a second dispose does
     dispose();
     assert.equal(unregisters(), 1);
     assert.equal(calls.length, 1);
+});
+
+test('registerMainMode: a Play as entry opens the band screen with the song; dispose removes it', () => {
+    const acts = [];
+    let removed = 0;
+    const cardActions = { register(spec) { acts.push(spec); return () => { removed++; }; } };
+    const { calls, dispose } = fakeWin({ cardActions });
+    assert.equal(acts.length, 1);
+    const a = acts[0];
+    assert.equal(a.id, 'rockherosmith.play-as');
+    assert.equal(a.placement, 'play-as');
+    assert.equal(a.applies, isBandReady);
+    assert.equal(a.enabled(), true);
+    calls.length = 0;
+    const item = { filename: 'a.sloppak' };
+    a.run(item);
+    assert.deepEqual(calls, [['openWithSong', item], ['showScreen', 'plugin-rockherosmith']]);
+    dispose();
+    assert.equal(removed, 1);
+});
+
+test('registerMainMode: the Play as entry is disabled while a session runs', () => {
+    const acts = [];
+    fakeWin({ phase: 'playing', cardActions: { register(spec) { acts.push(spec); return () => {}; } } });
+    assert.equal(acts[0].enabled(), false);
 });

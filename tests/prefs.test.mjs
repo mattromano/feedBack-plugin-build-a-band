@@ -283,3 +283,9 @@ test('migration never removes the legacy key', () => {
     s.removeItem = () => { throw new Error('removeItem must not be called'); };
     assert.equal(migrateLegacyPrefs(s), 'migrated');
 });
+
+test('missSound: on by default, a saved false kept, garbage falls back to on', () => {
+    assert.equal(loadPrefs(stub({})).missSound, true);
+    assert.equal(loadPrefs(stub({ [KEY]: '{"missSound":false}' })).missSound, false);
+    assert.equal(loadPrefs(stub({ [KEY]: '{"missSound":"no"}' })).missSound, true);
+});
