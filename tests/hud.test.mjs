@@ -355,3 +355,44 @@ test('fixed-part labels unchanged', () => {
     assert.equal(v.partHud('drums').querySelector('.bab-tag').textContent, 'Drums · Expert');
     v.hud.destroy();
 });
+
+const DRUM_CTL_PREFS = {
+    ...PREFS,
+    controllers: [
+        { id: 'ctl1', key: 'a#1', name: 'Guitar Hero', part: 'bass', difficulty: 'expert', on: true },
+        { id: 'ctl2', key: 'a#2', name: 'Rock Band kit', playsAs: 'drums', part: 'drums', difficulty: 'hard', on: true },
+    ],
+};
+
+function drumCtlSetup() {
+    const doc = makeDoc();
+    const player = makeEl('div', doc);
+    doc.body.appendChild(player);
+    const slots = { ctl1: makeEl('div', doc), ctl2: makeEl('div', doc) };
+    for (const s of Object.values(slots)) player.appendChild(s);
+    const stage = { laneSlot: (p) => slots[p] || null, stripSlot: null };
+    const hud = createBandHud({ doc, player, stage, parts: ['ctl1', 'ctl2'], prefs: DRUM_CTL_PREFS, song: {}, oneLevel: false });
+    return { hud, partHud: (p) => player.querySelector(`.bab-part-hud[data-part="${p}"]`) };
+}
+
+test('drums controller lane tag and colour', () => {
+    const { partHud, hud } = drumCtlSetup();
+    assert.equal(partHud('ctl2').querySelector('.bab-tag').textContent, 'Drums (Controller) · Hard · Rock Band kit');
+    assert.equal(partHud('ctl2').style.props['--bab-c'], '#f28c28');
+    assert.ok(partHud('ctl2').querySelector('.bab-tag').innerHTML.includes('<svg'), 'tag icon');
+    assert.equal(partHud('ctl1').style.props['--bab-c'], '#2ecc40', '5-fret unchanged');
+    hud.destroy();
+});
+
+test('drums controller streak callouts every 50', () => {
+    const { partHud, hud } = drumCtlSetup();
+    const s = (n) => ({
+        score: 0, bonus: 0, bandMultiplier: 1, stars: null,
+        parts: { ctl1: part(), ctl2: part({ streak: n }) },
+    });
+    hud.update(s(49));
+    hud.update(s(50));
+    assert.equal(partHud('ctl2').querySelector('.bab-callout').textContent, '50 NOTE STREAK!');
+    assert.equal(partHud('ctl1').querySelector('.bab-callout').textContent, '');
+    hud.destroy();
+});

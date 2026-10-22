@@ -6,7 +6,7 @@ import { formatScore, difficultyLabel } from './hud-model.js';
 import { isControllerId } from './controller-model.js';
 
 const NAMES = { drums: 'Drums', vocals: 'Vocals' };
-const FALLBACK_AWARDS = { guitar: 'Riff keeper', drums: 'Held it down', vocals: 'Big voice', five_fret: 'Held the frets' };
+const FALLBACK_AWARDS = { guitar: 'Riff keeper', drums: 'Held it down', vocals: 'Big voice', five_fret: 'Held the frets', drums_controller: 'Held it down' };
 // Flawless and Most accurate both need this many judgments.
 const ACCURACY_MIN_JUDGED = 20;
 const STREAK_AWARD_MIN = 10;
@@ -23,7 +23,7 @@ function notesHit(p) {
     return formatScore(num(p.hits)) + ' / ' + formatScore(num(p.hits) + num(p.misses));
 }
 
-function baseStats(id, p, drumsExtra, sourceKind) {
+function baseStats(id, p, drumsExtra, sourceKind, drumsController) {
     const score = ['Score', formatScore(num(p.score))];
     if (id === 'vocals') {
         // Ratings are karaoke's own strings, ordered by mean phrase accuracy (R3, R17).
@@ -36,8 +36,8 @@ function baseStats(id, p, drumsExtra, sourceKind) {
     }
     const stats = [score, ['Best streak', formatScore(num(p.bestStreak))], ['Notes hit', notesHit(p)]];
     if (isControllerId(id)) {
-        stats.push(['Overstrums', formatScore(num(p.overhits))]);
-        if (sourceKind === 'auto') stats.push(['Chart', 'Auto']);
+        stats.push([drumsController ? 'Overhits' : 'Overstrums', formatScore(num(p.overhits))]);
+        if (sourceKind === 'auto' && !drumsController) stats.push(['Chart', 'Auto']);
     }
     if (id === 'guitar') stats.push(['Band bonus', formatScore(num(p.bonus))]);
     if (id === 'drums') {
@@ -50,8 +50,8 @@ function baseStats(id, p, drumsExtra, sourceKind) {
 }
 
 // Plan 5 R22: every card adds its overdrive and drop-out counts, only when above 0.
-function partStats(id, p, drumsExtra, sourceKind) {
-    const stats = baseStats(id, p, drumsExtra, sourceKind);
+function partStats(id, p, drumsExtra, sourceKind, drumsController) {
+    const stats = baseStats(id, p, drumsExtra, sourceKind, drumsController);
     if (num(p.deploys) > 0) stats.push(['Overdrives', formatScore(num(p.deploys))]);
     if (num(p.drops) > 0) stats.push(['Dropped out', formatScore(num(p.drops))]);
     return stats;
@@ -124,10 +124,11 @@ export function resultsModel({ snapshot, prefs, song, oneLevel, drumsExtra, fail
         if (!p || c.on === false) continue;
         const sourceKind = info[c.id] && info[c.id].sourceKind;
         const style = playerStyle(c.id, prefs);
+        const drumsController = c.playsAs === 'drums';
         const accuracy = Number.isFinite(p.accuracy) ? p.accuracy : null;
         cards.push({
             part: c.id,
-            kind: c.playsAs || 'five_fret',
+            kind: drumsController ? 'drums_controller' : c.playsAs || 'five_fret',
             name: style.name,
             subname: typeof c.name === 'string' ? c.name : '',
             difficulty: difficultyLabel(c.difficulty),
@@ -138,7 +139,7 @@ export function resultsModel({ snapshot, prefs, song, oneLevel, drumsExtra, fail
             judged: num(p.hits) + num(p.misses),
             score: num(p.score),
             bestStreak: num(p.bestStreak),
-            stats: partStats(c.id, p, drumsExtra, sourceKind),
+            stats: partStats(c.id, p, drumsExtra, sourceKind, drumsController),
             award: '',
         });
     }

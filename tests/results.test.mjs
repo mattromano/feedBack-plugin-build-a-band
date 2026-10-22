@@ -224,3 +224,45 @@ test('awards weigh controller cards', () => {
     const awards = pickAwards([{ part: 'ctl1', kind: 'five_fret', score: 10, bestStreak: 0, judged: 0, accuracy: null }]);
     assert.deepEqual(awards, ['Held the frets']);
 });
+
+const DRUM_CTLS = [
+    { id: 'ctl1', key: 'a#1', name: 'Guitar Hero', part: 'bass', difficulty: 'expert', on: true },
+    { id: 'ctl2', key: 'a#2', name: 'Rock Band kit', playsAs: 'drums', part: 'drums', difficulty: 'hard', on: true, sourceKind: 'chart' },
+];
+const drumCtlSnap = () => ctlSnap({
+    ctl2: part({ score: 3000, hits: 20, misses: 20, overhits: 7, bestStreak: 5, accuracy: 0.5, deploys: 1, drops: 2 }),
+});
+
+test('a drums controller card with overhits, after the 5-fret cards in join order', () => {
+    const m = resultsModel({
+        snapshot: drumCtlSnap(), prefs: { ...prefsOn(), controllers: DRUM_CTLS }, song: {}, oneLevel: false, drumsExtra: null,
+        controllerInfo: { ctl1: { sourceKind: 'chart' }, ctl2: { sourceKind: '' } },
+    });
+    assert.deepEqual(m.cards.map((c) => c.part), ['guitar', 'drums', 'vocals', 'ctl1', 'ctl2']);
+    assert.equal(m.cards[3].name, 'Bass (5-Fret)', '5-fret cards unchanged');
+    const c = m.cards[4];
+    assert.equal(c.kind, 'drums_controller');
+    assert.equal(c.name, 'Drums (Controller)');
+    assert.equal(c.subname, 'Rock Band kit');
+    assert.equal(c.difficulty, 'Hard');
+    assert.equal(c.color, '#f28c28');
+    assert.equal(c.icon, 'drum');
+    assert.deepEqual(c.stats, [
+        ['Score', '3,000'], ['Best streak', '5'], ['Notes hit', '20 / 40'], ['Overhits', '7'],
+        ['Overdrives', '1'], ['Dropped out', '2'],
+    ]);
+});
+
+test('a drums controller never gets a Chart: Auto row', () => {
+    const m = resultsModel({
+        snapshot: drumCtlSnap(), prefs: { ...prefsOn({}), controllers: DRUM_CTLS }, song: {}, oneLevel: false, drumsExtra: null,
+        controllerInfo: { ctl2: { sourceKind: 'auto' } },
+    });
+    assert.ok(!m.cards[1].stats.some(([l]) => l === 'Chart'));
+});
+
+test('fallback award Held it down', () => {
+    const m = resultsModel({ snapshot: drumCtlSnap(), prefs: { ...prefsOn({}), controllers: DRUM_CTLS }, song: {}, oneLevel: false, drumsExtra: null });
+    assert.equal(m.cards[1].award, 'Held it down');
+    assert.deepEqual(pickAwards([{ part: 'ctl2', kind: 'drums_controller', score: 10, bestStreak: 0, judged: 0, accuracy: null }]), ['Held it down']);
+});

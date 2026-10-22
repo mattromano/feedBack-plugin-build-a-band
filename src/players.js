@@ -24,8 +24,9 @@ export function playerStyle(id, prefs, { oneLevel = false, sourceKind = '' } = {
         const c = ((prefs && prefs.controllers) || []).find((x) => x && x.id === id) || {};
         if (c.playsAs === 'drums') {
             const d = DRUMS_CONTROLLER_PART;
-            const tag = [d.label + ' (Controller)', difficultyLabel(c.difficulty), c.name].filter(Boolean).join(' · ');
-            return { name: d.label, tag, color: d.color, icon: d.icon, calloutKind: 'drums' };
+            const name = d.label + ' (Controller)';
+            const tag = [name, difficultyLabel(c.difficulty), c.name].filter(Boolean).join(' · ');
+            return { name, tag, color: d.color, icon: d.icon, calloutKind: 'drums' };
         }
         const name = (FIVE_FRET_PART_LABELS[c.part] || FIVE_FRET_PART_LABELS.guitar) + ' (' + FIVE_FRET_PART.label + ')';
         const tag = [name, difficultyLabel(c.difficulty), c.name, sourceKind === 'auto' ? 'AUTO CHART' : '']
