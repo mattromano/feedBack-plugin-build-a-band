@@ -1,7 +1,7 @@
 // Part audio per stem (Plan 3 Decision 10): a pure state machine, nothing plays.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStemSound } from '../src/stem-sound.js';
+import { createStemSound, FULL_MIX, isUnsplit } from '../src/stem-sound.js';
 
 const ctl = (id, stemId, mode = 'rockband') => ({ id, stemId, controller: true, mode });
 const real = (id, stemId) => ({ id, stemId, controller: false });
@@ -173,4 +173,59 @@ test('a real drummer on the drums stem: stem-sound does nothing to it (no kit mu
     // Only the drums stem: a real guitarist beside a failed 5-fret controller keeps Plan 3's fail rule.
     const g = createStemSound({ members: [real('drums', 'drums'), real('guitar', 'guitar'), ctl('ctl3', 'guitar')] });
     assert.deepEqual(g.setFailed(['guitar', 'ctl3', 'drums']), ['guitar']);
+});
+
+// ---- The full mix: unsplit songs (no stems, or only `full`) ----
+
+test('isUnsplit: no stems or only full', () => {
+    assert.equal(isUnsplit([]), true);
+    assert.equal(isUnsplit(['full']), true);
+    assert.equal(isUnsplit(null), true);
+    assert.equal(isUnsplit(['full', 'guitar']), false);
+    assert.equal(isUnsplit(['guitar', 'drums']), false);
+});
+
+test('unsplit song: a controller with no stem drops the full mix; a hit or a seek brings it back', () => {
+    const s = createStemSound({ members: [ctl('ctl1', null)], fullMix: true });
+    assert.deepEqual(s.stems(), [FULL_MIX]);
+    assert.equal(s.muted(FULL_MIX), false);
+    assert.deepEqual(s.judge('ctl1', 'miss'), [FULL_MIX]);
+    assert.equal(s.muted(FULL_MIX), true);
+    assert.deepEqual(s.judge('ctl1', 'overstrum'), [], 'already dropped');
+    assert.deepEqual(s.judge('ctl1', 'hit'), [FULL_MIX]);
+    assert.deepEqual(s.judge('ctl1', 'overhit'), [FULL_MIX], 'an overhit drops it too');
+    assert.deepEqual(s.seek(), [FULL_MIX]);
+    assert.equal(s.muted(FULL_MIX), false);
+});
+
+test('the full mix keeps the stem rules: a real part or an Always play controller on it keeps the song', () => {
+    const withReal = createStemSound({ members: [real('guitar', null), ctl('ctl1', null)], fullMix: true });
+    assert.deepEqual(withReal.judge('ctl1', 'miss'), []);
+    assert.equal(withReal.muted(FULL_MIX), false);
+    const withAlways = createStemSound({ members: [ctl('ctl1', null), ctl('ctl2', null, 'always')], fullMix: true });
+    assert.deepEqual(withAlways.judge('ctl1', 'miss'), []);
+    // Fail and rescue move it like a stem, and a rescue clears the drop-out.
+    const f = createStemSound({ members: [ctl('ctl1', null)], fullMix: true });
+    f.judge('ctl1', 'miss');
+    assert.deepEqual(f.setFailed(['ctl1']), []);
+    assert.deepEqual(f.setFailed([]), [FULL_MIX]);
+    assert.equal(f.muted(FULL_MIX), false);
+});
+
+test('My kit only plays as Song drums on the full mix: never muted all song, never dropped', () => {
+    const s = createStemSound({ members: [ctl('ctl1', null, 'kit')], fullMix: true });
+    assert.equal(s.muted(FULL_MIX), false);
+    assert.deepEqual(s.judge('ctl1', 'overhit'), []);
+    const shared = createStemSound({ members: [ctl('ctl1', null, 'kit'), ctl('ctl2', null)], fullMix: true });
+    assert.deepEqual(shared.judge('ctl2', 'miss'), [], 'the kit player keeps the mix, like an Always play controller');
+});
+
+test('players with their own stem stay on it; without fullMix a stemless player is ignored as before', () => {
+    const s = createStemSound({ members: [ctl('ctl1', 'bass'), ctl('ctl2', null)], fullMix: true });
+    assert.deepEqual(s.stems().sort(), [FULL_MIX, 'bass'].sort());
+    assert.deepEqual(s.judge('ctl1', 'miss'), ['bass'], "the bass player's miss leaves the mix alone");
+    assert.deepEqual(s.judge('ctl2', 'miss'), [FULL_MIX]);
+    const split = createStemSound({ members: [ctl('ctl1', null)] });
+    assert.deepEqual(split.stems(), []);
+    assert.deepEqual(split.judge('ctl1', 'miss'), []);
 });
