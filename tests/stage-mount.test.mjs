@@ -151,14 +151,14 @@ test('two lanes: splitscreen stops first, slots sized by split, drum lane wired'
     const { player, log, deps, drumHws } = setup();
     mountStage({ player, song: withDrums, prefs: { split: 70 }, deps });
     assert.equal(log[0], 'split.stop');
-    assert.ok(player.classList.contains('bab-stage'));
+    assert.ok(player.classList.contains('rhs-stage'));
     const root = player.children[0];
-    assert.equal(root.className, 'bab-lanes');
+    assert.equal(root.className, 'rhs-lanes');
     assert.equal(root.style.bottom, '48px');
     const [guitar, divider, drums] = root.children;
     assert.equal(guitar.dataset.part, 'guitar');
     assert.equal(guitar.style.width, '70%');
-    assert.equal(divider.className, 'bab-divider');
+    assert.equal(divider.className, 'rhs-divider');
     assert.equal(divider.style.left, '70%');
     assert.equal(drums.dataset.part, 'drums');
     assert.equal(drums.style.left, '70%');
@@ -170,7 +170,7 @@ test('two lanes: splitscreen stops first, slots sized by split, drum lane wired'
     // Core's own resize() sizes the drum canvas to the lane's zoom box (so the
     // renderer is notified): init gets the box as container, resize is not replaced.
     const [canvas, container] = drumHws[0].initArgs;
-    assert.equal(container.className, 'bab-zoom-box');
+    assert.equal(container.className, 'rhs-zoom-box');
     assert.equal(container.parentNode, drums);
     assert.equal(canvas.parentNode, drums);
     assert.equal(drumHws[0].resize.name, 'coreResize', 'drum hw.resize not overridden');
@@ -194,7 +194,7 @@ test('unmount restores everything in order and is idempotent', () => {
     log.length = 0;
     s.unmount();
     assert.deepEqual(log, ['drum.stop', 'drums.target(null)', 'label 1.5 (session)', 'main.setContainer(null)', 'main.resize']);
-    assert.ok(!player.classList.contains('bab-stage'));
+    assert.ok(!player.classList.contains('rhs-stage'));
     assert.equal(player.children.length, 0);
     assert.equal(win.count(), 0, 'window listeners removed');
     assert.equal(player.count(), 0, 'player listeners removed');
@@ -351,17 +351,17 @@ test('vocals with guitar and drums: strip slot above the lanes, lanes pushed dow
     const { player, deps, drumHws } = setup();
     const s = mountStage({ player, song: withDrums, prefs: vocalsOn(true, true), deps });
     const strip = s.stripSlot;
-    assert.equal(strip.className, 'bab-strip');
+    assert.equal(strip.className, 'rhs-strip');
     assert.equal(strip.dataset.part, 'vocals');
     assert.equal(strip.style.top, '48px');
     assert.equal(strip.style.height, '90px');
-    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '138px');
+    assert.equal(player.style.getPropertyValue('--rhs-lanes-top'), '138px');
     assert.equal(drumHws.length, 1);
     const root = player.children[0];
     assert.equal(root.children[0], strip);
-    assert.deepEqual(root.children.map((c) => c.className), ['bab-strip', 'bab-lane', 'bab-divider', 'bab-lane']);
+    assert.deepEqual(root.children.map((c) => c.className), ['rhs-strip', 'rhs-lane', 'rhs-divider', 'rhs-lane']);
     s.unmount();
-    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '');
+    assert.equal(player.style.getPropertyValue('--rhs-lanes-top'), '');
 });
 
 test('vocals alone: the strip fills, the main highway is hidden and no lane exists', () => {
@@ -373,15 +373,15 @@ test('vocals alone: the strip fills, the main highway is hidden and no lane exis
     assert.equal(strip.style.height, undefined);
     assert.ok(log.includes('main.setVisible(false)'));
     assert.ok(!log.includes('main.setContainer(slot)'));
-    assert.ok(player.classList.contains('bab-main-hidden'));
+    assert.ok(player.classList.contains('rhs-main-hidden'));
     assert.equal(drumHws.length, 0);
     assert.ok(!log.some((l) => l.startsWith('label')));
     const root = player.children[0];
     assert.deepEqual(root.children, [strip]);
     s.unmount();
     assert.ok(log.includes('main.setVisible(null)'));
-    assert.ok(!player.classList.contains('bab-main-hidden'));
-    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '');
+    assert.ok(!player.classList.contains('rhs-main-hidden'));
+    assert.equal(player.style.getPropertyValue('--rhs-lanes-top'), '');
     assert.equal(strip.parentNode, null);
     assert.equal(player.children.length, 0);
 });
@@ -401,16 +401,16 @@ for (const vocals of [true, false]) {
         assert.equal(root.children.length, vocals ? 2 : 1, 'no divider');
         assert.equal(lane.dataset.part, 'drums');
         assert.equal(lane.style.width, '100%');
-        assert.ok(lane.classList.contains('bab-lane-main'));
-        const chrome = lane.children.find((c) => c.className === 'bab-lane-chrome');
+        assert.ok(lane.classList.contains('rhs-lane-main'));
+        const chrome = lane.children.find((c) => c.className === 'rhs-lane-chrome');
         assert.ok(chrome, 'drums lane has chrome');
         assert.ok(!chrome.children.some((c) => c.textContent === 'Fret numbers'), 'no fret chrome');
         assert.deepEqual(chrome.children.filter((c) => c.tagName === 'BUTTON').map((b) => b.title), ['Zoom out', 'Zoom in']);
-        assert.equal(mainContainer(deps), lane.children.find((c) => c.className === 'bab-zoom-box'));
+        assert.equal(mainContainer(deps), lane.children.find((c) => c.className === 'rhs-zoom-box'));
         assert.ok(!log.includes('drums.target(canvas)'));
         assert.ok(!log.some((l) => l.startsWith('label')));
         assert.ok(!log.includes('main.setVisible(false)'));
-        assert.equal(player.style.getPropertyValue('--bab-lanes-top'), vocals ? '138px' : '48px');
+        assert.equal(player.style.getPropertyValue('--rhs-lanes-top'), vocals ? '138px' : '48px');
         assert.equal(s.getDrumCanvas(), null, 'no second highway');
         s.unmount();
         assert.equal(player.children.length, 0);
@@ -422,8 +422,8 @@ test('no vocals: no strip and the plan-2 layout', () => {
     const { player, log, deps } = setup();
     const s = mountStage({ player, song: withDrums, prefs: { split: 62 }, deps });
     assert.equal(s.stripSlot, null);
-    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '48px');
-    assert.ok(!player.children[0].children.some((c) => c.className === 'bab-strip'));
+    assert.equal(player.style.getPropertyValue('--rhs-lanes-top'), '48px');
+    assert.ok(!player.children[0].children.some((c) => c.className === 'rhs-strip'));
     assert.ok(!log.some((l) => l.startsWith('main.setVisible')));
     s.unmount();
 });
@@ -432,7 +432,7 @@ test('vocals alone: a mount that throws never leaves the main highway hidden', (
     const { player, log, deps } = setup();
     deps.bus = { on: () => { throw new Error('bus down'); }, off: () => {} };
     assert.throws(() => mountStage({ player, song: withDrums, prefs: vocalsOn(false, false), deps }), /bus down/);
-    assert.ok(!player.classList.contains('bab-main-hidden'));
+    assert.ok(!player.classList.contains('rhs-main-hidden'));
     assert.ok(!log.includes('main.setVisible(false)'));
 });
 
@@ -440,33 +440,33 @@ test('vocals alone: a remount round trip shows the main highway, then hides it a
     const { player, log, deps } = setup();
     const a = mountStage({ player, song: withDrums, prefs: vocalsOn(false, false), deps });
     a.unmount();
-    assert.ok(!player.classList.contains('bab-main-hidden'));
+    assert.ok(!player.classList.contains('rhs-main-hidden'));
     const b = mountStage({ player, song: withDrums, prefs: vocalsOn(false, false), deps });
     assert.deepEqual(log.filter((l) => l.startsWith('main.setVisible')),
         ['main.setVisible(false)', 'main.setVisible(null)', 'main.setVisible(false)']);
-    assert.ok(player.classList.contains('bab-main-hidden'));
+    assert.ok(player.classList.contains('rhs-main-hidden'));
     assert.equal(log.at(-1), 'main.setVisible(false)', 'hidden last in the remount');
     b.unmount();
-    assert.ok(!player.classList.contains('bab-main-hidden'));
+    assert.ok(!player.classList.contains('rhs-main-hidden'));
 });
 
 test('lanes start under the band HUD without vocals', () => {
     const { player, deps } = setup();
     const s = mountStage({ player, song: noDrums, prefs: {}, deps });
-    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '48px');
+    assert.equal(player.style.getPropertyValue('--rhs-lanes-top'), '48px');
     s.unmount();
-    assert.equal(player.style.getPropertyValue('--bab-lanes-top'), '');
+    assert.equal(player.style.getPropertyValue('--rhs-lanes-top'), '');
 });
 
 test('zoom box: the main highway sizes to it and the player carries the zoom', () => {
     const { player, deps } = setup();
     const s = mountStage({ player, song: withDrums, prefs: { zoom: { guitar: 1.25 } }, deps });
     const box = mainContainer(deps);
-    assert.equal(box.className, 'bab-zoom-box');
+    assert.equal(box.className, 'rhs-zoom-box');
     assert.equal(box.style.width, '80%');
     assert.equal(box.style.height, '80%');
     assert.equal(box.parentNode, s.laneSlot('guitar'));
-    assert.equal(player.style.getPropertyValue('--bab-main-zoom'), '1.25');
+    assert.equal(player.style.getPropertyValue('--rhs-main-zoom'), '1.25');
     s.unmount();
 });
 
@@ -478,7 +478,7 @@ test('zoom buttons step, clamp at 1.3 and persist', () => {
     assert.ok(byTitle(s.laneSlot('guitar'), 'Bigger fret numbers'), 'fret chrome kept');
     log.length = 0;
     click(zoomIn);
-    assert.equal(player.style.getPropertyValue('--bab-main-zoom'), '1.2');
+    assert.equal(player.style.getPropertyValue('--rhs-main-zoom'), '1.2');
     assert.ok(log.includes('main.resize'));
     click(zoomIn);
     click(zoomIn);
@@ -494,13 +494,13 @@ test('the drum lane draws into its zoom box at its zoom', () => {
     const { player, log, deps, drumHws } = setup();
     const s = mountStage({ player, song: withDrums, prefs: { zoom: { drums: 0.9 } }, deps });
     const [canvas, box] = drumHws[0].initArgs;
-    assert.equal(box.className, 'bab-zoom-box');
+    assert.equal(box.className, 'rhs-zoom-box');
     assert.equal(box.parentNode, s.laneSlot('drums'));
     assert.equal(box.style.width, (100 / 0.9) + '%');
     assert.equal(canvas.style.transform, 'scale(0.9)');
     assert.equal(canvas.style.transformOrigin, '0 0');
     assert.equal(canvas.style.position, 'absolute');
-    assert.equal(player.style.getPropertyValue('--bab-main-zoom'), '1', 'guitar zoom stays 1');
+    assert.equal(player.style.getPropertyValue('--rhs-main-zoom'), '1', 'guitar zoom stays 1');
     log.length = 0;
     click(byTitle(s.laneSlot('drums'), 'Zoom in'));
     assert.equal(canvas.style.transform, 'scale(1)');
@@ -531,13 +531,13 @@ test('hover reveals the chrome of the lane under the pointer', () => {
     g.getBoundingClientRect = () => ({ left: 0, top: 48, right: 620, bottom: 600 });
     d.getBoundingClientRect = () => ({ left: 620, top: 48, right: 1000, bottom: 600 });
     player.fire('pointermove', { clientX: 800, clientY: 300 });
-    assert.ok(d.classList.contains('bab-hover'));
-    assert.ok(!g.classList.contains('bab-hover'));
+    assert.ok(d.classList.contains('rhs-hover'));
+    assert.ok(!g.classList.contains('rhs-hover'));
     player.fire('pointermove', { clientX: 100, clientY: 300 });
-    assert.ok(g.classList.contains('bab-hover'));
-    assert.ok(!d.classList.contains('bab-hover'));
+    assert.ok(g.classList.contains('rhs-hover'));
+    assert.ok(!d.classList.contains('rhs-hover'));
     player.fire('pointerleave', {});
-    assert.ok(!g.classList.contains('bab-hover'));
+    assert.ok(!g.classList.contains('rhs-hover'));
     s.unmount();
 });
 
@@ -548,9 +548,9 @@ test('laneSlot and getDrumCanvas', () => {
     assert.equal(s.laneSlot('drums'), drums);
     assert.equal(s.laneSlot('vocals'), null);
     assert.equal(s.getDrumCanvas(), drumHws[0].initArgs[0]);
-    assert.equal(player.style.getPropertyValue('--bab-main-zoom'), '1');
+    assert.equal(player.style.getPropertyValue('--rhs-main-zoom'), '1');
     s.unmount();
-    assert.equal(player.style.getPropertyValue('--bab-main-zoom'), '');
+    assert.equal(player.style.getPropertyValue('--rhs-main-zoom'), '');
     assert.equal(s.getDrumCanvas(), null);
 });
 
@@ -561,18 +561,18 @@ test('refit sets the transport height and resizes', () => {
     controls.offsetHeight = 64;
     doc.ids['player-controls'] = controls;
     const s = mountStage({ player, song: withDrums, prefs: {}, deps });
-    assert.equal(player.style.getPropertyValue('--bab-transport-h'), '64px');
+    assert.equal(player.style.getPropertyValue('--rhs-transport-h'), '64px');
     controls.offsetHeight = 80;
     log.length = 0;
     s.refit();
-    assert.equal(player.style.getPropertyValue('--bab-transport-h'), '80px');
+    assert.equal(player.style.getPropertyValue('--rhs-transport-h'), '80px');
     assert.deepEqual(log, ['main.resize', 'drum.resize']);
     s.unmount();
-    assert.equal(player.style.getPropertyValue('--bab-transport-h'), '');
+    assert.equal(player.style.getPropertyValue('--rhs-transport-h'), '');
     log.length = 0;
     assert.doesNotThrow(() => s.refit());
     assert.deepEqual(log, []);
-    assert.equal(player.style.getPropertyValue('--bab-transport-h'), '');
+    assert.equal(player.style.getPropertyValue('--rhs-transport-h'), '');
 });
 
 // ---- Controller lanes ----
@@ -581,7 +581,7 @@ const ctl = (id, key, part, extra = {}) => ({ id, key, name: key, playsAs: 'five
     difficulty: 'medium', lefty: false, partAudio: 'rockband', on: true, ...extra });
 const ctlSong = { ...withDrums, arrangementIndex: 0 };
 const laneHw = (drumHws, slot) => drumHws.find((hw) => hw.initArgs && hw.initArgs[0].parentNode === slot);
-const laneParts = (player) => player.children[0].children.map((c) => (c.className === 'bab-divider' ? '|' : c.dataset.part));
+const laneParts = (player) => player.children[0].children.map((c) => (c.className === 'rhs-divider' ? '|' : c.dataset.part));
 const quietErrors = (fn) => {
     const errors = [];
     const error = console.error;
@@ -611,9 +611,9 @@ test('each controller lane gets its own highway, WS and pin', () => {
     assert.ok(Math.abs(parseFloat(s.laneSlot('guitar').style.width) - 34.72) < 0.01);
     for (const [slot, key, opts] of [[slot1, 'pad#1', { part: 'bass', difficulty: 'expert', lefty: true }],
         [slot2, 'gtr#1', { part: 'guitar', difficulty: 'easy', lefty: false }]]) {
-        assert.ok(slot.classList.contains('bab-lane-ctl'));
-        assert.ok(!slot.classList.contains('bab-lane-main'));
-        assert.ok(!slot.children.some((c) => c.className === 'bab-lane-chrome'), 'no zoom chrome');
+        assert.ok(slot.classList.contains('rhs-lane-ctl'));
+        assert.ok(!slot.classList.contains('rhs-lane-main'));
+        assert.ok(!slot.children.some((c) => c.className === 'rhs-lane-chrome'), 'no zoom chrome');
         const hw = laneHw(drumHws, slot);
         assert.ok(hw, 'own highway');
         const [canvas, box] = hw.initArgs;

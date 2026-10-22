@@ -39,7 +39,7 @@ function init() {
     // Deprecated alias (one release, remove after 0.2.x): stale peers may still read the old name.
     window.__buildABandScreen = null;
     // screen.html is inserted before this module runs, so the root exists now.
-    const root = document.getElementById('build-a-band-root');
+    const root = document.getElementById('rockherosmith-root');
     if (root) {
         window.__rockherosmithScreen = createBandScreen({
             root, win: window, doc: document, loadPrefs, savePrefs, deviceMemo,

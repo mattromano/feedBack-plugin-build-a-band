@@ -30,7 +30,7 @@ function setup({ withSidebar = true } = {}) {
     doc.body.appendChild(outside);
     const before = { doc: doc.listenerCount(), sidebar: sidebar ? sidebar.listenerCount() : 0 };
     const overlay = createSidebarOverlay({ doc, onNavigate: (link, nav) => calls.nav.push([link, nav]) });
-    const isOpenClass = () => doc.body.classList.contains('bab-sidebar-open');
+    const isOpenClass = () => doc.body.classList.contains('rhs-sidebar-open');
     return { doc, sidebar, settingsLink, songsLink, outside, calls, overlay, before, isOpenClass };
 }
 
@@ -179,7 +179,7 @@ test('no sidebar in the page', () => {
     const { doc, overlay } = setup({ withSidebar: false });
     assert.equal(overlay.open(), false);
     assert.equal(overlay.isOpen(), false);
-    assert.equal(doc.body.classList.contains('bab-sidebar-open'), false);
+    assert.equal(doc.body.classList.contains('rhs-sidebar-open'), false);
     overlay.close();
     overlay.destroy();
 });
@@ -197,10 +197,10 @@ test('destroy removes its listeners', () => {
 
 test('the CSS shows the sidebar and Settings over the player', async () => {
     const { readFileSync } = await import('node:fs');
-    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
-    assert.match(css, /body\.bab-sidebar-open #v3-sidebar \{[^}]*display: flex !important;[^}]*z-index: 150;[^}]*animation: bab-sidebar-in \.18s ease-out;/);
-    assert.match(css, /@keyframes bab-sidebar-in \{\s*from \{ transform: translateX\(-100%\); \}\s*to \{ transform: none; \}/);
-    assert.match(css, /body\.bab-settings-over #settings \{[^}]*display: block !important;[^}]*inset: 0;[^}]*z-index: 160;[^}]*background: #0f172a;/);
-    assert.match(css, /body\.bab-settings-over #settings \.fb-settings-back \{ display: none; \}/);
-    assert.match(css, /#settings \.bab-settings-back \{/);
+    const css = readFileSync(new URL('../assets/rockherosmith.css', import.meta.url), 'utf8');
+    assert.match(css, /body\.rhs-sidebar-open #v3-sidebar \{[^}]*display: flex !important;[^}]*z-index: 150;[^}]*animation: rhs-sidebar-in \.18s ease-out;/);
+    assert.match(css, /@keyframes rhs-sidebar-in \{\s*from \{ transform: translateX\(-100%\); \}\s*to \{ transform: none; \}/);
+    assert.match(css, /body\.rhs-settings-over #settings \{[^}]*display: block !important;[^}]*inset: 0;[^}]*z-index: 160;[^}]*background: #0f172a;/);
+    assert.match(css, /body\.rhs-settings-over #settings \.fb-settings-back \{ display: none; \}/);
+    assert.match(css, /#settings \.rhs-settings-back \{/);
 });

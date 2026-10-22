@@ -1,4 +1,4 @@
-// The app sidebar over the stage (plan 7 R7, R8). While body.bab-sidebar-open is set,
+// The app sidebar over the stage (plan 7 R7, R8). While body.rhs-sidebar-open is set,
 // the plugin CSS shows #v3-sidebar fixed above #player. Opening it never pauses.
 // While open it is a modal dialog (role="dialog", aria-modal="true"), so drum keys
 // stand down under it (plan 7 R14), named "Menu" unless it has a name; closing puts
@@ -7,7 +7,7 @@
 // re-clicks one with the takeover bypassed so shell's own handler runs.
 import { contains, restoreFocus } from './modal-open.js';
 
-const OPEN_CLASS = 'bab-sidebar-open';
+const OPEN_CLASS = 'rhs-sidebar-open';
 const MODAL_ATTRS = [['role', 'dialog'], ['aria-modal', 'true']];
 
 // createSidebarOverlay({ doc, onNavigate })

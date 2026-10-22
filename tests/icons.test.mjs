@@ -4,7 +4,7 @@ import { icon, ICON_NAMES } from '../src/icons.js';
 
 test('icon returns a Lucide SVG string', () => {
     const s = icon('star');
-    assert.ok(s.startsWith('<svg class="bab-icon'), s);
+    assert.ok(s.startsWith('<svg class="rhs-icon'), s);
     assert.ok(s.includes('viewBox="0 0 24 24"'));
     assert.ok(s.includes('stroke="currentColor"'));
     assert.ok(s.includes('fill="none"'));
@@ -14,8 +14,8 @@ test('icon returns a Lucide SVG string', () => {
 });
 
 test('icon size and class options', () => {
-    const s = icon('zoom-in', { size: 14, cls: 'bab-x' });
-    assert.ok(s.includes('class="bab-icon bab-x"'), s);
+    const s = icon('zoom-in', { size: 14, cls: 'rhs-x' });
+    assert.ok(s.includes('class="rhs-icon rhs-x"'), s);
     assert.ok(s.includes('width="14" height="14"'));
     assert.ok(s.includes('<line x1="11" x2="11" y1="8" y2="14"/>'));
 });

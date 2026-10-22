@@ -20,7 +20,7 @@ export function createCountInOverlay({ doc, bus, getHost, setTimer, clearTimer }
         if (!el || el.parentNode !== host) {
             if (el) el.remove();
             el = doc.createElement('div');
-            el.className = 'bab-countin';
+            el.className = 'rhs-countin';
             el.setAttribute('aria-hidden', 'true');
             host.appendChild(el);
         }

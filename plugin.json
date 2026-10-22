@@ -11,7 +11,7 @@
   "screen": "screen.html",
   "script": "screen.js",
   "scriptType": "module",
-  "styles": "assets/build-a-band.css",
+  "styles": "assets/rockherosmith.css",
   "fullscreen": true,
   "standards": [
     "plugin-runtime-idempotent.v1"

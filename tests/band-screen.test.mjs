@@ -38,7 +38,7 @@ function setup({ active = true, stored = null, library = [], picker = fakePickLi
     if (active) screen.classList.add('active');
     doc.body.appendChild(screen);
     parseHtml(HTML, doc, screen);
-    const root = doc.getElementById('build-a-band-root');
+    const root = doc.getElementById('rockherosmith-root');
     const storage = memStorage(stored ? { 'rockherosmith.prefs.v1': JSON.stringify(stored) } : {});
     const bus = new EventTarget();
     const fb = {
@@ -61,9 +61,9 @@ function setup({ active = true, stored = null, library = [], picker = fakePickLi
         fetchJson: async (url) => { urls.push(url); return { songs: library }; },
         deviceMemo, ...(libraryOnWin ? {} : { library: picker }),
     });
-    const col = (id) => root.querySelector(`.bab-col[data-part="${id}"]`);
-    const part = (id) => root.querySelector(`.bab-part[data-part="${id}"]`);
-    const seg = (el, field) => el.querySelector(`.bab-seg[data-field="${field}"]`);
+    const col = (id) => root.querySelector(`.rhs-col[data-part="${id}"]`);
+    const part = (id) => root.querySelector(`.rhs-part[data-part="${id}"]`);
+    const seg = (el, field) => el.querySelector(`.rhs-seg[data-field="${field}"]`);
     const btn = (el, field, v) => seg(el, field).querySelector(`button[data-value="${v}"]`);
     return { doc, screen, win, root, bs, fb, gos, urls, col, part, btn, picker, storage, prefs: () => loadPrefs(storage) };
 }
@@ -77,26 +77,26 @@ function onConfirm(t, item) {
 
 test('skeleton: columns coloured from the registry, Go disabled until a song is picked', () => {
     const { root, col, bs } = setup();
-    assert.equal(col('guitar').style.props['--bab-c'], '#f5c542');
-    assert.equal(col('drums').style.props['--bab-c'], '#e0533d');
-    assert.equal(col('vocals').style.props['--bab-c'], '#a678ff');
+    assert.equal(col('guitar').style.props['--rhs-c'], '#f5c542');
+    assert.equal(col('drums').style.props['--rhs-c'], '#e0533d');
+    assert.equal(col('vocals').style.props['--rhs-c'], '#a678ff');
     for (const id of ['guitar', 'drums', 'vocals']) {
-        assert.ok(col(id).querySelector('.bab-input'));
-        assert.ok(col(id).querySelector('.bab-signal'));
-        assert.equal(col(id).querySelector('.bab-toggle').getAttribute('aria-pressed'), 'true');
+        assert.ok(col(id).querySelector('.rhs-input'));
+        assert.ok(col(id).querySelector('.rhs-signal'));
+        assert.equal(col(id).querySelector('.rhs-toggle').getAttribute('aria-pressed'), 'true');
     }
-    assert.equal(!!root.querySelector('.bab-addslot'), false);
-    assert.ok(root.querySelector('.bab-joinslot'));
-    assert.equal(root.querySelector('.bab-joinslot').getAttribute('aria-live'), 'polite');
-    assert.equal(root.querySelector('.bab-go').disabled, true);
-    assert.equal(root.querySelector('.bab-hint').textContent, 'Pick a song');
+    assert.equal(!!root.querySelector('.rhs-addslot'), false);
+    assert.ok(root.querySelector('.rhs-joinslot'));
+    assert.equal(root.querySelector('.rhs-joinslot').getAttribute('aria-live'), 'polite');
+    assert.equal(root.querySelector('.rhs-go').disabled, true);
+    assert.equal(root.querySelector('.rhs-hint').textContent, 'Pick a song');
     assert.equal(bs.isVisible(), true);
     bs.dispose();
 });
 
 test('column icons are Lucide SVGs', () => {
     const { root, bs } = setup();
-    const icos = root.querySelectorAll('.bab-col').map((c) => c.querySelector('.bab-ico'));
+    const icos = root.querySelectorAll('.rhs-col').map((c) => c.querySelector('.rhs-ico'));
     assert.equal(icos.length, 3);
     for (const ico of icos) {
         assert.ok(String(ico.innerHTML).includes('<svg'), 'Lucide SVG');
@@ -111,16 +111,16 @@ test('setSong stores lastSong + recentSongs, renders chips and greys what the so
     assert.equal(bs.getSong(), holiday);
     assert.equal(prefs().lastSong.filename, holiday.filename);
     assert.equal(prefs().recentSongs[0].title, 'Holiday');
-    assert.equal(root.querySelector('.bab-title').textContent, 'Holiday');
-    assert.equal(root.querySelectorAll('.bab-chip').length, 5);
-    assert.ok(col('vocals').classList.contains('bab-unavailable'));
-    assert.equal(col('vocals').querySelector('.bab-note').textContent, 'No vocal pitch for this song');
-    assert.ok(part('vocals').classList.contains('bab-unavailable'));
+    assert.equal(root.querySelector('.rhs-title').textContent, 'Holiday');
+    assert.equal(root.querySelectorAll('.rhs-chip').length, 5);
+    assert.ok(col('vocals').classList.contains('rhs-unavailable'));
+    assert.equal(col('vocals').querySelector('.rhs-note').textContent, 'No vocal pitch for this song');
+    assert.ok(part('vocals').classList.contains('rhs-unavailable'));
     assert.equal(btn(part('drums'), 'soundMode', 'rockband').disabled, true);
     assert.equal(btn(part('drums'), 'soundMode', 'kit').disabled, true);
     assert.equal(btn(part('drums'), 'soundMode', 'song').disabled, false);
-    assert.equal(root.querySelector('.bab-go').disabled, false);
-    assert.equal(root.querySelector('.bab-hint').textContent, 'Press Space or hit any pad to start');
+    assert.equal(root.querySelector('.rhs-go').disabled, false);
+    assert.equal(root.querySelector('.rhs-hint').textContent, 'Press Space or hit any pad to start');
     bs.dispose();
 });
 
@@ -130,9 +130,9 @@ test('every control writes through savePrefs immediately', () => {
     btn(part('guitar'), 'difficulty', 'expert').click();
     btn(part('drums'), 'soundMode', 'kit').click();
     btn(col('vocals'), 'hearMyself', 'on').click();
-    col('vocals').querySelector('.bab-toggle').click();
+    col('vocals').querySelector('.rhs-toggle').click();
     btn(root, 'failMode', 'fail').click();
-    const fs = root.querySelector('input.bab-fullscreen');
+    const fs = root.querySelector('input.rhs-fullscreen');
     fs.checked = false;
     fs.fire('change');
     const p = prefs();
@@ -144,13 +144,13 @@ test('every control writes through savePrefs immediately', () => {
     assert.equal(p.failMode, 'fail');
     assert.equal(p.fullScreenStage, false);
     assert.equal(btn(part('guitar'), 'difficulty', 'expert').getAttribute('aria-pressed'), 'true');
-    assert.ok(col('vocals').classList.contains('bab-off'));
-    assert.ok(part('vocals').classList.contains('bab-off'));
-    assert.equal(col('vocals').querySelector('.bab-toggle').getAttribute('aria-pressed'), 'false');
-    assert.equal(part('vocals').querySelector('.bab-toggle').getAttribute('aria-pressed'), 'false');
-    part('vocals').querySelector('.bab-toggle').click();
+    assert.ok(col('vocals').classList.contains('rhs-off'));
+    assert.ok(part('vocals').classList.contains('rhs-off'));
+    assert.equal(col('vocals').querySelector('.rhs-toggle').getAttribute('aria-pressed'), 'false');
+    assert.equal(part('vocals').querySelector('.rhs-toggle').getAttribute('aria-pressed'), 'false');
+    part('vocals').querySelector('.rhs-toggle').click();
     assert.equal(prefs().parts.vocals.on, true, 'the Confirm toggle writes the same pref');
-    assert.equal(col('vocals').querySelector('.bab-toggle').getAttribute('aria-pressed'), 'true');
+    assert.equal(col('vocals').querySelector('.rhs-toggle').getAttribute('aria-pressed'), 'true');
     bs.dispose();
 });
 
@@ -164,11 +164,11 @@ test('Go button and Space call onGo only while visible and a part can play', () 
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0, 'typing in the search box');
     doc.activeElement = null;
-    root.querySelector('.bab-go').click();
+    root.querySelector('.rhs-go').click();
     assert.equal(gos.length, 1);
     assert.equal(gos[0].item, holiday);
     doc.fire('keydown', { code: 'Space' });
-    root.querySelector('.bab-go').click();
+    root.querySelector('.rhs-go').click();
     assert.equal(gos.length, 1, 'Go latches until the screen is shown again');
     fb.emit('screen:changed', { id: 'player', from: 'plugin-rockherosmith' });
     assert.equal(bs.isVisible(), false);
@@ -192,7 +192,7 @@ test('reopens on the last song through resolveRecent', async () => {
     await flush();
     assert.deepEqual(urls, ['/api/library?q=Holiday&size=30']);
     assert.equal(bs.getSong(), holiday);
-    assert.equal(root.querySelector('.bab-title').textContent, 'Holiday');
+    assert.equal(root.querySelector('.rhs-title').textContent, 'Holiday');
     bs.dispose();
 });
 
@@ -292,13 +292,13 @@ test('device lists load when the screen is visible, with a select per column', a
     const d = deviceWin();
     const { col, bs } = setup({ winExtra: d.winExtra });
     await flush();
-    const opts = (id) => col(id).querySelector('.bab-input').querySelector('select').querySelectorAll('option').map((o) => [o.value, o.textContent]);
+    const opts = (id) => col(id).querySelector('.rhs-input').querySelector('select').querySelectorAll('option').map((o) => [o.value, o.textContent]);
     assert.deepEqual(opts('guitar').slice(1), [['usb-guitar', 'USB Guitar'], ['usb-mic', 'USB Mic']]);
     assert.deepEqual(opts('vocals').slice(1), [['usb-guitar', 'USB Guitar'], ['usb-mic', 'USB Mic']]);
     assert.deepEqual(opts('drums').slice(1), [['webmidi:kit', 'Kit']]);
-    assert.equal(col('guitar').querySelector('.bab-signal').textContent, 'Signal');
-    assert.equal(col('drums').querySelector('.bab-signal').textContent, 'Hit a pad');
-    assert.equal(col('vocals').querySelector('.bab-signal').textContent, 'Level');
+    assert.equal(col('guitar').querySelector('.rhs-signal').textContent, 'Signal');
+    assert.equal(col('drums').querySelector('.rhs-signal').textContent, 'Hit a pad');
+    assert.equal(col('vocals').querySelector('.rhs-signal').textContent, 'Level');
     assert.equal(d.calls.gum.length, 0, 'no device picked yet: no mic opened');
     bs.dispose();
 });
@@ -359,7 +359,7 @@ test('lights run only while visible and never connect the analyser', async () =>
     assert.deepEqual(d.calls.gum.sort(), ['usb-guitar', 'usb-mic']);
     assert.deepEqual(d.calls.open, [{ logicalSourceKey: 'webmidi:kit', requester: 'rockherosmith' }]);
     d.runFrames();
-    assert.ok(col('guitar').querySelector('.bab-signal').classList.contains('bab-lit'));
+    assert.ok(col('guitar').querySelector('.rhs-signal').classList.contains('rhs-lit'));
     for (const ctx of d.audio.contexts) {
         for (const a of ctx.analysers) assert.equal(a.connectCalls, 0);
         for (const c of d.audio.connects) assert.notEqual(c.to, ctx.destination);
@@ -420,7 +420,7 @@ test('a pad hit flashes the drum light and starts the song when Go is enabled', 
     await flush();
     await flush();
     d.hit([0x99, 38, 100]);
-    assert.ok(col('drums').querySelector('.bab-signal').classList.contains('bab-hit'));
+    assert.ok(col('drums').querySelector('.rhs-signal').classList.contains('rhs-hit'));
     assert.equal(gos.length, 0, 'no song: Go disabled');
     onConfirm(t, holiday);
     d.hit([0x89, 38, 64]);
@@ -428,7 +428,7 @@ test('a pad hit flashes the drum light and starts the song when Go is enabled', 
     d.hit([0x99, 38, 100]);
     assert.equal(gos.length, 1);
     bs.dispose();
-    assert.ok(!col('drums').querySelector('.bab-signal').classList.contains('bab-hit'));
+    assert.ok(!col('drums').querySelector('.rhs-signal').classList.contains('rhs-hit'));
 });
 
 test('denied mic permission shows no access', async () => {
@@ -436,8 +436,8 @@ test('denied mic permission shows no access', async () => {
     const { col, bs } = setup({ stored: withDevices, winExtra: d.winExtra });
     await flush();
     await flush();
-    assert.equal(col('vocals').querySelector('.bab-signal').textContent, 'no access');
-    assert.equal(col('guitar').querySelector('.bab-signal').textContent, 'no access');
+    assert.equal(col('vocals').querySelector('.rhs-signal').textContent, 'no access');
+    assert.equal(col('guitar').querySelector('.rhs-signal').textContent, 'no access');
     bs.dispose();
 });
 
@@ -450,7 +450,7 @@ test('a desktop session source shows check in game without opening the mic', asy
     const { col, bs } = setup({ stored: { parts: { guitar: { deviceKey: 'native::in1' }, drums: { on: false }, vocals: { on: false } } }, winExtra: d.winExtra });
     await flush();
     await flush();
-    assert.equal(col('guitar').querySelector('.bab-signal').textContent, 'check in game');
+    assert.equal(col('guitar').querySelector('.rhs-signal').textContent, 'check in game');
     assert.equal(d.calls.gum.length, 0);
     bs.dispose();
 });
@@ -459,7 +459,7 @@ test('Find my kit discovers MIDI and lists the kit', async () => {
     const d = deviceWin({ midiSources: [], afterDiscover: [{ logicalSourceKey: 'webmidi:kit', label: 'Kit' }] });
     const { col, bs } = setup({ winExtra: d.winExtra });
     await flush();
-    const find = col('drums').querySelector('button.bab-findkit');
+    const find = col('drums').querySelector('button.rhs-findkit');
     assert.ok(find);
     assert.equal(find.hidden, false);
     find.click();
@@ -516,10 +516,10 @@ test('blank-id audio inputs ask for microphone access in the column note', async
     const { col, bs } = setup({ winExtra: d.winExtra });
     await flush();
     await flush();
-    assert.equal(col('guitar').querySelector('.bab-note').textContent,
+    assert.equal(col('guitar').querySelector('.rhs-note').textContent,
         'Pick an input to score your guitar \u00b7 Allow microphone access to list inputs');
-    assert.ok(col('vocals').querySelector('.bab-note').textContent.endsWith('Allow microphone access to list inputs'));
-    assert.equal(col('drums').querySelector('.bab-note').textContent, '');
+    assert.ok(col('vocals').querySelector('.rhs-note').textContent.endsWith('Allow microphone access to list inputs'));
+    assert.equal(col('drums').querySelector('.rhs-note').textContent, '');
     assert.equal(col('guitar').querySelector('select').querySelectorAll('option').length, 1, 'placeholder only');
     bs.dispose();
 });
@@ -552,7 +552,7 @@ test('a failed Go releases the latch, restores the drums light and says so', asy
             await flush();
             await flush();
             onConfirm(t, holiday);
-            const hint = root.querySelector('.bab-hint');
+            const hint = root.querySelector('.rhs-hint');
             d.hit([0x99, 38, 100]);
             await flush();
             await flush();
@@ -564,7 +564,7 @@ test('a failed Go releases the latch, restores the drums light and says so', asy
             assert.equal(gos.length, 2, `${mode}: the next Go works`);
             assert.equal(hint.textContent, 'Press Space or hit any pad to start', `${mode}: message cleared`);
             await flush();
-            root.querySelector('.bab-go').click();
+            root.querySelector('.rhs-go').click();
             assert.equal(gos.length, 2, `${mode}: latched after a good Go`);
             assert.equal(d.listeners.size, 0);
             bs.dispose();
@@ -578,7 +578,7 @@ test('the drums light stays off after Go: device picks and in-flight list loads'
     const t = setup({ stored: withDevices, winExtra: d.winExtra });
     const { root, col, bs, gos } = t;
     onConfirm(t, holiday);
-    root.querySelector('.bab-go').click(); // before the device lists finish loading
+    root.querySelector('.rhs-go').click(); // before the device lists finish loading
     assert.equal(gos.length, 1);
     await flush();
     await flush();
@@ -601,8 +601,8 @@ const vocalsOnly = {
 
 test('without window.lyricsKaraoke the vocals column says to turn the plugin on', () => {
     const { col, bs } = setup();
-    assert.equal(col('vocals').querySelector('.bab-note').textContent, 'Turn on the Lyrics Karaoke plugin to sing');
-    assert.ok(col('vocals').classList.contains('bab-unavailable'));
+    assert.equal(col('vocals').querySelector('.rhs-note').textContent, 'Turn on the Lyrics Karaoke plugin to sing');
+    assert.ok(col('vocals').classList.contains('rhs-unavailable'));
     bs.dispose();
 });
 
@@ -610,8 +610,8 @@ test('with only vocals on and a pitched song, Go is enabled', () => {
     const t = setup({ stored: vocalsOnly, winExtra: { lyricsKaraoke: karaokeFake() } });
     const { root, bs, gos } = t;
     onConfirm(t, { ...holiday, has_vocal_pitch: true });
-    assert.equal(root.querySelector('.bab-go').disabled, false);
-    root.querySelector('.bab-go').click();
+    assert.equal(root.querySelector('.rhs-go').disabled, false);
+    root.querySelector('.rhs-go').click();
     assert.equal(gos.length, 1);
     bs.dispose();
 });
@@ -619,17 +619,17 @@ test('with only vocals on and a pitched song, Go is enabled', () => {
 test('without karaoke, only vocals on leaves Go disabled', () => {
     const { root, bs } = setup({ stored: vocalsOnly });
     bs.setSong({ ...holiday, has_vocal_pitch: true });
-    assert.equal(root.querySelector('.bab-go').disabled, true);
-    assert.equal(root.querySelector('.bab-hint').textContent, 'Turn on a part');
+    assert.equal(root.querySelector('.rhs-go').disabled, true);
+    assert.equal(root.querySelector('.rhs-hint').textContent, 'Turn on a part');
     bs.dispose();
 });
 
 test('the guitar column note: Note Detection missing, then no input picked', async () => {
     const a = setup();
-    assert.equal(a.col('guitar').querySelector('.bab-note').textContent, 'Turn on Note Detection to score your guitar');
+    assert.equal(a.col('guitar').querySelector('.rhs-note').textContent, 'Turn on Note Detection to score your guitar');
     a.bs.dispose();
     const b = setup({ winExtra: { noteDetect: {} } });
-    assert.equal(b.col('guitar').querySelector('.bab-note').textContent, 'Pick an input to score your guitar');
+    assert.equal(b.col('guitar').querySelector('.rhs-note').textContent, 'Pick an input to score your guitar');
     b.bs.dispose();
 });
 
@@ -685,46 +685,46 @@ test('the mic-hit check lights on a hit and saves the level', async () => {
     const d = micWin([0.001, 0.03]);
     const { col, bs, prefs } = setup({ stored: withDevices, winExtra: { ...d.winExtra, lyricsKaraoke: micKaraoke(created) } });
     await flush();
-    const block = col('vocals').querySelector('.bab-michit');
-    const slider = block.querySelector('.bab-michit-db');
-    const light = block.querySelector('.bab-michit-light');
+    const block = col('vocals').querySelector('.rhs-michit');
+    const slider = block.querySelector('.rhs-michit-db');
+    const light = block.querySelector('.rhs-michit-light');
     assert.equal(slider.value, '-30');
-    assert.equal(block.querySelector('.bab-michit-text').textContent, 'Tap the mic');
-    assert.equal(block.classList.contains('bab-disabled'), false);
+    assert.equal(block.querySelector('.rhs-michit-text').textContent, 'Tap the mic');
+    assert.equal(block.classList.contains('rhs-disabled'), false);
     slider.value = '-33';
     slider.fire('change');
     assert.equal(prefs().parts.vocals.micHitDb, -33);
     assert.equal(slider.value, '-33');
-    assert.equal(block.querySelector('.bab-michit-meter').querySelector('b').style.props.left, `${(27 / 60) * 100}%`);
+    assert.equal(block.querySelector('.rhs-michit-meter').querySelector('b').style.props.left, `${(27 / 60) * 100}%`);
     d.runFrames(); // -60 dB
-    assert.equal(light.classList.contains('bab-hit'), false);
-    assert.ok(parseFloat(block.querySelector('.bab-michit-meter').querySelector('i').style.props.width) < 0.001, 'silence is an empty bar');
+    assert.equal(light.classList.contains('rhs-hit'), false);
+    assert.ok(parseFloat(block.querySelector('.rhs-michit-meter').querySelector('i').style.props.width) < 0.001, 'silence is an empty bar');
     vocalsCtx(d).currentTime = 0.1;
     d.runFrames(); // -30.46 dB
-    assert.ok(light.classList.contains('bab-hit'));
+    assert.ok(light.classList.contains('rhs-hit'));
     const [db] = created[0].pushes[1];
     assert.ok(Math.abs(db - 20 * Math.log10(0.03)) < 1e-6);
     assert.equal(created[0].pushes[1][1], 0.1, 'the ctx time goes to the detector');
     assert.equal(created[0].threshold(), -33, 'the slider updates the detector');
-    const w = block.querySelector('.bab-michit-meter').querySelector('i').style.props.width;
+    const w = block.querySelector('.rhs-michit-meter').querySelector('i').style.props.width;
     assert.equal(w, `${((db + 60) / 60) * 100}%`);
     assert.equal(vocalsCtx(d).analysers[0].fftSize, 2048);
     assert.equal(vocalsCtx(d).analysers[0].connectCalls, 0);
     bs.dispose();
-    assert.equal(light.classList.contains('bab-hit'), false, 'dispose clears the flash');
+    assert.equal(light.classList.contains('rhs-hit'), false, 'dispose clears the flash');
 });
 
 test('without karaoke the check is disabled', () => {
     const { col, bs } = setup();
-    const block = col('vocals').querySelector('.bab-michit');
-    assert.ok(block.classList.contains('bab-disabled'));
-    assert.equal(block.querySelector('.bab-michit-db').disabled, true);
-    assert.equal(block.querySelector('.bab-michit-text').textContent, 'Needs Lyrics Karaoke');
+    const block = col('vocals').querySelector('.rhs-michit');
+    assert.ok(block.classList.contains('rhs-disabled'));
+    assert.equal(block.querySelector('.rhs-michit-db').disabled, true);
+    assert.equal(block.querySelector('.rhs-michit-text').textContent, 'Needs Lyrics Karaoke');
     bs.dispose();
     const old = setup({ winExtra: { lyricsKaraoke: karaokeFake() } }); // karaoke without micHit
-    const b2 = old.col('vocals').querySelector('.bab-michit');
-    assert.ok(b2.classList.contains('bab-disabled'));
-    assert.equal(b2.querySelector('.bab-michit-db').disabled, true);
+    const b2 = old.col('vocals').querySelector('.rhs-michit');
+    assert.ok(b2.classList.contains('rhs-disabled'));
+    assert.equal(b2.querySelector('.rhs-michit-db').disabled, true);
     old.bs.dispose();
 });
 
@@ -739,7 +739,7 @@ test('leaving the screen stops the check', async () => {
     vocalsCtx(d).currentTime = 1;
     d.runFrames();
     assert.equal(created[0].pushes.length, 1, 'no further reading reaches the check');
-    assert.equal(col('vocals').querySelector('.bab-michit-light').classList.contains('bab-hit'), false);
+    assert.equal(col('vocals').querySelector('.rhs-michit-light').classList.contains('rhs-hit'), false);
     assert.deepEqual(liveStreams(d), []);
     bs.dispose();
 });
@@ -756,8 +756,8 @@ test("a throwing karaoke detector doesn't stop the vocals meter", async () => {
     const d = micWin([0.001, 0.03, 0.1]);
     const { col, bs } = setup({ stored: withDevices, winExtra: { ...d.winExtra, lyricsKaraoke: { ...karaokeFake(), micHit } } });
     await flush();
-    const block = col('vocals').querySelector('.bab-michit');
-    const width = () => parseFloat(block.querySelector('.bab-michit-meter').querySelector('i').style.props.width);
+    const block = col('vocals').querySelector('.rhs-michit');
+    const width = () => parseFloat(block.querySelector('.rhs-michit-meter').querySelector('i').style.props.width);
     const pct = (level) => ((20 * Math.log10(level) + 60) / 60) * 100;
     assert.doesNotThrow(() => d.runFrames()); // -60 dB: the detector throws
     vocalsCtx(d).currentTime = 0.1;
@@ -766,7 +766,7 @@ test("a throwing karaoke detector doesn't stop the vocals meter", async () => {
     vocalsCtx(d).currentTime = 0.2;
     d.runFrames(); // -20 dB
     assert.ok(Math.abs(width() - pct(0.1)) < 1e-4);
-    assert.equal(block.querySelector('.bab-michit-light').classList.contains('bab-hit'), false);
+    assert.equal(block.querySelector('.rhs-michit-light').classList.contains('rhs-hit'), false);
     bs.dispose();
 });
 
@@ -801,28 +801,28 @@ test('opens on Band setup with no song controls', () => {
     const { root, col, part, bs } = setup();
     assert.equal(view(root), 'setup');
     assert.equal(bs.view(), 'setup');
-    assert.equal(root.querySelector('.bab-search'), null);
-    assert.equal(root.querySelector('.bab-picker'), null);
+    assert.equal(root.querySelector('.rhs-search'), null);
+    assert.equal(root.querySelector('.rhs-picker'), null);
     for (const id of ['guitar', 'drums', 'vocals']) {
         for (const f of ['difficulty', 'arrangement', 'soundMode']) {
-            assert.equal(col(id).querySelector(`.bab-seg[data-field="${f}"]`), null, `${id} ${f}`);
+            assert.equal(col(id).querySelector(`.rhs-seg[data-field="${f}"]`), null, `${id} ${f}`);
         }
     }
-    const fields = (id) => part(id).querySelectorAll('.bab-seg[data-field]').map((x) => x.getAttribute('data-field'));
+    const fields = (id) => part(id).querySelectorAll('.rhs-seg[data-field]').map((x) => x.getAttribute('data-field'));
     assert.deepEqual(fields('guitar'), ['arrangement', 'difficulty']);
     assert.deepEqual(fields('drums'), ['difficulty', 'soundMode']);
     assert.deepEqual(fields('vocals'), ['difficulty']);
-    assert.ok(col('vocals').querySelector('.bab-seg[data-field="hearMyself"]'));
-    assert.ok(col('vocals').querySelector('.bab-michit'));
-    assert.equal(root.querySelector('.bab-choose').disabled, false);
-    assert.equal(root.querySelector('.bab-setup-hint').textContent, '');
-    assert.equal(root.querySelector('.bab-continue').hidden, true);
+    assert.ok(col('vocals').querySelector('.rhs-seg[data-field="hearMyself"]'));
+    assert.ok(col('vocals').querySelector('.rhs-michit'));
+    assert.equal(root.querySelector('.rhs-choose').disabled, false);
+    assert.equal(root.querySelector('.rhs-setup-hint').textContent, '');
+    assert.equal(root.querySelector('.rhs-continue').hidden, true);
     bs.dispose();
 });
 
 test('Choose a song asks core with the band chips', () => {
     const { root, picker, bs } = setup({ stored: { pickFilters: { drumStem: true } } });
-    root.querySelector('.bab-choose').click();
+    root.querySelector('.rhs-choose').click();
     assert.equal(picker.calls.length, 1);
     const o = picker.calls[0];
     assert.equal(o.title, 'Pick a song for the band');
@@ -842,10 +842,10 @@ test('Choose a song asks core with the band chips', () => {
 });
 
 test('the screen drops vocals from the parts it passes when karaoke is missing', () => {
-    const playable = (t) => { t.root.querySelector('.bab-choose').click(); return t.picker.calls[0].filters[0].params; };
+    const playable = (t) => { t.root.querySelector('.rhs-choose').click(); return t.picker.calls[0].filters[0].params; };
     const without = setup({ stored: vocalsOnly });
     // Vocals is the only part on, so without karaoke no part can play.
-    assert.equal(without.root.querySelector('.bab-choose').disabled, true);
+    assert.equal(without.root.querySelector('.rhs-choose').disabled, true);
     without.bs.dispose();
     const a = setup();
     assert.equal(a.prefs().parts.vocals.on, true);
@@ -860,17 +860,17 @@ test('the screen drops vocals from the parts it passes when karaoke is missing',
 test('a picked song lands on Confirm, re-resolved', async () => {
     const t = setup({ library: [holiday] });
     const { root, bs, picker, urls, prefs } = t;
-    root.querySelector('.bab-choose').click();
+    root.querySelector('.rhs-choose').click();
     picker.resolveLast({ item: holidayGrouped, filters: { playable: true, drumStem: true }, reason: 'picked' });
     await flush();
     assert.equal(view(root), 'confirm');
-    assert.equal(root.querySelector('.bab-title').textContent, 'Holiday');
-    assert.ok(root.querySelector('.bab-art-img').src.endsWith('/api/song/sloppak%2Fgreeholi.sloppak/art'));
+    assert.equal(root.querySelector('.rhs-title').textContent, 'Holiday');
+    assert.ok(root.querySelector('.rhs-art-img').src.endsWith('/api/song/sloppak%2Fgreeholi.sloppak/art'));
     assert.equal(prefs().lastSong.filename, holiday.filename);
     assert.equal(prefs().pickFilters.drumStem, true);
     assert.ok(urls.includes('/api/library?q=Holiday&size=30'));
     assert.equal(bs.getSong(), holiday, 'the full row replaces the grouped one');
-    assert.equal(root.querySelectorAll('.bab-chip').length, 5);
+    assert.equal(root.querySelectorAll('.rhs-chip').length, 5);
     bs.dispose();
 });
 
@@ -885,7 +885,7 @@ test('a picked row the library cannot re-resolve stays as picked', async () => {
 test('the art hides when it fails to load and comes back for the next song', async () => {
     const t = setup();
     await pickSong(t, holiday);
-    const img = t.root.querySelector('.bab-art-img');
+    const img = t.root.querySelector('.rhs-art-img');
     assert.equal(img.hidden, false);
     img.fire('error');
     assert.equal(img.hidden, true);
@@ -901,7 +901,7 @@ test('Back from the library keeps the view and song', async () => {
     const t = setup({ library: [holiday] });
     const { root, bs, picker, prefs } = t;
     await pickSong(t, holiday);
-    root.querySelector('.bab-change').click();
+    root.querySelector('.rhs-change').click();
     assert.equal(picker.calls.length, 2);
     assert.equal(picker.calls[1].selected, holiday, 'the whole current row');
     picker.resolveLast({ item: null, filters: { playable: false, drumStem: true }, reason: 'back' });
@@ -914,7 +914,7 @@ test('Back from the library keeps the view and song', async () => {
 
 test('a pick from Setup that comes back empty stays on Setup', async () => {
     const t = setup();
-    t.root.querySelector('.bab-choose').click();
+    t.root.querySelector('.rhs-choose').click();
     t.picker.resolveLast({ item: null, filters: { playable: true }, reason: 'left' });
     await flush();
     assert.equal(t.bs.view(), 'setup');
@@ -959,8 +959,8 @@ test('Go only on Confirm', async () => {
     let ev = doc.fire('keydown', { code: 'Space' });
     assert.equal(ev.defaultPrevented, false);
     d.hit([0x99, 38, 100]);
-    assert.ok(col('drums').querySelector('.bab-signal').classList.contains('bab-hit'), 'the pad still flashes on Setup');
-    root.querySelector('.bab-go').click();
+    assert.ok(col('drums').querySelector('.rhs-signal').classList.contains('rhs-hit'), 'the pad still flashes on Setup');
+    root.querySelector('.rhs-go').click();
     assert.equal(gos.length, 0);
     bs.nextSong();
     assert.equal(bs.view(), 'confirm');
@@ -973,14 +973,14 @@ test('Go only on Confirm', async () => {
 test('Band setup returns to Setup and Continue with goes to Confirm', async () => {
     const stored = { lastSong: { filename: holiday.filename, title: 'Holiday', artist: 'Green Day' } };
     const { root, bs } = setup({ stored, library: [holiday] });
-    const cont = root.querySelector('.bab-continue');
+    const cont = root.querySelector('.rhs-continue');
     assert.equal(cont.hidden, true, 'not resolved yet');
     await flush();
     assert.equal(cont.hidden, false);
     assert.equal(cont.textContent, 'Continue with Holiday');
     cont.click();
     assert.equal(view(root), 'confirm');
-    root.querySelector('.bab-setup-btn').click();
+    root.querySelector('.rhs-setup-btn').click();
     assert.equal(view(root), 'setup');
     bs.setSong(null);
     assert.equal(cont.hidden, true, 'no song');
@@ -991,7 +991,7 @@ test('Continue with stays hidden when the last song is gone', async () => {
     const stored = { lastSong: { filename: holiday.filename, title: 'Holiday', artist: 'Green Day' } };
     const { root, bs } = setup({ stored, library: [] });
     await flush();
-    assert.equal(root.querySelector('.bab-continue').hidden, true);
+    assert.equal(root.querySelector('.rhs-continue').hidden, true);
     bs.dispose();
 });
 
@@ -1006,16 +1006,16 @@ test('Confirm greys what the song lacks', () => {
     assert.equal(btn(g, 'arrangement', 'Lead').getAttribute('aria-pressed'), 'false');
     assert.equal(btn(part('drums'), 'soundMode', 'rockband').disabled, true);
     assert.equal(btn(part('drums'), 'soundMode', 'kit').disabled, true);
-    assert.ok(part('vocals').classList.contains('bab-unavailable'));
-    assert.equal(part('vocals').querySelector('.bab-note').textContent, 'No vocal pitch for this song');
+    assert.ok(part('vocals').classList.contains('rhs-unavailable'));
+    assert.equal(part('vocals').querySelector('.rhs-note').textContent, 'No vocal pitch for this song');
     bs.dispose();
 });
 
 test('Confirm parts are coloured and carry their icons', () => {
     const { part, bs } = setup();
-    assert.equal(part('guitar').style.props['--bab-c'], '#f5c542');
-    assert.equal(part('drums').querySelector('.bab-part-name').textContent, 'Drums');
-    assert.ok(String(part('vocals').querySelector('.bab-ico').innerHTML).includes('<svg'));
+    assert.equal(part('guitar').style.props['--rhs-c'], '#f5c542');
+    assert.equal(part('drums').querySelector('.rhs-part-name').textContent, 'Drums');
+    assert.ok(String(part('vocals').querySelector('.rhs-ico').innerHTML).includes('<svg'));
     bs.dispose();
 });
 
@@ -1024,7 +1024,7 @@ test("the device line names each part's device", async () => {
     const a = setup({ stored: withDevices, winExtra: d.winExtra });
     await flush();
     await flush();
-    const line = (t, id) => t.part(id).querySelector('.bab-part-device').textContent;
+    const line = (t, id) => t.part(id).querySelector('.rhs-part-device').textContent;
     assert.equal(line(a, 'guitar'), 'Input: USB Guitar');
     assert.equal(line(a, 'drums'), 'Kit: Kit');
     assert.equal(line(a, 'vocals'), 'Mic: USB Mic');
@@ -1041,19 +1041,19 @@ test("the device line names each part's device", async () => {
 test('without the core hook, picking is off', async () => {
     const stored = { lastSong: { filename: holiday.filename, title: 'Holiday', artist: 'Green Day' } };
     const { root, bs } = setup({ picker: null, stored, library: [holiday] });
-    assert.equal(root.querySelector('.bab-choose').disabled, true);
-    assert.equal(root.querySelector('.bab-change').disabled, true);
-    assert.equal(root.querySelector('.bab-setup-hint').textContent, 'Update feedBack to pick songs here');
+    assert.equal(root.querySelector('.rhs-choose').disabled, true);
+    assert.equal(root.querySelector('.rhs-change').disabled, true);
+    assert.equal(root.querySelector('.rhs-setup-hint').textContent, 'Update feedBack to pick songs here');
     assert.doesNotThrow(() => bs.openLibrary());
     await flush();
-    root.querySelector('.bab-continue').click();
+    root.querySelector('.rhs-continue').click();
     assert.equal(bs.view(), 'confirm', 'Continue with still works');
     bs.dispose();
 });
 
 test('the pick hook defaults to window.feedBack.library', () => {
     const { root, picker, bs } = setup({ libraryOnWin: true });
-    root.querySelector('.bab-choose').click();
+    root.querySelector('.rhs-choose').click();
     assert.equal(picker.calls.length, 1);
     bs.dispose();
 });
@@ -1116,18 +1116,18 @@ test('Change song, then Use this song on the same song keeps Confirm intact', as
     const { root, bs, picker, prefs, urls } = t;
     await pickSong(t, holiday);
     const before = urls.length;
-    root.querySelector('.bab-change').click();
+    root.querySelector('.rhs-change').click();
     // Core hands the preset selection back as the item.
     picker.resolveLast({ item: picker.calls[1].selected, filters: { playable: true }, reason: 'picked' });
     await flush();
     assert.equal(bs.view(), 'confirm');
     assert.equal(bs.getSong(), holiday);
-    assert.equal(root.querySelector('.bab-title').textContent, 'Holiday');
-    assert.equal(root.querySelector('.bab-go').disabled, false);
+    assert.equal(root.querySelector('.rhs-title').textContent, 'Holiday');
+    assert.equal(root.querySelector('.rhs-go').disabled, false);
     assert.equal(prefs().lastSong.title, 'Holiday');
     assert.equal(urls.length, before, 'no re-resolve');
     // Even a bare { filename } for the current song keeps it.
-    root.querySelector('.bab-change').click();
+    root.querySelector('.rhs-change').click();
     picker.resolveLast({ item: { filename: holiday.filename }, filters: {}, reason: 'picked' });
     await flush();
     assert.equal(bs.getSong(), holiday);
@@ -1182,7 +1182,7 @@ test('Esc already handled elsewhere does not open the library', async () => {
 
 test('the art is hidden until there is a song', () => {
     const t = setup();
-    assert.equal(t.root.querySelector('.bab-art-img').hidden, true);
+    assert.equal(t.root.querySelector('.rhs-art-img').hidden, true);
     t.bs.dispose();
 });
 
@@ -1271,9 +1271,9 @@ function ctlSetup({ pads = [gpad(0, 'Xbox', 1)], plugin = true, drums = false, w
     if (api) winExtra.feedBackFiveFret = api;
     if (drumsApi) winExtra.feedBackDrums = { ...(winExtra.feedBackDrums || {}), ...drumsApi };
     const t = setup({ ...rest, winExtra });
-    const setupCols = () => t.root.querySelectorAll('.bab-col.bab-ctl');
-    const confirmRows = () => t.root.querySelectorAll('.bab-part.bab-ctl');
-    const joinslot = () => t.root.querySelector('.bab-joinslot');
+    const setupCols = () => t.root.querySelectorAll('.rhs-col.rhs-ctl');
+    const confirmRows = () => t.root.querySelectorAll('.rhs-part.rhs-ctl');
+    const joinslot = () => t.root.querySelector('.rhs-joinslot');
     return { ...t, input, api, drumsApi: drumsApi && t.win.feedBackDrums, setupCols, confirmRows, joinslot };
 }
 const ctlPrefs = (controllers, extra = {}) => ({
@@ -1284,7 +1284,7 @@ const ffSong = {
     filename: 'sloppak/ff.sloppak', title: 'Five', artist: 'Band', arrangements: [{ name: 'Lead', index: 0 }],
     has_drum_tab: false, has_vocal_pitch: false, stem_ids: ['guitar'], five_fret_parts: ['guitar:chart', 'bass:auto'],
 };
-const segBtn = (el, field, v) => el.querySelector(`.bab-seg[data-field="${field}"]`).querySelector(`button[data-value="${v}"]`);
+const segBtn = (el, field, v) => el.querySelector(`.rhs-seg[data-field="${field}"]`).querySelector(`button[data-value="${v}"]`);
 
 test('Start on a new pad adds a Setup column and a Confirm row', async () => {
     const t = ctlSetup();
@@ -1296,16 +1296,16 @@ test('Start on a new pad adds a Setup column and a Confirm row', async () => {
     const col = t.setupCols();
     assert.equal(col.length, 1);
     assert.equal(col[0].getAttribute('data-ctl'), 'Xbox#1');
-    assert.equal(col[0].querySelector('.bab-part-name').textContent, 'Xbox');
-    assert.equal(col[0].querySelectorAll('.bab-fret').length, 5);
-    assert.ok(col[0].querySelector('.bab-ctl-controls'));
-    assert.ok(col[0].querySelector('.bab-ctl-leave'));
-    assert.ok(String(col[0].querySelector('.bab-ico').innerHTML).includes('<svg'), 'Lucide icon');
-    assert.equal(col[0].style.props['--bab-c'], '#2ecc40');
-    assert.equal(!!col[0].querySelector('.bab-seg[data-field="playsAs"]'), false, 'one kind: no plays-as choice');
+    assert.equal(col[0].querySelector('.rhs-part-name').textContent, 'Xbox');
+    assert.equal(col[0].querySelectorAll('.rhs-fret').length, 5);
+    assert.ok(col[0].querySelector('.rhs-ctl-controls'));
+    assert.ok(col[0].querySelector('.rhs-ctl-leave'));
+    assert.ok(String(col[0].querySelector('.rhs-ico').innerHTML).includes('<svg'), 'Lucide icon');
+    assert.equal(col[0].style.props['--rhs-c'], '#2ecc40');
+    assert.equal(!!col[0].querySelector('.rhs-seg[data-field="playsAs"]'), false, 'one kind: no plays-as choice');
     const row = t.confirmRows();
     assert.equal(row.length, 1);
-    assert.deepEqual(row[0].querySelectorAll('.bab-seg[data-field]').map((s) => s.getAttribute('data-field')),
+    assert.deepEqual(row[0].querySelectorAll('.rhs-seg[data-field]').map((s) => s.getAttribute('data-field')),
         ['part', 'difficulty', 'lefty', 'partAudio']);
     assert.equal(segBtn(row[0], 'part', 'guitar').getAttribute('aria-pressed'), 'true');
     assert.equal(segBtn(row[0], 'difficulty', 'medium').getAttribute('aria-pressed'), 'true');
@@ -1335,7 +1335,7 @@ test('Leave removes them; the join slot explains how to join', async () => {
     await flush();
     assert.equal(t.setupCols().length, 1);
     assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
-    t.setupCols()[0].querySelector('.bab-ctl-leave').click();
+    t.setupCols()[0].querySelector('.rhs-ctl-leave').click();
     assert.deepEqual(t.prefs().controllers, []);
     assert.equal(t.setupCols().length, 0);
     assert.equal(t.confirmRows().length, 0);
@@ -1362,8 +1362,8 @@ test('a joined controller that is not connected says so', async () => {
     const t = ctlSetup({ pads: [], stored: ctlPrefs([{ key: 'Xbox#1' }]) });
     await flush();
     const col = t.setupCols()[0];
-    assert.equal(col.querySelector('.bab-note').textContent, 'Not connected');
-    assert.ok(col.classList.contains('bab-unavailable'));
+    assert.equal(col.querySelector('.rhs-note').textContent, 'Not connected');
+    assert.ok(col.classList.contains('rhs-unavailable'));
     t.bs.dispose();
 });
 
@@ -1378,12 +1378,12 @@ test('Confirm part segment: missing parts greyed, real/auto tags, also: names', 
     assert.equal(segBtn(a, 'part', 'rhythm').disabled, true, 'the song has no rhythm part');
     assert.equal(segBtn(a, 'part', 'guitar').disabled, false);
     assert.equal(segBtn(a, 'part', 'bass').disabled, false);
-    assert.equal(segBtn(a, 'part', 'guitar').querySelector('.bab-tag').textContent, 'real');
-    assert.equal(segBtn(a, 'part', 'bass').querySelector('.bab-tag').textContent, 'auto');
-    assert.equal(segBtn(a, 'part', 'rhythm').querySelector('.bab-tag').textContent, '');
-    assert.equal(segBtn(a, 'part', 'guitar').querySelector('.bab-also').textContent, 'also: Xbox 2');
-    assert.equal(segBtn(b, 'part', 'guitar').querySelector('.bab-also').textContent, 'also: Xbox');
-    assert.equal(segBtn(a, 'part', 'bass').querySelector('.bab-also').textContent, '');
+    assert.equal(segBtn(a, 'part', 'guitar').querySelector('.rhs-tag').textContent, 'real');
+    assert.equal(segBtn(a, 'part', 'bass').querySelector('.rhs-tag').textContent, 'auto');
+    assert.equal(segBtn(a, 'part', 'rhythm').querySelector('.rhs-tag').textContent, '');
+    assert.equal(segBtn(a, 'part', 'guitar').querySelector('.rhs-also').textContent, 'also: Xbox 2');
+    assert.equal(segBtn(b, 'part', 'guitar').querySelector('.rhs-also').textContent, 'also: Xbox');
+    assert.equal(segBtn(a, 'part', 'bass').querySelector('.rhs-also').textContent, '');
     assert.match(segBtn(a, 'part', 'guitar').textContent, /^Lead/);
     t.bs.dispose();
     // Without the 5-Fret "show auto charts" setting the auto bass is greyed too.
@@ -1391,7 +1391,7 @@ test('Confirm part segment: missing parts greyed, real/auto tags, also: names', 
     await flush();
     onConfirm(u, ffSong);
     assert.equal(segBtn(u.confirmRows()[0], 'part', 'bass').disabled, true);
-    assert.deepEqual(u.root.querySelectorAll('.bab-chip').at(-1).textContent, '5-fret: Lead');
+    assert.deepEqual(u.root.querySelectorAll('.rhs-chip').at(-1).textContent, '5-fret: Lead');
     u.bs.dispose();
 });
 
@@ -1402,7 +1402,7 @@ test('part audio greyed without the stem', async () => {
     let row = t.confirmRows()[0];
     assert.equal(segBtn(row, 'partAudio', 'rockband').disabled, true);
     assert.equal(segBtn(row, 'partAudio', 'always').disabled, true);
-    assert.match(row.querySelector('.bab-note').textContent, /stem/);
+    assert.match(row.querySelector('.rhs-note').textContent, /stem/);
     t.bs.setSong(ffSong);
     row = t.confirmRows()[0];
     assert.equal(segBtn(row, 'partAudio', 'rockband').disabled, false);
@@ -1433,11 +1433,11 @@ test('fret presses on a joined pad never press GO', async () => {
         t.input.send('Xbox#1', b, true);
     }
     assert.equal(t.gos.length, 0);
-    const fret = (name) => t.setupCols()[0].querySelector(`.bab-fret[data-fret="${name}"]`);
-    for (const name of ['green', 'red', 'yellow', 'blue', 'orange']) assert.ok(fret(name).classList.contains('bab-lit'), name);
+    const fret = (name) => t.setupCols()[0].querySelector(`.rhs-fret[data-fret="${name}"]`);
+    for (const name of ['green', 'red', 'yellow', 'blue', 'orange']) assert.ok(fret(name).classList.contains('rhs-lit'), name);
     t.input.send('Xbox#1', BTN.orange, false);
-    assert.equal(fret('orange').classList.contains('bab-lit'), false);
-    assert.ok(fret('green').classList.contains('bab-lit'));
+    assert.equal(fret('orange').classList.contains('rhs-lit'), false);
+    assert.ok(fret('green').classList.contains('rhs-lit'));
     for (const b of [BTN.green, BTN.red, BTN.yellow, BTN.blue, BTN.strum]) t.input.send('Xbox#1', b, false);
     assert.equal(t.gos.length, 0);
     assert.equal(t.picker.calls.length, 1, 'only the onConfirm helper pick');
@@ -1449,7 +1449,7 @@ test('hiding for the library pick releases claims; Confirm re-claims', async () 
     await flush();
     onConfirm(t, ffSong);
     assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
-    t.root.querySelector('.bab-change').click();
+    t.root.querySelector('.rhs-change').click();
     t.screen.classList.remove('active');
     t.fb.emit('screen:changing', { id: 'songs' });
     assert.equal(t.input.pads[0].claimedBy, null, 'the library gets the controller');
@@ -1470,9 +1470,9 @@ test('Controls opens the 5-Fret controls screen returning to the band screen', a
         stored: ctlPrefs([{ key: 'Xbox#1' }]),
     });
     await flush();
-    t.setupCols()[0].querySelector('.bab-ctl-controls').click();
+    t.setupCols()[0].querySelector('.rhs-ctl-controls').click();
     assert.deepEqual(t.api.opened, [{ returnTo: SCREEN }]);
-    const links = t.joinslot().querySelectorAll('.bab-setup-link');
+    const links = t.joinslot().querySelectorAll('.rhs-setup-link');
     assert.equal(links.length, 1);
     assert.match(links[0].textContent, /Set up/);
     assert.match(links[0].textContent, /Mystery/);
@@ -1485,14 +1485,14 @@ test('returning from the controls screen refreshes the Set up list', async () =>
     const pads = [gpad(0, 'Mystery', 1, { kind: null, mapping: '' })];
     const t = ctlSetup({ pads });
     await flush();
-    assert.equal(t.joinslot().querySelectorAll('.bab-setup-link').length, 1);
+    assert.equal(t.joinslot().querySelectorAll('.rhs-setup-link').length, 1);
     t.screen.classList.remove('active');
     t.fb.emit('screen:changing', { id: 'plugin-five_fret' });
     pads[0].kind = 'guitar'; // set up on the controls screen
     t.screen.classList.add('active');
     t.fb.emit('screen:changed', { id: SCREEN });
     await flush();
-    assert.equal(t.joinslot().querySelectorAll('.bab-setup-link').length, 0);
+    assert.equal(t.joinslot().querySelectorAll('.rhs-setup-link').length, 0);
     t.input.press(0, BTN.start);
     await flush();
     assert.equal(t.prefs().controllers.length, 1, 'now it can join');
@@ -1507,7 +1507,7 @@ test('no five-fret plugin: the join slot says so and nothing is watched', async 
     assert.equal(t.input.pads[0].claimedBy, null);
     t.input.press(0, BTN.start);
     assert.equal(t.prefs().controllers.length, 1);
-    assert.equal(t.setupCols()[0].querySelector('.bab-note').textContent, 'Install the 5-Fret or Drums plugin to play on a controller');
+    assert.equal(t.setupCols()[0].querySelector('.rhs-note').textContent, 'Install the 5-Fret or Drums plugin to play on a controller');
     t.bs.dispose();
     const old = ctlSetup({ watch: false });
     await flush();
@@ -1518,16 +1518,16 @@ test('no five-fret plugin: the join slot says so and nothing is watched', async 
 test('a band of controllers only can Go and open the song pick', async () => {
     const t = ctlSetup({ stored: { ...noParts, ...ctlPrefs([{ key: 'Xbox#1', part: 'bass' }]) } });
     await flush();
-    assert.equal(t.root.querySelector('.bab-choose').disabled, false);
-    t.root.querySelector('.bab-choose').click();
+    assert.equal(t.root.querySelector('.rhs-choose').disabled, false);
+    t.root.querySelector('.rhs-choose').click();
     assert.equal(t.picker.calls.length, 1);
     const f = t.picker.calls[0].filters;
     assert.deepEqual(f[0].params, { five_fret: 'bass:chart' }, 'playable by band asks for the controller part');
     assert.deepEqual(f.find((x) => x.id === 'fiveFret').params, { five_fret: 'any:chart' });
     t.picker.resolveLast({ item: { ...ffSong, five_fret_parts: ['bass:chart'] } });
     await flush();
-    assert.equal(t.root.querySelector('.bab-go').disabled, false);
-    t.root.querySelector('.bab-go').click();
+    assert.equal(t.root.querySelector('.rhs-go').disabled, false);
+    t.root.querySelector('.rhs-go').click();
     assert.equal(t.gos.length, 1);
     t.bs.dispose();
 });
@@ -1547,9 +1547,9 @@ test('an Xbox pad with both plugins joins undecided; X plays 5-Fret and is remem
     t.input.send('Xbox#1', 1); // B
     await flush();
     assert.equal(t.prefs().controllers[0].playsAs, 'five_fret');
-    assert.equal(t.setupCols()[0].querySelector('.bab-fret.bab-lit') !== null, true);
+    assert.equal(t.setupCols()[0].querySelector('.rhs-fret.rhs-lit') !== null, true);
     // Leave and rejoin: the remembered choice joins at once.
-    t.setupCols()[0].querySelector('.bab-ctl-leave').click();
+    t.setupCols()[0].querySelector('.rhs-ctl-leave').click();
     assert.equal(t.prefs().controllers.length, 0);
     assert.equal(t.input.pads[0].claimedBy, null);
     t.input.press(0, BTN.start, true, 5);
@@ -1572,7 +1572,7 @@ test('a remembered kind the pad cannot play is dropped; a kit joins as drums', a
         [['Xbox#1', 'five_fret', 'guitar'], ['Kit#1', 'drums', 'drums']]);
     // The kit's Controls opens the Drums controls screen.
     const kitCol = [...t.setupCols()].find((col) => col.getAttribute('data-ctl') === 'Kit#1');
-    kitCol.querySelector('.bab-ctl-controls').click();
+    kitCol.querySelector('.rhs-ctl-controls').click();
     assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
     t.bs.dispose();
 });
@@ -1580,7 +1580,7 @@ test('a remembered kind the pad cannot play is dropped; a kit joins as drums', a
 test('a pad set up nowhere offers setup with the first plugin present', async () => {
     const t = ctlSetup({ plugin: false, drums: true, pads: [gpad(0, 'Mystery', 1, { kind: null, mapping: '' })] });
     await flush();
-    const links = t.joinslot().querySelectorAll('.bab-setup-link');
+    const links = t.joinslot().querySelectorAll('.rhs-setup-link');
     assert.equal(links.length, 1);
     links[0].click();
     assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
@@ -1592,8 +1592,8 @@ const drumSong = {
     filename: 'sloppak/dr.sloppak', title: 'Drum', artist: 'Band', arrangements: [{ name: 'Lead', index: 0 }],
     has_drum_tab: true, has_vocal_pitch: false, stem_ids: ['drums', 'guitar'], five_fret_parts: [],
 };
-const fields = (el) => el.querySelectorAll('.bab-seg[data-field]').map((s) => s.getAttribute('data-field'));
-const lit = (col, sel) => col.querySelectorAll(sel).filter((e) => e.classList.contains('bab-lit')).map((e) => e.getAttribute('data-light'));
+const fields = (el) => el.querySelectorAll('.rhs-seg[data-field]').map((s) => s.getAttribute('data-field'));
+const lit = (col, sel) => col.querySelectorAll(sel).filter((e) => e.classList.contains('rhs-lit')).map((e) => e.getAttribute('data-light'));
 const xboxBoth = () => ctlSetup({ drums: true, pads: [gpad(0, 'Xbox', 1, { drumsKind: 'gamepad' })] });
 
 test("an Xbox pad's column asks plays-as; choosing Drums swaps the lights and the Confirm row", async () => {
@@ -1607,16 +1607,16 @@ test("an Xbox pad's column asks plays-as; choosing Drums swaps the lights and th
     assert.equal(segBtn(col, 'playsAs', 'drums').textContent, 'Drums');
     assert.equal(segBtn(col, 'playsAs', 'five_fret').getAttribute('aria-pressed'), 'false');
     assert.equal(segBtn(col, 'playsAs', 'drums').getAttribute('aria-pressed'), 'false');
-    assert.equal(col.querySelector('.bab-playsas-hint').textContent, 'X: 5-Fret \u00b7 B: Drums');
-    assert.equal(col.querySelector('.bab-note').textContent, 'Choose 5-Fret or Drums');
+    assert.equal(col.querySelector('.rhs-playsas-hint').textContent, 'X: 5-Fret \u00b7 B: Drums');
+    assert.equal(col.querySelector('.rhs-note').textContent, 'Choose 5-Fret or Drums');
     assert.equal(col.querySelectorAll('[data-light]').length, 0);
     assert.deepEqual(fields(t.confirmRows()[0]), ['difficulty']);
     // It sits out, but the question it asks (and Leave / Controls) isn't dimmed.
-    assert.ok(col.classList.contains('bab-unavailable'));
-    assert.ok(col.classList.contains('bab-asking'));
-    assert.ok(t.confirmRows()[0].classList.contains('bab-unavailable'));
-    assert.equal(t.confirmRows()[0].classList.contains('bab-asking'), false);
-    assert.ok(col.querySelector('.bab-seg[data-field="playsAs"]').parentNode.classList.contains('bab-playsas'));
+    assert.ok(col.classList.contains('rhs-unavailable'));
+    assert.ok(col.classList.contains('rhs-asking'));
+    assert.ok(t.confirmRows()[0].classList.contains('rhs-unavailable'));
+    assert.equal(t.confirmRows()[0].classList.contains('rhs-asking'), false);
+    assert.ok(col.querySelector('.rhs-seg[data-field="playsAs"]').parentNode.classList.contains('rhs-playsas'));
 
     segBtn(col, 'playsAs', 'five_fret').click();
     await flush();
@@ -1624,11 +1624,11 @@ test("an Xbox pad's column asks plays-as; choosing Drums swaps the lights and th
     assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['five_fret', 'guitar']);
     assert.deepEqual(t.prefs().controllerKinds, { 'Xbox#1': 'five_fret' });
     assert.equal(segBtn(col, 'playsAs', 'five_fret').getAttribute('aria-pressed'), 'true');
-    assert.equal(col.classList.contains('bab-asking'), false, 'decided: nothing left to ask');
-    assert.equal(col.querySelectorAll('.bab-fret').length, 5);
+    assert.equal(col.classList.contains('rhs-asking'), false, 'decided: nothing left to ask');
+    assert.equal(col.querySelectorAll('.rhs-fret').length, 5);
     assert.deepEqual(fields(t.confirmRows()[0]), ['part', 'difficulty', 'lefty', 'partAudio']);
     t.input.send('Xbox#1', BTN.red);
-    assert.deepEqual(lit(col, '.bab-fret'), ['red']);
+    assert.deepEqual(lit(col, '.rhs-fret'), ['red']);
 
     segBtn(col, 'playsAs', 'drums').click();
     await flush();
@@ -1636,11 +1636,11 @@ test("an Xbox pad's column asks plays-as; choosing Drums swaps the lights and th
     assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['drums', 'drums']);
     assert.deepEqual(t.prefs().controllerKinds, { 'Xbox#1': 'drums' });
     assert.equal(segBtn(col, 'playsAs', 'drums').getAttribute('aria-pressed'), 'true');
-    assert.equal(col.querySelectorAll('.bab-fret').length, 0, 'the fret lights are gone');
-    assert.deepEqual(col.querySelectorAll('.bab-drumpad').map((e) => e.getAttribute('data-light')),
+    assert.equal(col.querySelectorAll('.rhs-fret').length, 0, 'the fret lights are gone');
+    assert.deepEqual(col.querySelectorAll('.rhs-drumpad').map((e) => e.getAttribute('data-light')),
         ['red', 'yellow', 'blue', 'green', 'kick']);
-    assert.equal(col.style.props['--bab-c'], '#f28c28');
-    assert.equal(t.confirmRows()[0].style.props['--bab-c'], '#f28c28');
+    assert.equal(col.style.props['--rhs-c'], '#f28c28');
+    assert.equal(t.confirmRows()[0].style.props['--rhs-c'], '#f28c28');
     const row = t.confirmRows()[0];
     assert.deepEqual(fields(row), ['drumPart', 'difficulty', 'soundMode']);
     assert.match(segBtn(row, 'drumPart', 'drums').textContent, /^Drums/);
@@ -1648,9 +1648,9 @@ test("an Xbox pad's column asks plays-as; choosing Drums swaps the lights and th
     // The drum lights: LB red, A kick; a released pad goes dark.
     t.input.send('Xbox#1', 4);
     t.input.send('Xbox#1', 0);
-    assert.deepEqual(lit(col, '.bab-drumpad'), ['red', 'kick']);
+    assert.deepEqual(lit(col, '.rhs-drumpad'), ['red', 'kick']);
     t.input.send('Xbox#1', 4, false);
-    assert.deepEqual(lit(col, '.bab-drumpad'), ['kick']);
+    assert.deepEqual(lit(col, '.rhs-drumpad'), ['kick']);
     t.bs.dispose();
 });
 
@@ -1667,8 +1667,8 @@ test('B on an undecided pad chooses Drums and remembers it after leave and rejoi
     await flush();
     assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['drums', 'drums']);
     assert.deepEqual(t.prefs().controllerKinds, { 'Xbox#1': 'drums' });
-    assert.equal(t.setupCols()[0].querySelectorAll('.bab-drumpad').length, 5);
-    t.setupCols()[0].querySelector('.bab-ctl-leave').click();
+    assert.equal(t.setupCols()[0].querySelectorAll('.rhs-drumpad').length, 5);
+    t.setupCols()[0].querySelector('.rhs-ctl-leave').click();
     assert.equal(t.prefs().controllers.length, 0);
     t.input.press(0, BTN.start, true, 5);
     await flush();
@@ -1687,8 +1687,8 @@ test('drums Confirm row: difficulty and sound mode saved; modes greyed without a
     await flush();
     onConfirm(t, drumSong);
     let row = t.confirmRows()[0];
-    assert.equal(t.setupCols()[0].querySelector('.bab-seg[data-field="playsAs"]'), null, 'a kit plays drums only');
-    assert.equal(segBtn(row, 'drumPart', 'drums').querySelector('.bab-also').textContent, 'also: Drums', 'the real drummer is on');
+    assert.equal(t.setupCols()[0].querySelector('.rhs-seg[data-field="playsAs"]'), null, 'a kit plays drums only');
+    assert.equal(segBtn(row, 'drumPart', 'drums').querySelector('.rhs-also').textContent, 'also: Drums', 'the real drummer is on');
     assert.equal(segBtn(row, 'soundMode', 'rockband').getAttribute('aria-pressed'), 'true', 'default Rock Band');
     assert.deepEqual(['song', 'rockband', 'kit'].map((v) => segBtn(row, 'soundMode', v).textContent),
         ['Song drums', 'Rock Band', 'My kit only']);
@@ -1699,7 +1699,7 @@ test('drums Confirm row: difficulty and sound mode saved; modes greyed without a
     row = t.confirmRows()[0];
     assert.equal(segBtn(row, 'difficulty', 'expert').getAttribute('aria-pressed'), 'true');
     assert.equal(segBtn(row, 'soundMode', 'kit').getAttribute('aria-pressed'), 'true');
-    assert.equal(row.querySelector('.bab-note').textContent, "The drummer's sound mode sets the drum stem", 'the real drummer is on');
+    assert.equal(row.querySelector('.rhs-note').textContent, "The drummer's sound mode sets the drum stem", 'the real drummer is on');
     // No drum stem: Rock Band and My kit only are greyed, Song drums plays, the stored mode stays.
     t.bs.setSong({ ...drumSong, stem_ids: ['guitar'] });
     row = t.confirmRows()[0];
@@ -1707,7 +1707,7 @@ test('drums Confirm row: difficulty and sound mode saved; modes greyed without a
     assert.equal(segBtn(row, 'soundMode', 'kit').disabled, true);
     assert.equal(segBtn(row, 'soundMode', 'song').disabled, false);
     assert.equal(segBtn(row, 'soundMode', 'song').getAttribute('aria-pressed'), 'true');
-    assert.equal(row.querySelector('.bab-note').textContent, 'Rock Band and My kit only need a drum stem');
+    assert.equal(row.querySelector('.rhs-note').textContent, 'Rock Band and My kit only need a drum stem');
     c = t.prefs().controllers[0];
     assert.equal(c.soundMode, 'kit');
     t.bs.dispose();
@@ -1719,11 +1719,11 @@ test('Controls on a drums controller opens the Drums screen returning to the ban
         stored: ctlPrefs([{ key: 'Xbox#1', playsAs: 'drums', part: 'drums' }]),
     });
     await flush();
-    t.setupCols()[0].querySelector('.bab-ctl-controls').click();
+    t.setupCols()[0].querySelector('.rhs-ctl-controls').click();
     assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
     assert.deepEqual(t.api.opened, []);
     segBtn(t.setupCols()[0], 'playsAs', 'five_fret').click();
-    t.setupCols()[0].querySelector('.bab-ctl-controls').click();
+    t.setupCols()[0].querySelector('.rhs-ctl-controls').click();
     assert.deepEqual(t.api.opened, [{ returnTo: SCREEN }], '5-Fret: the 5-Fret controls');
     assert.equal(t.drumsApi.opened.length, 1);
     t.bs.dispose();
@@ -1732,7 +1732,7 @@ test('Controls on a drums controller opens the Drums screen returning to the ban
 test('Set up offers guitar and drum kit', async () => {
     const t = ctlSetup({ drums: true, pads: [gpad(0, 'Mystery', 1, { kind: null, mapping: '' })] });
     await flush();
-    const links = t.joinslot().querySelectorAll('.bab-setup-link');
+    const links = t.joinslot().querySelectorAll('.rhs-setup-link');
     assert.deepEqual(links.map((l) => l.textContent), ['Set up Mystery as guitar', 'Set up Mystery as drum kit']);
     links[0].click();
     assert.deepEqual([t.api.opened.length, t.drumsApi.opened.length], [1, 0]);
@@ -1743,7 +1743,7 @@ test('Set up offers guitar and drum kit', async () => {
 });
 
 test('an asking column keeps Plays as, Leave and Controls at full strength', () => {
-    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
-    assert.match(css, /\.bab-col\.bab-unavailable\.bab-asking\s*\{[^}]*opacity:\s*1[^}]*filter:\s*none/);
-    assert.match(css, /\.bab-col\.bab-unavailable\.bab-asking > :not\(\.bab-playsas\):not\(\.bab-ctl-actions\)\s*\{[^}]*opacity:\s*0\.35/);
+    const css = readFileSync(new URL('../assets/rockherosmith.css', import.meta.url), 'utf8');
+    assert.match(css, /\.rhs-col\.rhs-unavailable\.rhs-asking\s*\{[^}]*opacity:\s*1[^}]*filter:\s*none/);
+    assert.match(css, /\.rhs-col\.rhs-unavailable\.rhs-asking > :not\(\.rhs-playsas\):not\(\.rhs-ctl-actions\)\s*\{[^}]*opacity:\s*0\.35/);
 });

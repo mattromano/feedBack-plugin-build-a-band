@@ -53,7 +53,7 @@ function setup({ withSettings = true, role = null, loadSettings } = {}) {
     const calls = { close: 0 };
     const before = win.listenerCount();
     const overlay = openSettingsOverlay({ doc, win, onClose: () => { calls.close++; } });
-    const back = () => (settings ? settings.querySelector('button.bab-settings-back') : null);
+    const back = () => (settings ? settings.querySelector('button.rhs-settings-back') : null);
     return { doc, win, settings, coreBack, checkbox, calls, overlay, before, back };
 }
 
@@ -63,7 +63,7 @@ test('opening shows Settings as a modal over the stage', () => {
     assert.equal(settings.getAttribute('role'), 'dialog');
     assert.equal(settings.getAttribute('aria-modal'), 'true');
     assert.equal(settings.getAttribute('aria-label'), 'Settings');
-    assert.equal(doc.body.classList.contains('bab-settings-over'), true);
+    assert.equal(doc.body.classList.contains('rhs-settings-over'), true);
     const btn = settings.children[0];
     assert.equal(btn, back());
     assert.equal(btn.tagName, 'BUTTON');
@@ -80,7 +80,7 @@ test('Escape closes it and calls back once', () => {
     assert.equal(e.defaultPrevented, true);
     assert.equal(calls.close, 1);
     for (const a of ['role', 'aria-modal', 'aria-label']) assert.equal(settings.hasAttribute(a), false, a);
-    assert.equal(doc.body.classList.contains('bab-settings-over'), false);
+    assert.equal(doc.body.classList.contains('rhs-settings-over'), false);
     assert.equal(back(), null);
     assert.equal(win.navigator.mediaSession.handlers.play, null);
     assert.equal(win.listenerCount(), before);
@@ -99,7 +99,7 @@ test('the back button closes it', () => {
     const { doc, calls, back } = setup();
     back().click();
     assert.equal(calls.close, 1);
-    assert.equal(doc.body.classList.contains('bab-settings-over'), false);
+    assert.equal(doc.body.classList.contains('rhs-settings-over'), false);
     assert.equal(back(), null);
 });
 
@@ -117,7 +117,7 @@ test('a silent close never calls back', () => {
     overlay.close({ silent: true });
     assert.equal(calls.close, 0);
     assert.equal(settings.hasAttribute('aria-modal'), false);
-    assert.equal(doc.body.classList.contains('bab-settings-over'), false);
+    assert.equal(doc.body.classList.contains('rhs-settings-over'), false);
     overlay.close();
     assert.equal(calls.close, 0);
 });
@@ -132,7 +132,7 @@ test('an existing role is put back', () => {
 test('no #settings', () => {
     const { doc, win, overlay, before } = setup({ withSettings: false });
     assert.equal(overlay, null);
-    assert.equal(doc.body.classList.contains('bab-settings-over'), false);
+    assert.equal(doc.body.classList.contains('rhs-settings-over'), false);
     assert.equal(win.loads, 0);
     assert.equal(win.listenerCount(), before);
     assert.equal(win.navigator.mediaSession.handlers.play, undefined);
@@ -177,7 +177,7 @@ test('Esc while a confirm dialog is open leaves Settings open and the event alon
     assert.equal(e.defaultPrevented, false);
     assert.equal(e.stopped, false);
     assert.equal(calls.close, 0);
-    assert.equal(doc.body.classList.contains('bab-settings-over'), true);
+    assert.equal(doc.body.classList.contains('rhs-settings-over'), true);
     assert.equal(settings.getAttribute('aria-modal'), 'true');
 });
 

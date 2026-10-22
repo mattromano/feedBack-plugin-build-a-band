@@ -160,9 +160,9 @@ export function createBandScreen({
     }
 
     function renderSong() {
-        $('.bab-title').textContent = song ? (song.title || song.filename) : 'Pick a song';
-        $('.bab-artist').textContent = song ? (song.artist || '') : '';
-        const art = $('.bab-art-img');
+        $('.rhs-title').textContent = song ? (song.title || song.filename) : 'Pick a song';
+        $('.rhs-artist').textContent = song ? (song.artist || '') : '';
+        const art = $('.rhs-art-img');
         const file = song && song.filename ? song.filename : null;
         if (art && file !== artFile) {
             artFile = file;
@@ -170,12 +170,12 @@ export function createBandScreen({
             if (file) art.src = `/api/song/${encodeURIComponent(file)}/art`;
             art.hidden = !file;
         }
-        const chips = $('.bab-chips');
+        const chips = $('.rhs-chips');
         chips.replaceChildren();
         if (!song) return;
         for (const c of songChips(song, { showAuto: showAuto() })) {
             const span = doc.createElement('span');
-            span.className = c.good ? 'bab-chip bab-good' : 'bab-chip';
+            span.className = c.good ? 'rhs-chip rhs-good' : 'rhs-chip';
             span.textContent = c.label;
             chips.appendChild(span);
         }
@@ -193,7 +193,7 @@ export function createBandScreen({
         if (!m) return;
         const usable = !!micHitApi();
         const db = prefs.parts.vocals.micHitDb;
-        m.block.classList.toggle('bab-disabled', !usable);
+        m.block.classList.toggle('rhs-disabled', !usable);
         m.slider.disabled = !usable;
         m.slider.value = String(db);
         m.tick.style.setProperty('left', meterPct(db));
@@ -228,16 +228,16 @@ export function createBandScreen({
             if (!c || !pp) continue;
             // The Setup column and the Confirm row of the same part.
             for (const el of $$(`[data-part="${part.id}"]`)) {
-                el.classList.toggle('bab-off', !c.on);
-                el.classList.toggle('bab-unavailable', c.unavailable);
-                const toggle = $('.bab-toggle', el);
+                el.classList.toggle('rhs-off', !c.on);
+                el.classList.toggle('rhs-unavailable', c.unavailable);
+                const toggle = $('.rhs-toggle', el);
                 if (toggle) toggle.setAttribute('aria-pressed', c.on ? 'true' : 'false');
-                for (const seg of $$('.bab-seg[data-field]', el)) {
+                for (const seg of $$('.rhs-seg[data-field]', el)) {
                     const field = seg.getAttribute('data-field');
                     const [value, off] = segState(field, c, pp);
                     renderSeg(seg, toDom(field, value), off);
                 }
-                const note = $('.bab-note', el);
+                const note = $('.rhs-note', el);
                 if (note) note.textContent = [c.note, inputNote[part.id]].filter(Boolean).join(' \u00b7 ');
             }
             renderDeviceLine(part.id);
@@ -245,32 +245,32 @@ export function createBandScreen({
         if (columns) columns.render(m.controllers);
         renderJoinSlot(status);
         renderMicHit();
-        renderSeg($('.bab-seg[data-field="failMode"]'), prefs.failMode);
-        $('input.bab-fullscreen').checked = !!prefs.fullScreenStage;
-        $('.bab-choose').disabled = !m.pickEnabled;
-        $('.bab-change').disabled = !m.pickEnabled;
-        $('.bab-setup-hint').textContent = m.setupHint;
-        const cont = $('.bab-continue');
+        renderSeg($('.rhs-seg[data-field="failMode"]'), prefs.failMode);
+        $('input.rhs-fullscreen').checked = !!prefs.fullScreenStage;
+        $('.rhs-choose').disabled = !m.pickEnabled;
+        $('.rhs-change').disabled = !m.pickEnabled;
+        $('.rhs-setup-hint').textContent = m.setupHint;
+        const cont = $('.rhs-continue');
         cont.hidden = !(lastResolved && song);
         cont.textContent = song ? `Continue with ${song.title || song.filename}` : '';
-        $('.bab-hint').textContent = goError || m.goHint;
-        $('.bab-go').disabled = !m.goEnabled;
+        $('.rhs-hint').textContent = goError || m.goHint;
+        $('.rhs-go').disabled = !m.goEnabled;
     }
 
     // "Press Start on a controller to join", or why it can't, plus a Set up link per
     // controller that needs one. Rebuilt only when what it says changes.
     function renderJoinSlot(status) {
-        const slot = $('.bab-joinslot');
+        const slot = $('.rhs-joinslot');
         if (!slot) return;
         const text = status.reason || JOIN_HINT;
         const sig = JSON.stringify([text, status.needsSetup.map((n) => [n.controllerKey, n.name, n.setupWith])]);
         if (sig === joinSlotSig) return;
         joinSlotSig = sig;
         const ico = doc.createElement('span');
-        ico.className = 'bab-ico';
+        ico.className = 'rhs-ico';
         ico.innerHTML = icon('gamepad-2', { size: 26 });
         const hint = doc.createElement('span');
-        hint.className = 'bab-join-text';
+        hint.className = 'rhs-join-text';
         hint.textContent = text;
         slot.replaceChildren(ico, hint);
         // One link per plugin that can set it up: "as guitar" (5-Fret), "as drum kit" (Drums).
@@ -278,7 +278,7 @@ export function createBandScreen({
             for (const kindId of n.setupWith || []) {
                 const b = doc.createElement('button');
                 b.type = 'button';
-                b.className = 'bab-setup-link';
+                b.className = 'rhs-setup-link';
                 const as = SETUP_AS[kindId];
                 b.textContent = `Set up ${n.name || n.controllerKey}` + (as ? ` ${as}` : '');
                 b.addEventListener('click', () => openControllerSetup(n.controllerKey, kindId));
@@ -399,19 +399,19 @@ export function createBandScreen({
     // every segment write through savePrefs.
     for (const part of PART_TYPES) {
         for (const el of $$(`[data-part="${part.id}"]`)) {
-            el.style.setProperty('--bab-c', part.color);
-            const name = $('.bab-part-name', el);
+            el.style.setProperty('--rhs-c', part.color);
+            const name = $('.rhs-part-name', el);
             if (name) name.textContent = part.label;
-            const ico = $('.bab-ico', el);
+            const ico = $('.rhs-ico', el);
             if (ico) ico.innerHTML = icon(part.icon, { size: 30 });
-            const toggle = $('.bab-toggle', el);
+            const toggle = $('.rhs-toggle', el);
             if (toggle) {
                 listen(toggle, 'click', () => {
                     save({ parts: { [part.id]: { on: !prefs.parts[part.id].on } } });
                     startLight(part.id);
                 });
             }
-            for (const seg of $$('.bab-seg[data-field]', el)) {
+            for (const seg of $$('.rhs-seg[data-field]', el)) {
                 const field = seg.getAttribute('data-field');
                 for (const b of $$('button[data-value]', seg)) {
                     listen(b, 'click', () => {
@@ -421,17 +421,17 @@ export function createBandScreen({
             }
         }
     }
-    for (const b of $$('button[data-value]', $('.bab-seg[data-field="failMode"]'))) {
+    for (const b of $$('button[data-value]', $('.rhs-seg[data-field="failMode"]'))) {
         listen(b, 'click', () => save({ failMode: b.getAttribute('data-value') }));
     }
-    const fsBox = $('input.bab-fullscreen');
+    const fsBox = $('input.rhs-fullscreen');
     listen(fsBox, 'change', () => save({ fullScreenStage: !!fsBox.checked }));
-    listen($('.bab-go'), 'click', () => { go(); });
-    listen($('.bab-choose'), 'click', () => openLibrary());
-    listen($('.bab-change'), 'click', () => openLibrary());
-    listen($('.bab-continue'), 'click', () => { if (song) setView('confirm'); });
-    listen($('.bab-setup-btn'), 'click', () => setView('setup'));
-    const artImg = $('.bab-art-img');
+    listen($('.rhs-go'), 'click', () => { go(); });
+    listen($('.rhs-choose'), 'click', () => openLibrary());
+    listen($('.rhs-change'), 'click', () => openLibrary());
+    listen($('.rhs-continue'), 'click', () => { if (song) setView('confirm'); });
+    listen($('.rhs-setup-btn'), 'click', () => setView('setup'));
+    const artImg = $('.rhs-art-img');
     if (artImg) listen(artImg, 'error', () => { artImg.hidden = true; });
 
     // Choose a song / Change song: the Song Library in pick mode. A picked
@@ -511,10 +511,10 @@ export function createBandScreen({
         const p = io[id];
         if (!p) return;
         p.text.textContent = STATE_LABEL[state] || SIGNAL_LABEL[id];
-        p.sig.classList.toggle('bab-warn', !!STATE_LABEL[state]);
+        p.sig.classList.toggle('rhs-warn', !!STATE_LABEL[state]);
         if (state !== 'live') {
-            p.sig.classList.remove('bab-lit');
-            p.light.style.setProperty('--bab-level', '0');
+            p.sig.classList.remove('rhs-lit');
+            p.light.style.setProperty('--rhs-level', '0');
         }
     }
 
@@ -524,7 +524,7 @@ export function createBandScreen({
         if (l) { try { l.stop(); } catch (_) { /* ignore */ } }
         if (id === 'drums') {
             if (flashTimer !== null) { clearTimeout(flashTimer); flashTimer = null; }
-            if (io.drums) io.drums.sig.classList.remove('bab-hit');
+            if (io.drums) io.drums.sig.classList.remove('rhs-hit');
         }
         if (id === 'vocals') stopMicHit();
         setSignal(id, null);
@@ -534,7 +534,7 @@ export function createBandScreen({
         micDetector = null;
         if (micFlashTimer !== null) { clearTimeout(micFlashTimer); micFlashTimer = null; }
         if (!mic) return;
-        mic.light.classList.remove('bab-hit');
+        mic.light.classList.remove('rhs-hit');
         mic.level.style.setProperty('width', '0%');
     }
 
@@ -551,9 +551,9 @@ export function createBandScreen({
         // and the level bar keeps running.
         try { hit = micDetector.push(db, at); } catch (_) { micDetector = null; return; }
         if (!hit) return;
-        mic.light.classList.add('bab-hit');
+        mic.light.classList.add('rhs-hit');
         if (micFlashTimer !== null) clearTimeout(micFlashTimer);
-        micFlashTimer = setTimeout(() => { micFlashTimer = null; mic.light.classList.remove('bab-hit'); }, MIC_HIT_FLASH_MS);
+        micFlashTimer = setTimeout(() => { micFlashTimer = null; mic.light.classList.remove('rhs-hit'); }, MIC_HIT_FLASH_MS);
     }
 
     function stopLights() {
@@ -563,9 +563,9 @@ export function createBandScreen({
     function padHit() {
         if (!shown()) { stopLights(); return; }
         const sig = io.drums.sig;
-        sig.classList.add('bab-hit');
+        sig.classList.add('rhs-hit');
         if (flashTimer !== null) clearTimeout(flashTimer);
-        flashTimer = setTimeout(() => { flashTimer = null; sig.classList.remove('bab-hit'); }, PAD_FLASH_MS);
+        flashTimer = setTimeout(() => { flashTimer = null; sig.classList.remove('rhs-hit'); }, PAD_FLASH_MS);
         // Any drum pad also starts the song.
         go();
     }
@@ -599,8 +599,8 @@ export function createBandScreen({
             onLevel: (v, t) => {
                 if (!shown()) { stopLights(); return; }
                 if (id === 'vocals') micReading(v, t);
-                p.light.style.setProperty('--bab-level', Math.min(1, v * 5).toFixed(3));
-                p.sig.classList.toggle('bab-lit', v > LIT_LEVEL);
+                p.light.style.setProperty('--rhs-level', Math.min(1, v * 5).toFixed(3));
+                p.sig.classList.toggle('rhs-lit', v > LIT_LEVEL);
             },
             onState: (state) => setSignal(id, state),
             schedule: (fn) => win.requestAnimationFrame(fn),
@@ -641,8 +641,8 @@ export function createBandScreen({
 
     // Confirm's "Input: USB Guitar" line, from the same list as the Setup select.
     function renderDeviceLine(id) {
-        const row = $(`.bab-part[data-part="${id}"]`);
-        const line = row && $('.bab-part-device', row);
+        const row = $(`.rhs-part[data-part="${id}"]`);
+        const line = row && $('.rhs-part-device', row);
         if (!line || !(id in DEVICE_FIELD)) return;
         const key = prefs.parts[id][DEVICE_FIELD[id]] || '';
         const hit = key && (lists[id] || []).find((i) => i.key === key);
@@ -715,22 +715,22 @@ export function createBandScreen({
 
     for (const part of PART_TYPES) {
         if (!(part.id in DEVICE_FIELD)) continue;
-        const col = $(`.bab-col[data-part="${part.id}"]`);
-        const box = col && $('.bab-input', col);
-        const sig = col && $('.bab-signal', col);
+        const col = $(`.rhs-col[data-part="${part.id}"]`);
+        const box = col && $('.rhs-input', col);
+        const sig = col && $('.rhs-signal', col);
         if (!box || !sig) continue;
         const label = doc.createElement('span');
-        label.className = 'bab-label';
+        label.className = 'rhs-label';
         label.textContent = INPUT_LABEL[part.id];
         const select = doc.createElement('select');
-        select.className = 'bab-device';
+        select.className = 'rhs-device';
         select.setAttribute('aria-label', `${part.label} ${INPUT_LABEL[part.id].toLowerCase()}`);
         box.replaceChildren(label, select);
         let find = null;
         if (part.id === 'drums') {
             find = doc.createElement('button');
             find.type = 'button';
-            find.className = 'bab-findkit';
+            find.className = 'rhs-findkit';
             find.textContent = 'Find my kit';
             box.appendChild(find);
             listen(find, 'click', () => {
@@ -744,9 +744,9 @@ export function createBandScreen({
             });
         }
         const light = doc.createElement('span');
-        light.className = 'bab-light';
+        light.className = 'rhs-light';
         const text = doc.createElement('span');
-        text.className = 'bab-signal-label';
+        text.className = 'rhs-signal-label';
         sig.replaceChildren(light, text);
         io[part.id] = { select, find, sig, light, text };
         setSignal(part.id, null);
@@ -755,12 +755,12 @@ export function createBandScreen({
     }
 
     // Mic-hit sensitivity: the slider saves and retunes the live detector.
-    const micBlock = $('.bab-michit');
+    const micBlock = $('.rhs-michit');
     if (micBlock) {
-        const meter = $('.bab-michit-meter', micBlock);
+        const meter = $('.rhs-michit-meter', micBlock);
         mic = {
-            block: micBlock, slider: $('.bab-michit-db', micBlock), level: $('i', meter),
-            tick: $('b', meter), light: $('.bab-michit-light', micBlock), text: $('.bab-michit-text', micBlock),
+            block: micBlock, slider: $('.rhs-michit-db', micBlock), level: $('i', meter),
+            tick: $('b', meter), light: $('.rhs-michit-light', micBlock), text: $('.rhs-michit-text', micBlock),
         };
         listen(mic.slider, 'change', () => {
             const v = Number(mic.slider.value);
@@ -805,7 +805,7 @@ export function createBandScreen({
     }
 
     columns = createControllerColumns({
-        doc, setupHost: $('.bab-ctlcols'), confirmHost: $('.bab-ctlparts'),
+        doc, setupHost: $('.rhs-ctlcols'), confirmHost: $('.rhs-ctlparts'),
         onChange: (key, patch) => save({ controllers: updateController(prefs.controllers, key, patch) }),
         onLeave: (key) => {
             save({ controllers: leaveController(prefs.controllers, key) });

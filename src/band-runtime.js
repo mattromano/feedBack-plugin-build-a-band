@@ -50,7 +50,7 @@ const SPLIT_POLL_MS = 50;
 const SPLIT_POLL_MAX = 100;
 // A backward song:seek further than this rewinds the band score (plan 4 R2).
 const REWIND_MIN_S = 0.05;
-const BAND_SONG_CLASS = 'bab-band-song';
+const BAND_SONG_CLASS = 'rhs-band-song';
 const DRUM_JUDGMENTS = ['hit', 'miss', 'overhit'];
 // The overdrive tick while the song plays (plan 5 R16).
 const OD_TICK_MS = 100;
@@ -280,7 +280,7 @@ export function createBandRuntime({
     }
 
     // The chrome sits on the stage, so it goes with every unmount: full mode's
-    // CSS (#player.bab-full) never outlives the stage into solo play.
+    // CSS (#player.rhs-full) never outlives the stage into solo play.
     function unmountStage(s) {
         if (s) destroyChrome(s);
         if (!stage) return;
@@ -1115,7 +1115,7 @@ export function createBandRuntime({
             // session runs without it (teardown puts the saved value back).
             safe(() => storage.setItem(SPLIT_KEY, 'false'));
             // Band songs always count in (R15), drawn by the band's overlay
-            // over core's own, which body.bab-band-song hides. Core counts in
+            // over core's own, which body.rhs-band-song hides. Core counts in
             // from its song:ready listener, before the stage mounts, so both
             // are up from the start of the session.
             if (typeof fb.setSongCountInOverride === 'function') {

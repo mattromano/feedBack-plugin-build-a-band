@@ -30,7 +30,7 @@ function setup({ parts = ['guitar', 'drums'], strip = false, oneLevel = false, l
     const hud = createBandHud({
         doc, player, stage, parts, prefs: PREFS, song: { title: 'Holiday', artist: 'Green Day' }, oneLevel,
     });
-    const partHud = (p) => player.querySelector(`.bab-part-hud[data-part="${p}"]`);
+    const partHud = (p) => player.querySelector(`.rhs-part-hud[data-part="${p}"]`);
     return { doc, player, slots, stripSlot, hud, partHud };
 }
 
@@ -48,62 +48,62 @@ function snap(over = {}, parts = {}) {
 
 test('builds the bar and one HUD per playing part', () => {
     const { player, slots, hud, partHud } = setup();
-    assert.equal(player.querySelectorAll('.bab-hud').length, 1);
-    assert.equal(player.querySelectorAll('.bab-part-hud').length, 2);
-    assert.equal(player.querySelector('.bab-hud-song').textContent, 'Holiday · Green Day');
+    assert.equal(player.querySelectorAll('.rhs-hud').length, 1);
+    assert.equal(player.querySelectorAll('.rhs-part-hud').length, 2);
+    assert.equal(player.querySelector('.rhs-hud-song').textContent, 'Holiday · Green Day');
     assert.equal(partHud('guitar').parentNode, slots.guitar);
     assert.equal(partHud('drums').parentNode, slots.drums);
-    assert.equal(partHud('guitar').style.props['--bab-c'], '#f5c542');
-    assert.equal(partHud('drums').style.props['--bab-c'], '#e0533d');
-    assert.equal(partHud('guitar').querySelector('.bab-tag').textContent, 'Lead · Hard');
-    assert.ok(partHud('guitar').querySelector('.bab-tag').innerHTML.includes('<svg'), 'tag icon');
-    assert.equal(partHud('drums').querySelector('.bab-tag').textContent, 'Drums · Expert');
-    assert.equal(partHud('guitar').querySelector('.bab-od').querySelector('i').style.width, '0%');
-    assert.equal(player.querySelectorAll('.bab-star').length, 5);
+    assert.equal(partHud('guitar').style.props['--rhs-c'], '#f5c542');
+    assert.equal(partHud('drums').style.props['--rhs-c'], '#e0533d');
+    assert.equal(partHud('guitar').querySelector('.rhs-tag').textContent, 'Lead · Hard');
+    assert.ok(partHud('guitar').querySelector('.rhs-tag').innerHTML.includes('<svg'), 'tag icon');
+    assert.equal(partHud('drums').querySelector('.rhs-tag').textContent, 'Drums · Expert');
+    assert.equal(partHud('guitar').querySelector('.rhs-od').querySelector('i').style.width, '0%');
+    assert.equal(player.querySelectorAll('.rhs-star').length, 5);
     hud.destroy();
 });
 
 test('one-level guitar charts say so in the tag', () => {
     const { hud, partHud } = setup({ parts: ['guitar'], oneLevel: true });
-    assert.equal(partHud('guitar').querySelector('.bab-tag').textContent, 'Lead · One level');
+    assert.equal(partHud('guitar').querySelector('.rhs-tag').textContent, 'Lead · One level');
     hud.destroy();
 });
 
 test('update shows score, band multiplier, bonus, crowd and multiplier', () => {
     const { player, hud, partHud } = setup();
-    const mult = player.querySelector('.bab-hud-mult');
+    const mult = player.querySelector('.rhs-hud-mult');
     assert.equal(mult.textContent, 'BAND ×1');
-    assert.equal(mult.classList.contains('bab-hot'), false);
-    assert.equal(player.querySelector('.bab-hud-bonus').textContent, '');
+    assert.equal(mult.classList.contains('rhs-hot'), false);
+    assert.equal(player.querySelector('.rhs-hud-bonus').textContent, '');
     hud.update(snap({ score: 1234, bonus: 87, bandMultiplier: 2 }, { guitar: { multiplier: 3, crowd: 0.66 }, drums: { crowd: 0.1 } }));
-    assert.equal(player.querySelector('.bab-hud-score').textContent, '1,234');
+    assert.equal(player.querySelector('.rhs-hud-score').textContent, '1,234');
     assert.equal(mult.textContent, 'BAND ×2');
-    assert.ok(mult.classList.contains('bab-hot'));
-    assert.equal(player.querySelector('.bab-hud-bonus').textContent, '+87 bonus');
-    assert.equal(partHud('guitar').querySelector('.bab-mult').textContent, '×3');
-    const crowd = partHud('guitar').querySelector('.bab-crowd').querySelector('i');
+    assert.ok(mult.classList.contains('rhs-hot'));
+    assert.equal(player.querySelector('.rhs-hud-bonus').textContent, '+87 bonus');
+    assert.equal(partHud('guitar').querySelector('.rhs-mult').textContent, '×3');
+    const crowd = partHud('guitar').querySelector('.rhs-crowd').querySelector('i');
     assert.equal(crowd.style.bottom, '66%');
-    assert.ok(crowd.classList.contains('bab-crowd-green'));
-    const drumsCrowd = partHud('drums').querySelector('.bab-crowd').querySelector('i');
+    assert.ok(crowd.classList.contains('rhs-crowd-green'));
+    const drumsCrowd = partHud('drums').querySelector('.rhs-crowd').querySelector('i');
     assert.equal(drumsCrowd.style.bottom, '10%');
-    assert.ok(drumsCrowd.classList.contains('bab-crowd-red'));
+    assert.ok(drumsCrowd.classList.contains('rhs-crowd-red'));
     hud.update(snap({ bandMultiplier: 1 }, { drums: { crowd: 0.4 } }));
-    assert.equal(mult.classList.contains('bab-hot'), false);
-    assert.equal(player.querySelector('.bab-hud-bonus').textContent, '');
-    assert.ok(drumsCrowd.classList.contains('bab-crowd-yellow'));
-    assert.equal(drumsCrowd.classList.contains('bab-crowd-red'), false);
+    assert.equal(mult.classList.contains('rhs-hot'), false);
+    assert.equal(player.querySelector('.rhs-hud-bonus').textContent, '');
+    assert.ok(drumsCrowd.classList.contains('rhs-crowd-yellow'));
+    assert.equal(drumsCrowd.classList.contains('rhs-crowd-red'), false);
     hud.destroy();
 });
 
 test('stars fill by share and turn gold at 6', () => {
     const { player, hud } = setup();
-    const fills = () => player.querySelectorAll('.bab-star-fill').map((f) => f.style.width);
+    const fills = () => player.querySelectorAll('.rhs-star-fill').map((f) => f.style.width);
     hud.update(snap({ stars: 2.5 }));
     assert.deepEqual(fills(), ['100%', '100%', '50%', '0%', '0%']);
-    assert.equal(player.querySelector('.bab-hud-stars').classList.contains('bab-gold'), false);
+    assert.equal(player.querySelector('.rhs-hud-stars').classList.contains('rhs-gold'), false);
     hud.update(snap({ stars: 6 }));
     assert.deepEqual(fills(), ['100%', '100%', '100%', '100%', '100%']);
-    assert.ok(player.querySelector('.bab-hud-stars').classList.contains('bab-gold'));
+    assert.ok(player.querySelector('.rhs-hud-stars').classList.contains('rhs-gold'));
     hud.update(snap({ stars: null }));
     assert.deepEqual(fills(), ['0%', '0%', '0%', '0%', '0%']);
     hud.destroy();
@@ -111,43 +111,43 @@ test('stars fill by share and turn gold at 6', () => {
 
 test('a streak milestone pops a callout', () => {
     const { hud, partHud } = setup();
-    const co = partHud('guitar').querySelector('.bab-callout');
+    const co = partHud('guitar').querySelector('.rhs-callout');
     hud.update(snap({}, { guitar: { streak: 49 } }));
     assert.equal(co.textContent, '');
-    assert.equal(co.classList.contains('bab-show'), false);
+    assert.equal(co.classList.contains('rhs-show'), false);
     hud.update(snap({}, { guitar: { streak: 50 } }));
     assert.equal(co.textContent, '50 NOTE STREAK!');
-    assert.ok(co.classList.contains('bab-show'));
-    assert.equal(partHud('drums').querySelector('.bab-callout').textContent, '');
+    assert.ok(co.classList.contains('rhs-show'));
+    assert.equal(partHud('drums').querySelector('.rhs-callout').textContent, '');
     hud.destroy();
 });
 
 test('the first update never pops a callout (a HUD rebuilt mid-song)', () => {
     const { hud, partHud } = setup();
     hud.update(snap({}, { guitar: { streak: 50 } }));
-    assert.equal(partHud('guitar').querySelector('.bab-callout').textContent, '');
+    assert.equal(partHud('guitar').querySelector('.rhs-callout').textContent, '');
     hud.destroy();
 });
 
 test('glow follows the streak and flashes when it breaks', () => {
     const { hud, partHud } = setup();
-    const glow = partHud('guitar').querySelector('.bab-glow');
-    assert.equal(glow.style.props['--bab-glow'], '0.15');
+    const glow = partHud('guitar').querySelector('.rhs-glow');
+    assert.equal(glow.style.props['--rhs-glow'], '0.15');
     hud.update(snap({}, { guitar: { streak: 25 } }));
-    assert.equal(glow.style.props['--bab-glow'], '0.575');
-    assert.equal(glow.classList.contains('bab-glow-miss'), false);
+    assert.equal(glow.style.props['--rhs-glow'], '0.575');
+    assert.equal(glow.classList.contains('rhs-glow-miss'), false);
     hud.update(snap({}, { guitar: { streak: 0 } }));
-    assert.equal(glow.style.props['--bab-glow'], '0.15');
-    assert.ok(glow.classList.contains('bab-glow-miss'));
+    assert.equal(glow.style.props['--rhs-glow'], '0.15');
+    assert.ok(glow.classList.contains('rhs-glow-miss'));
     hud.destroy();
 });
 
 test('callout() sets the text and shows it', () => {
     const { hud, partHud } = setup();
     hud.callout('drums', 'HELLO');
-    const co = partHud('drums').querySelector('.bab-callout');
+    const co = partHud('drums').querySelector('.rhs-callout');
     assert.equal(co.textContent, 'HELLO');
-    assert.ok(co.classList.contains('bab-show'));
+    assert.ok(co.classList.contains('rhs-show'));
     hud.callout('keys', 'nothing');
     hud.destroy();
 });
@@ -155,56 +155,56 @@ test('callout() sets the text and shows it', () => {
 test('setOverdrive fills the bar and writes only changes', () => {
     const { hud, partHud } = setup();
     hud.setOverdrive('guitar', 0.42, true);
-    assert.equal(partHud('guitar').querySelector('.bab-od').querySelector('i').style.width, '42%');
-    assert.ok(partHud('guitar').classList.contains('bab-od-active'));
+    assert.equal(partHud('guitar').querySelector('.rhs-od').querySelector('i').style.width, '42%');
+    assert.ok(partHud('guitar').classList.contains('rhs-od-active'));
     hud.setOverdrive('guitar', 2, false);
-    assert.equal(partHud('guitar').querySelector('.bab-od').querySelector('i').style.width, '100%');
-    assert.equal(partHud('guitar').classList.contains('bab-od-active'), false);
+    assert.equal(partHud('guitar').querySelector('.rhs-od').querySelector('i').style.width, '100%');
+    assert.equal(partHud('guitar').classList.contains('rhs-od-active'), false);
     hud.destroy();
 });
 
 test('overdrive bar, ready pulse and active glow', () => {
     const { hud, partHud } = setup();
-    const fill = partHud('guitar').querySelector('.bab-od').querySelector('i');
+    const fill = partHud('guitar').querySelector('.rhs-od').querySelector('i');
     hud.setOverdrive('guitar', 0.5, false);
     assert.equal(fill.style.width, '50%');
-    assert.equal(partHud('guitar').classList.contains('bab-od-active'), false);
+    assert.equal(partHud('guitar').classList.contains('rhs-od-active'), false);
     hud.setReady('guitar', true);
-    assert.ok(partHud('guitar').classList.contains('bab-od-ready'));
+    assert.ok(partHud('guitar').classList.contains('rhs-od-ready'));
     hud.setOverdrive('guitar', 0.4, true);
-    assert.ok(partHud('guitar').classList.contains('bab-od-active'));
+    assert.ok(partHud('guitar').classList.contains('rhs-od-active'));
     hud.setReady('guitar', false);
-    assert.equal(partHud('guitar').classList.contains('bab-od-ready'), false);
-    assert.equal(partHud('drums').classList.contains('bab-od-ready'), false);
+    assert.equal(partHud('guitar').classList.contains('rhs-od-ready'), false);
+    assert.equal(partHud('drums').classList.contains('rhs-od-ready'), false);
     hud.destroy();
 });
 
 test('noodle zone only on guitar', () => {
     const { hud, partHud } = setup();
-    assert.equal(partHud('guitar').querySelectorAll('.bab-noodle-zone').length, 1);
-    assert.equal(partHud('guitar').querySelector('.bab-noodle-zone').getAttribute('aria-hidden'), 'true');
-    assert.equal(partHud('drums').querySelectorAll('.bab-noodle-zone').length, 0);
+    assert.equal(partHud('guitar').querySelectorAll('.rhs-noodle-zone').length, 1);
+    assert.equal(partHud('guitar').querySelector('.rhs-noodle-zone').getAttribute('aria-hidden'), 'true');
+    assert.equal(partHud('drums').querySelectorAll('.rhs-noodle-zone').length, 0);
     hud.setNoodle(true);
-    assert.ok(partHud('guitar').classList.contains('bab-noodle'));
-    assert.equal(partHud('drums').classList.contains('bab-noodle'), false);
+    assert.ok(partHud('guitar').classList.contains('rhs-noodle'));
+    assert.equal(partHud('drums').classList.contains('rhs-noodle'), false);
     hud.setNoodle(false);
-    assert.equal(partHud('guitar').classList.contains('bab-noodle'), false);
+    assert.equal(partHud('guitar').classList.contains('rhs-noodle'), false);
     hud.destroy();
 });
 
 test('dropped out greys the lane and the HUD; destroy clears it', () => {
     const { slots, hud, partHud } = setup();
     hud.setFailed('drums', true);
-    assert.ok(partHud('drums').classList.contains('bab-failed'));
-    assert.ok(slots.drums.classList.contains('bab-failed'));
-    assert.equal(slots.guitar.classList.contains('bab-failed'), false);
+    assert.ok(partHud('drums').classList.contains('rhs-failed'));
+    assert.ok(slots.drums.classList.contains('rhs-failed'));
+    assert.equal(slots.guitar.classList.contains('rhs-failed'), false);
     hud.setFailed('drums', false);
-    assert.equal(slots.drums.classList.contains('bab-failed'), false);
+    assert.equal(slots.drums.classList.contains('rhs-failed'), false);
     hud.setFailed('drums', true);
     hud.setFailed('guitar', true);
     hud.destroy();
-    assert.equal(slots.drums.classList.contains('bab-failed'), false);
-    assert.equal(slots.guitar.classList.contains('bab-failed'), false);
+    assert.equal(slots.drums.classList.contains('rhs-failed'), false);
+    assert.equal(slots.guitar.classList.contains('rhs-failed'), false);
 });
 
 test('unknown parts and a destroyed HUD are ignored', () => {
@@ -226,30 +226,30 @@ test('guitar-less band: setNoodle is a no-op', () => {
 });
 
 test('CSS: overdrive blue, noodle zone, dropped-out grey and reduced motion', () => {
-    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
-    assert.match(css, /\.bab-od-ready \.bab-od \{[^}]*#5cc8ff/);
-    assert.match(css, /\.bab-noodle-zone \{[^}]*display: none/);
-    assert.match(css, /\.bab-noodle \.bab-noodle-zone \{[^}]*display: block/);
-    assert.match(css, /\.bab-lane\.bab-failed, #player \.bab-strip\.bab-failed \{[^}]*filter: grayscale\(1\) brightness\(0\.6\)/);
-    assert.match(css, /\.bab-part-hud\.bab-failed \.bab-tag::after \{[^}]*content: ' · OUT'/);
-    const rm = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce) {\n    #player .bab-callout'));
-    assert.match(rm.slice(0, rm.indexOf('@keyframes bab-fade')), /bab-od-ready[^}]*animation: none/);
+    const css = readFileSync(new URL('../assets/rockherosmith.css', import.meta.url), 'utf8');
+    assert.match(css, /\.rhs-od-ready \.rhs-od \{[^}]*#5cc8ff/);
+    assert.match(css, /\.rhs-noodle-zone \{[^}]*display: none/);
+    assert.match(css, /\.rhs-noodle \.rhs-noodle-zone \{[^}]*display: block/);
+    assert.match(css, /\.rhs-lane\.rhs-failed, #player \.rhs-strip\.rhs-failed \{[^}]*filter: grayscale\(1\) brightness\(0\.6\)/);
+    assert.match(css, /\.rhs-part-hud\.rhs-failed \.rhs-tag::after \{[^}]*content: ' · OUT'/);
+    const rm = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce) {\n    #player .rhs-callout'));
+    assert.match(rm.slice(0, rm.indexOf('@keyframes rhs-fade')), /rhs-od-ready[^}]*animation: none/);
 });
 
 test('the vocals HUD lives in the strip slot', () => {
     const { stripSlot, hud, partHud } = setup({ parts: ['guitar', 'vocals'], strip: true });
     assert.equal(partHud('vocals').parentNode, stripSlot);
-    assert.equal(partHud('vocals').style.props['--bab-c'], '#a678ff');
-    assert.equal(partHud('vocals').querySelector('.bab-tag').textContent, 'Vocals · Medium');
+    assert.equal(partHud('vocals').style.props['--rhs-c'], '#a678ff');
+    assert.equal(partHud('vocals').querySelector('.rhs-tag').textContent, 'Vocals · Medium');
     hud.update(snap({}, { vocals: { streak: 4 } }));
     hud.update(snap({}, { vocals: { streak: 5 } }));
-    assert.equal(partHud('vocals').querySelector('.bab-callout').textContent, '5 PHRASE STREAK!');
+    assert.equal(partHud('vocals').querySelector('.rhs-callout').textContent, '5 PHRASE STREAK!');
     hud.destroy();
 });
 
 test('parts without a host element are skipped', () => {
     const { player, hud } = setup({ parts: ['guitar', 'drums', 'vocals'], lanes: ['guitar'] });
-    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1);
+    assert.equal(player.querySelectorAll('.rhs-part-hud').length, 1);
     hud.update(snap({}, { drums: { streak: 50 } }));
     hud.callout('drums', 'x');
     hud.setOverdrive('vocals', 1, true);
@@ -258,35 +258,35 @@ test('parts without a host element are skipped', () => {
 
 test('the crowd marker starts at R6\'s 0.66 before any update', () => {
     const { hud, partHud } = setup();
-    const marker = partHud('drums').querySelector('.bab-crowd').querySelector('i');
+    const marker = partHud('drums').querySelector('.rhs-crowd').querySelector('i');
     assert.equal(marker.style.bottom, '66%');
-    assert.ok(marker.classList.contains('bab-crowd-green'));
+    assert.ok(marker.classList.contains('rhs-crowd-green'));
     hud.destroy();
 });
 
 test('a silent update writes values but pops no callout and no miss flash', () => {
     const { player, hud, partHud } = setup();
-    const co = partHud('guitar').querySelector('.bab-callout');
-    const glow = partHud('drums').querySelector('.bab-glow');
+    const co = partHud('guitar').querySelector('.rhs-callout');
+    const glow = partHud('drums').querySelector('.rhs-glow');
     hud.update(snap({}, { guitar: { streak: 49 }, drums: { streak: 12 } }));
     hud.update(snap({ score: 900 }, { guitar: { streak: 50 }, drums: { streak: 0 } }), { silent: true });
-    assert.equal(player.querySelector('.bab-hud-score').textContent, '900');
-    assert.equal(glow.style.props['--bab-glow'], '0.15');
+    assert.equal(player.querySelector('.rhs-hud-score').textContent, '900');
+    assert.equal(glow.style.props['--rhs-glow'], '0.15');
     assert.equal(co.textContent, '');
-    assert.equal(co.classList.contains('bab-show'), false);
-    assert.equal(glow.classList.contains('bab-glow-miss'), false);
+    assert.equal(co.classList.contains('rhs-show'), false);
+    assert.equal(glow.classList.contains('rhs-glow-miss'), false);
     // The next live update compares against the silent snapshot.
     hud.update(snap({}, { guitar: { streak: 51 }, drums: { streak: 0 } }));
     assert.equal(co.textContent, '');
-    assert.equal(glow.classList.contains('bab-glow-miss'), false);
+    assert.equal(glow.classList.contains('rhs-glow-miss'), false);
     hud.destroy();
 });
 
 test('CSS: the bar sits at z-index 20 and core\'s section map is click-through on the stage until the hover chrome shows', () => {
-    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
-    const map = css.match(/#player\.bab-stage #section-map \{[^}]*\}/);
+    const css = readFileSync(new URL('../assets/rockherosmith.css', import.meta.url), 'utf8');
+    const map = css.match(/#player\.rhs-stage #section-map \{[^}]*\}/);
     assert.ok(map && /opacity: 0;/.test(map[0]) && /pointer-events: none;/.test(map[0]), 'section map hidden and click-through');
-    const bar = css.match(/#player \.bab-hud \{[^}]*\}/);
+    const bar = css.match(/#player \.rhs-hud \{[^}]*\}/);
     assert.ok(bar && /z-index: 20;/.test(bar[0]), 'bar z-index 20');
 });
 
@@ -295,8 +295,8 @@ test('destroy removes everything', () => {
     const before = player.querySelectorAll('*').length;
     assert.ok(before > 2);
     hud.destroy();
-    assert.equal(player.querySelector('.bab-hud'), null);
-    assert.equal(player.querySelectorAll('.bab-part-hud').length, 0);
+    assert.equal(player.querySelector('.rhs-hud'), null);
+    assert.equal(player.querySelectorAll('.rhs-part-hud').length, 0);
     assert.equal(slots.guitar.children.length, 0);
     assert.equal(slots.drums.children.length, 0);
     hud.destroy();
@@ -320,16 +320,16 @@ function ctlSetup() {
     const stage = { laneSlot: (p) => slots[p] || null, stripSlot: null };
     const parts = ['guitar', 'ctl1', 'ctl2'];
     const hud = createBandHud({ doc, player, stage, parts, prefs: CTL_PREFS, song: {}, oneLevel: false });
-    return { player, slots, hud, partHud: (p) => player.querySelector(`.bab-part-hud[data-part="${p}"]`) };
+    return { player, slots, hud, partHud: (p) => player.querySelector(`.rhs-part-hud[data-part="${p}"]`) };
 }
 
 test('controller lane tag and colour', () => {
     const { partHud, slots, hud } = ctlSetup();
     assert.equal(partHud('ctl1').parentNode, slots.ctl1);
-    assert.equal(partHud('ctl1').querySelector('.bab-tag').textContent, 'Bass (5-Fret) · Expert · Guitar Hero · AUTO CHART');
-    assert.equal(partHud('ctl2').querySelector('.bab-tag').textContent, 'Lead (5-Fret) · Easy · Xbox pad');
-    assert.equal(partHud('ctl1').style.props['--bab-c'], '#2ecc40');
-    assert.ok(partHud('ctl1').querySelector('.bab-tag').innerHTML.includes('<svg'), 'tag icon');
+    assert.equal(partHud('ctl1').querySelector('.rhs-tag').textContent, 'Bass (5-Fret) · Expert · Guitar Hero · AUTO CHART');
+    assert.equal(partHud('ctl2').querySelector('.rhs-tag').textContent, 'Lead (5-Fret) · Easy · Xbox pad');
+    assert.equal(partHud('ctl1').style.props['--rhs-c'], '#2ecc40');
+    assert.ok(partHud('ctl1').querySelector('.rhs-tag').innerHTML.includes('<svg'), 'tag icon');
     hud.destroy();
 });
 
@@ -341,18 +341,18 @@ test('controller streak callouts every 50', () => {
     });
     hud.update(s(49));
     hud.update(s(50));
-    assert.equal(partHud('ctl1').querySelector('.bab-callout').textContent, '50 NOTE STREAK!');
-    assert.equal(partHud('ctl2').querySelector('.bab-callout').textContent, '');
+    assert.equal(partHud('ctl1').querySelector('.rhs-callout').textContent, '50 NOTE STREAK!');
+    assert.equal(partHud('ctl2').querySelector('.rhs-callout').textContent, '');
     hud.destroy();
 });
 
 test('fixed-part labels unchanged', () => {
     const { partHud, hud } = ctlSetup();
-    assert.equal(partHud('guitar').querySelector('.bab-tag').textContent, 'Lead · Hard');
+    assert.equal(partHud('guitar').querySelector('.rhs-tag').textContent, 'Lead · Hard');
     hud.destroy();
     const v = setup({ parts: ['guitar', 'drums', 'vocals'], strip: true });
-    assert.equal(v.partHud('vocals').querySelector('.bab-tag').textContent, 'Vocals · Medium');
-    assert.equal(v.partHud('drums').querySelector('.bab-tag').textContent, 'Drums · Expert');
+    assert.equal(v.partHud('vocals').querySelector('.rhs-tag').textContent, 'Vocals · Medium');
+    assert.equal(v.partHud('drums').querySelector('.rhs-tag').textContent, 'Drums · Expert');
     v.hud.destroy();
 });
 
@@ -372,15 +372,15 @@ function drumCtlSetup() {
     for (const s of Object.values(slots)) player.appendChild(s);
     const stage = { laneSlot: (p) => slots[p] || null, stripSlot: null };
     const hud = createBandHud({ doc, player, stage, parts: ['ctl1', 'ctl2'], prefs: DRUM_CTL_PREFS, song: {}, oneLevel: false });
-    return { hud, partHud: (p) => player.querySelector(`.bab-part-hud[data-part="${p}"]`) };
+    return { hud, partHud: (p) => player.querySelector(`.rhs-part-hud[data-part="${p}"]`) };
 }
 
 test('drums controller lane tag and colour', () => {
     const { partHud, hud } = drumCtlSetup();
-    assert.equal(partHud('ctl2').querySelector('.bab-tag').textContent, 'Drums (Controller) · Hard · Rock Band kit');
-    assert.equal(partHud('ctl2').style.props['--bab-c'], '#f28c28');
-    assert.ok(partHud('ctl2').querySelector('.bab-tag').innerHTML.includes('<svg'), 'tag icon');
-    assert.equal(partHud('ctl1').style.props['--bab-c'], '#2ecc40', '5-fret unchanged');
+    assert.equal(partHud('ctl2').querySelector('.rhs-tag').textContent, 'Drums (Controller) · Hard · Rock Band kit');
+    assert.equal(partHud('ctl2').style.props['--rhs-c'], '#f28c28');
+    assert.ok(partHud('ctl2').querySelector('.rhs-tag').innerHTML.includes('<svg'), 'tag icon');
+    assert.equal(partHud('ctl1').style.props['--rhs-c'], '#2ecc40', '5-fret unchanged');
     hud.destroy();
 });
 
@@ -392,7 +392,7 @@ test('drums controller streak callouts every 50', () => {
     });
     hud.update(s(49));
     hud.update(s(50));
-    assert.equal(partHud('ctl2').querySelector('.bab-callout').textContent, '50 NOTE STREAK!');
-    assert.equal(partHud('ctl1').querySelector('.bab-callout').textContent, '');
+    assert.equal(partHud('ctl2').querySelector('.rhs-callout').textContent, '50 NOTE STREAK!');
+    assert.equal(partHud('ctl1').querySelector('.rhs-callout').textContent, '');
     hud.destroy();
 });

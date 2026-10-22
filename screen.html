@@ -1,99 +1,99 @@
-<div id="build-a-band-root" class="bab-screen" data-view="setup">
-  <section class="bab-setup">
-    <h1 class="bab-step">Band setup</h1>
+<div id="rockherosmith-root" class="rhs-screen" data-view="setup">
+  <section class="rhs-setup">
+    <h1 class="rhs-step">Band setup</h1>
 
-    <div class="bab-cols">
-      <div class="bab-col" data-part="guitar">
-        <div class="bab-top"><span class="bab-ico"></span><h2 class="bab-part-name">Guitar</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Guitar on or off"></button></div>
-        <div class="bab-input"></div>
-        <div class="bab-signal"></div>
-        <div class="bab-note"></div>
+    <div class="rhs-cols">
+      <div class="rhs-col" data-part="guitar">
+        <div class="rhs-top"><span class="rhs-ico"></span><h2 class="rhs-part-name">Guitar</h2><button type="button" class="rhs-toggle" aria-pressed="true" aria-label="Guitar on or off"></button></div>
+        <div class="rhs-input"></div>
+        <div class="rhs-signal"></div>
+        <div class="rhs-note"></div>
       </div>
 
-      <div class="bab-col" data-part="drums">
-        <div class="bab-top"><span class="bab-ico"></span><h2 class="bab-part-name">Drums</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Drums on or off"></button></div>
-        <div class="bab-input"></div>
-        <div class="bab-signal"></div>
-        <div class="bab-note"></div>
+      <div class="rhs-col" data-part="drums">
+        <div class="rhs-top"><span class="rhs-ico"></span><h2 class="rhs-part-name">Drums</h2><button type="button" class="rhs-toggle" aria-pressed="true" aria-label="Drums on or off"></button></div>
+        <div class="rhs-input"></div>
+        <div class="rhs-signal"></div>
+        <div class="rhs-note"></div>
       </div>
 
-      <div class="bab-col" data-part="vocals">
-        <div class="bab-top"><span class="bab-ico"></span><h2 class="bab-part-name">Vocals</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Vocals on or off"></button></div>
-        <div class="bab-input"></div>
-        <div class="bab-field"><span class="bab-label">Hear myself</span>
-          <div class="bab-seg" data-field="hearMyself"><button type="button" data-value="on">On</button><button type="button" data-value="off">Off</button></div></div>
-        <div class="bab-signal"></div>
-        <div class="bab-michit">
-          <span class="bab-label">Mic hit</span>
-          <input type="range" class="bab-michit-db" min="-48" max="-12" step="3" value="-30" aria-label="Mic hit level">
-          <span class="bab-michit-meter"><i></i><b></b></span>
-          <span class="bab-michit-light"></span>
-          <span class="bab-michit-text">Tap the mic</span>
+      <div class="rhs-col" data-part="vocals">
+        <div class="rhs-top"><span class="rhs-ico"></span><h2 class="rhs-part-name">Vocals</h2><button type="button" class="rhs-toggle" aria-pressed="true" aria-label="Vocals on or off"></button></div>
+        <div class="rhs-input"></div>
+        <div class="rhs-field"><span class="rhs-label">Hear myself</span>
+          <div class="rhs-seg" data-field="hearMyself"><button type="button" data-value="on">On</button><button type="button" data-value="off">Off</button></div></div>
+        <div class="rhs-signal"></div>
+        <div class="rhs-michit">
+          <span class="rhs-label">Mic hit</span>
+          <input type="range" class="rhs-michit-db" min="-48" max="-12" step="3" value="-30" aria-label="Mic hit level">
+          <span class="rhs-michit-meter"><i></i><b></b></span>
+          <span class="rhs-michit-light"></span>
+          <span class="rhs-michit-text">Tap the mic</span>
         </div>
-        <div class="bab-note"></div>
+        <div class="rhs-note"></div>
       </div>
 
-      <div class="bab-ctlcols"></div>
-      <div class="bab-joinslot" aria-live="polite"></div>
+      <div class="rhs-ctlcols"></div>
+      <div class="rhs-joinslot" aria-live="polite"></div>
     </div>
 
-    <div class="bab-setupbar">
-      <div class="bab-field bab-failing"><span class="bab-label">Failing</span>
-        <div class="bab-seg" data-field="failMode"><button type="button" data-value="nofail">No fail</button><button type="button" data-value="fail">Fail on</button></div></div>
-      <label class="bab-fsbox"><input type="checkbox" class="bab-fullscreen" checked> Full screen stage</label>
-      <span class="bab-setup-hint"></span>
-      <button type="button" class="bab-continue" hidden></button>
-      <button type="button" class="bab-choose">Choose a song</button>
+    <div class="rhs-setupbar">
+      <div class="rhs-field rhs-failing"><span class="rhs-label">Failing</span>
+        <div class="rhs-seg" data-field="failMode"><button type="button" data-value="nofail">No fail</button><button type="button" data-value="fail">Fail on</button></div></div>
+      <label class="rhs-fsbox"><input type="checkbox" class="rhs-fullscreen" checked> Full screen stage</label>
+      <span class="rhs-setup-hint"></span>
+      <button type="button" class="rhs-continue" hidden></button>
+      <button type="button" class="rhs-choose">Choose a song</button>
     </div>
   </section>
 
-  <section class="bab-confirm">
-    <div class="bab-songhead">
-      <div class="bab-art"><img class="bab-art-img" alt="" hidden></div>
-      <div class="bab-songtext">
-        <h1 class="bab-title">Pick a song</h1>
-        <div class="bab-artist"></div>
+  <section class="rhs-confirm">
+    <div class="rhs-songhead">
+      <div class="rhs-art"><img class="rhs-art-img" alt="" hidden></div>
+      <div class="rhs-songtext">
+        <h1 class="rhs-title">Pick a song</h1>
+        <div class="rhs-artist"></div>
       </div>
-      <div class="bab-chips"></div>
-      <button type="button" class="bab-change">Change song</button>
+      <div class="rhs-chips"></div>
+      <button type="button" class="rhs-change">Change song</button>
     </div>
 
-    <div class="bab-parts">
-      <div class="bab-part" data-part="guitar">
-        <div class="bab-top"><span class="bab-ico"></span><h2 class="bab-part-name">Guitar</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Guitar on or off"></button></div>
-        <div class="bab-part-device"></div>
-        <div class="bab-field"><span class="bab-label">Part</span>
-          <div class="bab-seg" data-field="arrangement"><button type="button" data-value="Lead">Lead</button><button type="button" data-value="Rhythm">Rhythm</button><button type="button" data-value="Bass">Bass</button></div></div>
-        <div class="bab-field"><span class="bab-label">Difficulty</span>
-          <div class="bab-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
-        <div class="bab-note"></div>
+    <div class="rhs-parts">
+      <div class="rhs-part" data-part="guitar">
+        <div class="rhs-top"><span class="rhs-ico"></span><h2 class="rhs-part-name">Guitar</h2><button type="button" class="rhs-toggle" aria-pressed="true" aria-label="Guitar on or off"></button></div>
+        <div class="rhs-part-device"></div>
+        <div class="rhs-field"><span class="rhs-label">Part</span>
+          <div class="rhs-seg" data-field="arrangement"><button type="button" data-value="Lead">Lead</button><button type="button" data-value="Rhythm">Rhythm</button><button type="button" data-value="Bass">Bass</button></div></div>
+        <div class="rhs-field"><span class="rhs-label">Difficulty</span>
+          <div class="rhs-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
+        <div class="rhs-note"></div>
       </div>
 
-      <div class="bab-part" data-part="drums">
-        <div class="bab-top"><span class="bab-ico"></span><h2 class="bab-part-name">Drums</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Drums on or off"></button></div>
-        <div class="bab-part-device"></div>
-        <div class="bab-field"><span class="bab-label">Difficulty</span>
-          <div class="bab-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
-        <div class="bab-field"><span class="bab-label">Drum sound</span>
-          <div class="bab-seg" data-field="soundMode"><button type="button" data-value="song">Song drums</button><button type="button" data-value="rockband">Rock Band</button><button type="button" data-value="kit">My kit only</button></div></div>
-        <div class="bab-note"></div>
+      <div class="rhs-part" data-part="drums">
+        <div class="rhs-top"><span class="rhs-ico"></span><h2 class="rhs-part-name">Drums</h2><button type="button" class="rhs-toggle" aria-pressed="true" aria-label="Drums on or off"></button></div>
+        <div class="rhs-part-device"></div>
+        <div class="rhs-field"><span class="rhs-label">Difficulty</span>
+          <div class="rhs-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
+        <div class="rhs-field"><span class="rhs-label">Drum sound</span>
+          <div class="rhs-seg" data-field="soundMode"><button type="button" data-value="song">Song drums</button><button type="button" data-value="rockband">Rock Band</button><button type="button" data-value="kit">My kit only</button></div></div>
+        <div class="rhs-note"></div>
       </div>
 
-      <div class="bab-part" data-part="vocals">
-        <div class="bab-top"><span class="bab-ico"></span><h2 class="bab-part-name">Vocals</h2><button type="button" class="bab-toggle" aria-pressed="true" aria-label="Vocals on or off"></button></div>
-        <div class="bab-part-device"></div>
-        <div class="bab-field"><span class="bab-label">Difficulty</span>
-          <div class="bab-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
-        <div class="bab-note"></div>
+      <div class="rhs-part" data-part="vocals">
+        <div class="rhs-top"><span class="rhs-ico"></span><h2 class="rhs-part-name">Vocals</h2><button type="button" class="rhs-toggle" aria-pressed="true" aria-label="Vocals on or off"></button></div>
+        <div class="rhs-part-device"></div>
+        <div class="rhs-field"><span class="rhs-label">Difficulty</span>
+          <div class="rhs-seg" data-field="difficulty"><button type="button" data-value="easy">Easy</button><button type="button" data-value="medium">Medium</button><button type="button" data-value="hard">Hard</button><button type="button" data-value="expert">Expert</button></div></div>
+        <div class="rhs-note"></div>
       </div>
 
-      <div class="bab-ctlparts"></div>
+      <div class="rhs-ctlparts"></div>
     </div>
 
-    <div class="bab-gobar">
-      <button type="button" class="bab-setup-btn">Band setup</button>
-      <span class="bab-hint">Pick a song</span>
-      <button type="button" class="bab-go" disabled>GO</button>
+    <div class="rhs-gobar">
+      <button type="button" class="rhs-setup-btn">Band setup</button>
+      <span class="rhs-hint">Pick a song</span>
+      <button type="button" class="rhs-go" disabled>GO</button>
     </div>
   </section>
 </div>

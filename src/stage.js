@@ -124,15 +124,15 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     let split = clampSplit(prefs && prefs.split);
 
     // 2-3. Stage DOM.
-    player.classList.add('bab-stage');
+    player.classList.add('rhs-stage');
     const root = doc.createElement('div');
-    root.className = 'bab-lanes';
+    root.className = 'rhs-lanes';
     const slots = {};
     for (const part of lanes) {
         const slot = doc.createElement('div');
-        slot.className = 'bab-lane';
+        slot.className = 'rhs-lane';
         slot.dataset.part = part;
-        if (isControllerId(part)) slot.classList.add('bab-lane-ctl');
+        if (isControllerId(part)) slot.classList.add('rhs-lane-ctl');
         slots[part] = slot;
     }
     // Vocal strip slot: first child, full width under the HUD row.
@@ -140,20 +140,20 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     let stripSlot = null;
     if (rows.strip) {
         stripSlot = doc.createElement('div');
-        stripSlot.className = 'bab-strip';
+        stripSlot.className = 'rhs-strip';
         stripSlot.dataset.part = 'vocals';
         stripSlot.style.top = rows.strip.topPx + 'px';
         if (rows.strip.fill) stripSlot.style.bottom = '0px';
         else stripSlot.style.height = rows.strip.heightPx + 'px';
         root.appendChild(stripSlot);
     }
-    if (rows.lanesTopPx !== null) player.style.setProperty('--bab-lanes-top', rows.lanesTopPx + 'px');
+    if (rows.lanesTopPx !== null) player.style.setProperty('--rhs-lanes-top', rows.lanesTopPx + 'px');
     // Left to right: guitar | divider | drums, then the controller lanes in join order.
     for (const part of lanes) if (part !== 'drums' && !isControllerId(part)) root.appendChild(slots[part]);
     let divider = null;
     if (slots.drums && slots.guitar) {
         divider = doc.createElement('div');
-        divider.className = 'bab-divider';
+        divider.className = 'rhs-divider';
         divider.setAttribute('role', 'separator');
         divider.setAttribute('aria-orientation', 'vertical');
         divider.title = 'Drag to resize lanes';
@@ -162,7 +162,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     if (slots.drums) root.appendChild(slots.drums);
     for (const part of lanes) if (isControllerId(part)) root.appendChild(slots[part]);
     // The slot holding the main highway is see-through (CSS).
-    if (plan.mainPart && slots[plan.mainPart]) slots[plan.mainPart].classList.add('bab-lane-main');
+    if (plan.mainPart && slots[plan.mainPart]) slots[plan.mainPart].classList.add('rhs-lane-main');
 
     // Fret-number size: band mode has its own (prefs.labelScale). Applied for
     // this session only ({ persist: false }) so core's saved solo-play value is
@@ -197,7 +197,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     function applyZoom(part) {
         sizeBox(part);
         if (part === plan.mainPart) {
-            player.style.setProperty('--bab-main-zoom', String(zoom[part]));
+            player.style.setProperty('--rhs-main-zoom', String(zoom[part]));
             safe(() => mainHw.resize());
         } else if (part === 'drums' && drumHw) {
             if (drumCanvas) scaleDrumCanvas(drumCanvas);
@@ -242,7 +242,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         if (isControllerId(part)) {
             // No chrome: the lane width is the knob. The box is unzoomed.
             const box = doc.createElement('div');
-            box.className = 'bab-zoom-box';
+            box.className = 'rhs-zoom-box';
             box.style.width = '100%';
             box.style.height = '100%';
             boxes[part] = box;
@@ -250,18 +250,18 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             continue;
         }
         const chrome = doc.createElement('div');
-        chrome.className = 'bab-lane-chrome';
+        chrome.className = 'rhs-lane-chrome';
         if (part === 'guitar') {
             chrome.append(chromeLabel('Fret numbers'),
                 chromeBtn({ text: '−' }, 'Smaller fret numbers', labelStep(-LABEL_STEP)),
                 chromeBtn({ text: '+' }, 'Bigger fret numbers', labelStep(LABEL_STEP)));
         }
-        chrome.append(chromeLabel('Zoom', 'bab-chrome-zoom'),
+        chrome.append(chromeLabel('Zoom', 'rhs-chrome-zoom'),
             chromeBtn({ html: icon('zoom-out', { size: 14 }) }, 'Zoom out', zoomStep(part, -1)),
             chromeBtn({ html: icon('zoom-in', { size: 14 }) }, 'Zoom in', zoomStep(part, 1)));
         slots[part].appendChild(chrome);
         const box = doc.createElement('div');
-        box.className = 'bab-zoom-box';
+        box.className = 'rhs-zoom-box';
         boxes[part] = box;
         sizeBox(part);
         slots[part].appendChild(box);
@@ -274,7 +274,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         const footer = doc.getElementById('player-footer') || doc.getElementById('player-controls');
         const h = (footer ? footer.offsetHeight : 0) + 'px';
         root.style.bottom = h;
-        player.style.setProperty('--bab-transport-h', h);
+        player.style.setProperty('--rhs-transport-h', h);
     }
 
     function applyLayout() {
@@ -307,7 +307,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     // hidden for solo play.
     const mainHidden = !plan.mainPart;
     if (!mainHidden) {
-        player.style.setProperty('--bab-main-zoom', String(zoom[plan.mainPart]));
+        player.style.setProperty('--rhs-main-zoom', String(zoom[plan.mainPart]));
         safe(() => mainHw.setContainer(boxes[plan.mainPart]));
     }
 
@@ -366,7 +366,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     if (slots.drums && guitarMain) {
         try {
             drumCanvas = doc.createElement('canvas');
-            drumCanvas.className = 'bab-drum-canvas';
+            drumCanvas.className = 'rhs-drum-canvas';
             drumCanvas.style.cssText = 'width:100%;height:100%;display:block;';
             scaleDrumCanvas(drumCanvas);
             slots.drums.appendChild(drumCanvas);
@@ -422,7 +422,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             if (typeof factory !== 'function') throw new Error(kindId + ' lane renderer missing');
             if (typeof makeHighway !== 'function') throw new Error('createHighway missing');
             const canvas = doc.createElement('canvas');
-            canvas.className = 'bab-ctl-canvas';
+            canvas.className = 'rhs-ctl-canvas';
             placeLaneCanvas(canvas);
             slots[id].appendChild(canvas);
             lane.canvas = canvas;
@@ -471,7 +471,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     function endDrag() {
         if (!dragging) return;
         dragging = false;
-        root.classList.remove('bab-dragging');
+        root.classList.remove('rhs-dragging');
         win.removeEventListener('pointermove', onDragMove);
         win.removeEventListener('pointerup', onDragEnd);
         win.removeEventListener('pointercancel', onDragEnd);
@@ -484,7 +484,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         divider.addEventListener('pointerdown', (e) => {
             e.preventDefault();
             dragging = true;
-            root.classList.add('bab-dragging');
+            root.classList.add('rhs-dragging');
             win.addEventListener('pointermove', onDragMove);
             win.addEventListener('pointerup', onDragEnd);
             win.addEventListener('pointercancel', onDragEnd);
@@ -497,10 +497,10 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         for (const slot of Object.values(slots)) {
             const r = slot.getBoundingClientRect();
             const inside = e.clientX >= r.left && e.clientX < r.right && e.clientY >= r.top && e.clientY < r.bottom;
-            slot.classList.toggle('bab-hover', inside);
+            slot.classList.toggle('rhs-hover', inside);
         }
     }
-    function onPointerLeave() { for (const slot of Object.values(slots)) slot.classList.remove('bab-hover'); }
+    function onPointerLeave() { for (const slot of Object.values(slots)) slot.classList.remove('rhs-hover'); }
     if (lanes.length > 0) {
         player.addEventListener('pointermove', onPointerMove);
         player.addEventListener('pointerleave', onPointerLeave);
@@ -519,7 +519,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     // Vocals alone: setVisible(false) stops the main highway's drawing and the
     // class hides the last frame it left on the canvas.
     if (mainHidden) {
-        player.classList.add('bab-main-hidden');
+        player.classList.add('rhs-main-hidden');
         safe(() => mainHw.setVisible(false));
     }
 
@@ -585,14 +585,14 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             // 5-7. Main highway back to viewport sizing (or shown again).
             if (mainHidden) {
                 safe(() => mainHw.setVisible(null));
-                player.classList.remove('bab-main-hidden');
+                player.classList.remove('rhs-main-hidden');
             } else {
                 safe(() => mainHw.setContainer(null));
             }
-            safe(() => player.style.removeProperty('--bab-lanes-top'));
-            safe(() => player.style.removeProperty('--bab-main-zoom'));
-            safe(() => player.style.removeProperty('--bab-transport-h'));
-            player.classList.remove('bab-stage');
+            safe(() => player.style.removeProperty('--rhs-lanes-top'));
+            safe(() => player.style.removeProperty('--rhs-main-zoom'));
+            safe(() => player.style.removeProperty('--rhs-transport-h'));
+            player.classList.remove('rhs-stage');
             if (stripSlot) safe(() => stripSlot.remove());
             safe(() => root.remove());
             safe(() => mainHw.resize());

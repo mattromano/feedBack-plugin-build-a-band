@@ -1,4 +1,4 @@
-// The toast stack: a .bab-toasts column (role=status, aria-live=polite) in the host,
+// The toast stack: a .rhs-toasts column (role=status, aria-live=polite) in the host,
 // at most `max` toasts, oldest dropped first. The same text already showing restarts
 // its timer instead of stacking. The container is created on the first show and
 // removed by clear().
@@ -29,13 +29,13 @@ export function createToastStack({ doc, getHost, setTimer, clearTimer, ttlMs = 4
         if (!host) return;
         if (!box || box.parentNode !== host) {
             box = doc.createElement('div');
-            box.className = 'bab-toasts';
+            box.className = 'rhs-toasts';
             box.setAttribute('role', 'status');
             box.setAttribute('aria-live', 'polite');
             host.appendChild(box);
         }
         const el = doc.createElement('div');
-        el.className = 'bab-toast';
+        el.className = 'rhs-toast';
         el.textContent = t;
         box.appendChild(el);
         const item = { text: t, el, timer: null };

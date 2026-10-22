@@ -55,46 +55,46 @@ function setup(model = MODEL) {
 
 test('renders cards and both buttons', () => {
     const { host } = setup();
-    const root = host.querySelector('div.bab-results');
+    const root = host.querySelector('div.rhs-results');
     assert.ok(root);
     assert.equal(root.getAttribute('role'), 'dialog');
     assert.equal(root.getAttribute('aria-modal'), 'true');
-    assert.equal(root.querySelectorAll('.bab-card').length, 3);
-    assert.equal(root.querySelector('.bab-results-score').textContent, '412,880');
-    assert.equal(root.querySelector('.bab-results-sub').textContent, 'Everlong · Foo Fighters');
-    const stars = root.querySelector('.bab-results-stars');
-    assert.equal(stars.querySelectorAll('.bab-star').length, 5);
-    assert.equal(stars.classList.contains('bab-gold'), false);
-    const g = root.querySelector('.bab-card[data-part="guitar"]');
-    assert.equal(g.style.props['--bab-c'], '#f5c542');
-    assert.match(g.querySelector('.bab-card-icon').innerHTML, /<svg/);
-    assert.equal(g.querySelector('.bab-card-name').textContent, 'Guitar · Lead');
-    assert.equal(g.querySelector('.bab-card-diff').textContent, 'Hard');
-    assert.equal(g.querySelector('.bab-card-pct').textContent, '91%');
-    assert.deepEqual(g.querySelectorAll('.bab-stat').map((r) => r.children.map((c) => c.textContent)),
+    assert.equal(root.querySelectorAll('.rhs-card').length, 3);
+    assert.equal(root.querySelector('.rhs-results-score').textContent, '412,880');
+    assert.equal(root.querySelector('.rhs-results-sub').textContent, 'Everlong · Foo Fighters');
+    const stars = root.querySelector('.rhs-results-stars');
+    assert.equal(stars.querySelectorAll('.rhs-star').length, 5);
+    assert.equal(stars.classList.contains('rhs-gold'), false);
+    const g = root.querySelector('.rhs-card[data-part="guitar"]');
+    assert.equal(g.style.props['--rhs-c'], '#f5c542');
+    assert.match(g.querySelector('.rhs-card-icon').innerHTML, /<svg/);
+    assert.equal(g.querySelector('.rhs-card-name').textContent, 'Guitar · Lead');
+    assert.equal(g.querySelector('.rhs-card-diff').textContent, 'Hard');
+    assert.equal(g.querySelector('.rhs-card-pct').textContent, '91%');
+    assert.deepEqual(g.querySelectorAll('.rhs-stat').map((r) => r.children.map((c) => c.textContent)),
         [['Score', '168,420'], ['Best streak', '214']]);
-    assert.equal(g.querySelector('.bab-award').textContent, 'Best streak in the band');
-    assert.match(g.querySelector('.bab-award').querySelector('.bab-award-icon').innerHTML, /M6 9H4\.5/, 'the trophy icon');
-    assert.equal(root.querySelector('.bab-card[data-part="drums"]').querySelector('.bab-card-pct').textContent, '—');
-    const again = root.querySelector('button.bab-again');
-    const next = root.querySelector('button.bab-next');
+    assert.equal(g.querySelector('.rhs-award').textContent, 'Best streak in the band');
+    assert.match(g.querySelector('.rhs-award').querySelector('.rhs-award-icon').innerHTML, /M6 9H4\.5/, 'the trophy icon');
+    assert.equal(root.querySelector('.rhs-card[data-part="drums"]').querySelector('.rhs-card-pct').textContent, '—');
+    const again = root.querySelector('button.rhs-again');
+    const next = root.querySelector('button.rhs-next');
     assert.ok(again.textContent.includes('Play again'));
     assert.ok(next.textContent.includes('Next song'));
-    assert.match(again.querySelector('.bab-btn-icon').innerHTML, /<svg/);
-    assert.match(next.querySelector('.bab-btn-icon').innerHTML, /<svg/);
+    assert.match(again.querySelector('.rhs-btn-icon').innerHTML, /<svg/);
+    assert.match(next.querySelector('.rhs-btn-icon').innerHTML, /<svg/);
     assert.equal(next.type, 'button');
 });
 
 test('gold stars', () => {
     const { host } = setup({ ...MODEL, starDisplay: { full: 5, partial: 0, gold: true } });
-    assert.ok(host.querySelector('.bab-results-stars').classList.contains('bab-gold'));
+    assert.ok(host.querySelector('.rhs-results-stars').classList.contains('rhs-gold'));
 });
 
 test('Play again and Next song call back', () => {
     const { host, calls } = setup();
-    host.querySelector('button.bab-again').click();
+    host.querySelector('button.rhs-again').click();
     assert.deepEqual([calls.again, calls.next], [1, 0]);
-    host.querySelector('button.bab-next').click();
+    host.querySelector('button.rhs-next').click();
     assert.deepEqual([calls.again, calls.next], [1, 1]);
 });
 
@@ -129,7 +129,7 @@ test('Ctrl/Cmd/Alt+R and +Enter are left to the browser (reload is not Play agai
 test('hide removes the screen and the key listener', () => {
     const { host, win, calls, screen, key } = setup();
     screen.hide();
-    assert.equal(host.querySelector('.bab-results'), null);
+    assert.equal(host.querySelector('.rhs-results'), null);
     assert.equal(win.listenerCount(), 0);
     assert.equal(key(' ').defaultPrevented, false, 'Space reaches the player again');
     assert.equal(key('Enter').defaultPrevented, false);
@@ -140,16 +140,16 @@ test('hide removes the screen and the key listener', () => {
 
 test('the dialog takes focus: Next song, else the dialog root (tabindex -1)', () => {
     const { doc, host } = setup();
-    const root = host.querySelector('.bab-results');
+    const root = host.querySelector('.rhs-results');
     assert.equal(root.getAttribute('tabindex'), '-1');
-    assert.equal(doc.activeElement, host.querySelector('button.bab-next'));
+    assert.equal(doc.activeElement, host.querySelector('button.rhs-next'));
 });
 
 test("Space, arrows and [ ] + - = never reach the player behind the results", () => {
     const { doc, host, calls, key } = setup();
-    const card = host.querySelector('.bab-card');
+    const card = host.querySelector('.rhs-card');
     for (const k of [' ', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', '[', ']', '+', '-', '=']) {
-        for (const target of [doc.body, card, host.querySelector('button.bab-again')]) {
+        for (const target of [doc.body, card, host.querySelector('button.rhs-again')]) {
             const e = key(k, target);
             assert.equal(e.defaultPrevented, true, k);
         }
@@ -160,8 +160,8 @@ test("Space, arrows and [ ] + - = never reach the player behind the results", ()
 
 test('Tab and Shift+Tab wrap inside the dialog', () => {
     const { doc, host, key } = setup();
-    const again = host.querySelector('button.bab-again');
-    const next = host.querySelector('button.bab-next');
+    const again = host.querySelector('button.rhs-again');
+    const next = host.querySelector('button.rhs-next');
     assert.equal(doc.activeElement, next);
     assert.equal(key('Tab', next).defaultPrevented, true);
     assert.equal(doc.activeElement, again);
@@ -179,7 +179,7 @@ test('Tab and Shift+Tab wrap inside the dialog', () => {
 
 test('Enter on a focused Play again is Play again (native activation), not Next song', () => {
     const { host, calls, key } = setup();
-    const again = host.querySelector('button.bab-again');
+    const again = host.querySelector('button.rhs-again');
     const e = key('Enter', again);
     assert.equal(e.defaultPrevented, false, 'the button activates natively');
     assert.equal(calls.next, 0);
@@ -190,9 +190,9 @@ test('Enter on a focused Play again is Play again (native activation), not Next 
 
 test('Enter on the dialog root is Next song', () => {
     const { host, calls, key } = setup();
-    assert.equal(key('Enter', host.querySelector('.bab-results')).defaultPrevented, true);
+    assert.equal(key('Enter', host.querySelector('.rhs-results')).defaultPrevented, true);
     assert.equal(calls.next, 1);
-    key('Enter', host.querySelector('.bab-card'));
+    key('Enter', host.querySelector('.rhs-card'));
     assert.equal(calls.next, 1, 'other targets are left alone');
 });
 
@@ -216,15 +216,15 @@ test('a throw while attaching the dialog leaks no key listener', () => {
 
 test('a failed band shows the heading', () => {
     const { host } = setup({ ...MODEL, heading: 'Band failed' });
-    const root = host.querySelector('div.bab-results');
-    const h = root.querySelector('.bab-results-failed');
+    const root = host.querySelector('div.rhs-results');
+    const h = root.querySelector('.rhs-results-failed');
     assert.ok(h);
     assert.equal(h.textContent, 'Band failed');
-    const head = root.querySelector('.bab-results-head');
+    const head = root.querySelector('.rhs-results-head');
     assert.equal(head.children[0], h, 'above the stars');
     assert.ok(root.getAttribute('aria-label').startsWith('Band failed'));
-    const plain = setup({ ...MODEL, heading: '' }).host.querySelector('div.bab-results');
-    assert.equal(plain.querySelector('.bab-results-failed'), null);
+    const plain = setup({ ...MODEL, heading: '' }).host.querySelector('div.rhs-results');
+    assert.equal(plain.querySelector('.rhs-results-failed'), null);
     assert.equal(plain.getAttribute('aria-label'), 'Results: Everlong');
 });
 

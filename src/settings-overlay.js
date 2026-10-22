@@ -1,5 +1,5 @@
 // Settings over the paused song (plan 7 R9, R12). #settings shows fixed over #player
-// while body.bab-settings-over is set; the active screen stays the player, so nothing
+// while body.rhs-settings-over is set; the active screen stays the player, so nothing
 // tears the song down. As a modal dialog it makes core's shortcuts skip keys inside
 // it, gamepad-nav keep focus in it and drums stand down. Core's own back button is
 // hidden by the CSS; ours goes first and takes focus. Esc closes; the player's keys
@@ -10,7 +10,7 @@ import { holdMediaKeys } from './media-keys.js';
 import { PLAYER_KEYS } from './results-screen.js';
 import { contains, otherModalOpen, restoreFocus } from './modal-open.js';
 
-const OVER_CLASS = 'bab-settings-over';
+const OVER_CLASS = 'rhs-settings-over';
 const DIALOG_ATTRS = [['role', 'dialog'], ['aria-modal', 'true'], ['aria-label', 'Settings']];
 
 const warn = (e) => { console.warn('[rockherosmith] loadSettings failed', e); };
@@ -27,7 +27,7 @@ export function openSettingsOverlay({ doc, win, onClose }) {
 
     const back = doc.createElement('button');
     back.type = 'button';
-    back.className = 'bab-settings-back';
+    back.className = 'rhs-settings-back';
     back.textContent = 'Back to the song';
     back.addEventListener('click', () => close());
     settings.prepend(back);

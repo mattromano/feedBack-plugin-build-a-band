@@ -276,7 +276,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         // beside a guitar lane (drums alone draws on #highway), the strip.
         const on = (id) => !!(prefs.parts[id] && prefs.parts[id].on);
         const root = doc.createElement('div');
-        root.className = 'bab-stage-root';
+        root.className = 'rhs-stage-root';
         p.appendChild(root);
         const lanes = {};
         // drumLane false: the real stage's fallback to a guitar lane only.
@@ -284,7 +284,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         for (const id of laneParts) {
             if (!on(id)) continue;
             lanes[id] = doc.createElement('div');
-            lanes[id].className = 'bab-lane';
+            lanes[id].className = 'rhs-lane';
             root.appendChild(lanes[id]);
         }
         const drumCanvas = on('guitar') && on('drums') && drumLane ? doc.createElement('canvas') : null;
@@ -294,7 +294,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         for (const c of prefs.controllers || []) {
             if (!c || c.on !== true || failLanes.has(c.id)) continue;
             lanes[c.id] = doc.createElement('div');
-            lanes[c.id].className = 'bab-lane';
+            lanes[c.id].className = 'rhs-lane';
             ctlCanvas[c.id] = doc.createElement('canvas');
             lanes[c.id].appendChild(ctlCanvas[c.id]);
             root.appendChild(lanes[c.id]);
@@ -341,7 +341,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
 test('no Band button is injected any more', () => {
     const { rt, fb, doc } = setup();
     fb.emit('song:loaded', fb.currentSong);
-    assert.equal(doc.getElementById('bab-band-btn'), null);
+    assert.equal(doc.getElementById('rhs-band-btn'), null);
     assert.equal(rt.toggle, undefined);
     rt.dispose();
 });
@@ -379,12 +379,12 @@ test('a one-difficulty chart shows the toast and leaves mastery alone', () => {
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM, { hasPhraseData: false });
     assert.deepEqual(calls.setMastery, []);
-    const toast = player.querySelector('div.bab-toast');
+    const toast = player.querySelector('div.rhs-toast');
     assert.ok(toast);
     assert.equal(toast.textContent, 'This chart has one difficulty');
     assert.ok(timers.delays().includes(4000));
     timers.fire(4000);
-    assert.equal(player.querySelector('div.bab-toast'), null);
+    assert.equal(player.querySelector('div.rhs-toast'), null);
     rt.dispose();
 });
 
@@ -426,17 +426,17 @@ test('song:ended holds auto-exit and shows the results; Next song releases once 
     assert.equal(calls.hold, 1);
     assert.equal(calls.release, 0);
     assert.equal(rt.phase(), 'ending');
-    const results = player.querySelector('.bab-results');
+    const results = player.querySelector('.rhs-results');
     assert.ok(results, 'the results show in #player');
-    assert.equal(results.querySelector('.bab-results-sub').textContent, 'Everlong · Foo Fighters');
-    assert.deepEqual(results.querySelectorAll('.bab-card').map((c) => c.getAttribute('data-part')), ['guitar'], 'ITEM has no drum chart');
+    assert.equal(results.querySelector('.rhs-results-sub').textContent, 'Everlong · Foo Fighters');
+    assert.deepEqual(results.querySelectorAll('.rhs-card').map((c) => c.getAttribute('data-part')), ['guitar'], 'ITEM has no drum chart');
     assert.ok(!timers.delays().includes(1500), 'no 1.5 s exit');
     assert.equal(mounts[0].unmounted, 0, 'the stage stays under the results');
     rt.next();
     assert.equal(calls.release, 1);
     assert.equal(mounts[0].unmounted, 1);
     assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
-    assert.equal(player.querySelector('.bab-results'), null);
+    assert.equal(player.querySelector('.rhs-results'), null);
     assert.equal(rt.phase(), 'idle');
     rt.next();
     assert.equal(calls.release, 1, 'released once');
@@ -470,7 +470,7 @@ test('Play again tears down and starts the same song with the same prefs', async
     rt.again();
     assert.equal(calls.release, 0, 'the held exit is dropped, never released');
     assert.equal(mounts[0].unmounted, 1);
-    assert.equal(player.querySelector('.bab-results'), null);
+    assert.equal(player.querySelector('.rhs-results'), null);
     assert.deepEqual(calls.playSong, [['My%20Song.sloppak', 1], ['My%20Song.sloppak', 1]]);
     assert.deepEqual(calls.showScreen, []);
     assert.equal(rt.phase(), 'armed');
@@ -481,9 +481,9 @@ test('Play again tears down and starts the same song with the same prefs', async
     assert.equal(calls.hold, 1);
     fb.emit('song:ended', {});
     assert.equal(calls.hold, 2, 'the replayed session ends with results too');
-    assert.ok(player.querySelector('.bab-results'));
+    assert.ok(player.querySelector('.rhs-results'));
     rt.dispose();
-    assert.equal(player.querySelector('.bab-results'), null);
+    assert.equal(player.querySelector('.rhs-results'), null);
 });
 
 test('a Play again whose playSong rejects warns and leaves the runtime idle', async () => {
@@ -514,12 +514,12 @@ test('leaving while the results show tears down without releasing', () => {
         env.rt.startSession({ song: ITEM, prefs: prefsWith() });
         env.loadSong(ITEM);
         env.fb.emit('song:ended', {});
-        assert.ok(env.player.querySelector('.bab-results'));
+        assert.ok(env.player.querySelector('.rhs-results'));
         leave(env);
         assert.equal(env.rt.phase(), 'idle');
         assert.equal(env.calls.release, 0);
         assert.equal(env.mounts[0].unmounted, 1);
-        assert.equal(env.player.querySelector('.bab-results'), null);
+        assert.equal(env.player.querySelector('.rhs-results'), null);
         assert.deepEqual(env.calls.showScreen, []);
         env.rt.next();
         env.rt.again();
@@ -940,7 +940,7 @@ test('karaoke mode refused for a song the library lists with pitch: "Vocals coul
     rt.startSession({ song: PITCH_ITEM, prefs: prefsWith({ vocals: SINGER }) });
     loadSong(PITCH_ITEM);
     await flush();
-    const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+    const toasts = player.querySelectorAll('div.rhs-toast').map((t) => t.textContent);
     assert.deepEqual(toasts, ["Vocals couldn't start"]);
     assert.ok(!names(calls).includes('startMic'));
     rt.dispose();
@@ -953,7 +953,7 @@ test('karaoke\'s mic failing to start (no mic picked, denied) says "Vocals could
     loadSong(PITCH_ITEM);
     await flush();
     assert.ok(names(calls).includes('startMic'));
-    const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+    const toasts = player.querySelectorAll('div.rhs-toast').map((t) => t.textContent);
     assert.deepEqual(toasts, ["Vocals couldn't start"]);
     rt.dispose();
 });
@@ -971,7 +971,7 @@ test('the stage failing to mount with vocals armed says "Vocals couldn\'t start"
     }
     await flush();
     assert.ok(errors.some((e) => /stage failed to mount/.test(e)));
-    const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+    const toasts = player.querySelectorAll('div.rhs-toast').map((t) => t.textContent);
     assert.deepEqual(toasts, ["Vocals couldn't start"]);
     assert.ok(!names(calls).includes('startMic'));
     rt.dispose();
@@ -987,7 +987,7 @@ test('the stage failing to mount without vocals shows no vocals toast', () => {
     } finally {
         console.error = error;
     }
-    const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+    const toasts = player.querySelectorAll('div.rhs-toast').map((t) => t.textContent);
     assert.ok(!toasts.includes("Vocals couldn't start"), JSON.stringify(toasts));
     rt.dispose();
 });
@@ -1065,7 +1065,7 @@ test("hear-myself off that karaoke didn't take: no mic, toast, overrides still c
         assert.deepEqual(names(calls), ['setDifficulty', 'setHearMyself'], 'nothing past arming');
         assert.equal(mounts[0].prefs.parts.vocals.on, false, 'vocals sits out: no strip');
         assert.equal(storage.getItem('lyrics_karaoke.deviceId'), null, 'mic id never written');
-        const toasts = player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+        const toasts = player.querySelectorAll('div.rhs-toast').map((t) => t.textContent);
         assert.ok(toasts.includes("Vocals couldn't start"), JSON.stringify(toasts));
         fb.emit('song:stop', {});
         assert.deepEqual(calls.karaoke.slice(-3), [['mountStrip', null], ['setDifficulty', null], ['setHearMyself', null]]);
@@ -1096,7 +1096,7 @@ test('splitscreen still up at song:ready: vocals start once the stage mounts aft
 // ── Plan 4: scoring, the band HUD and the plugins' hide switches ──
 
 const scoreText = (player) => {
-    const el = player.querySelector('.bab-hud-score');
+    const el = player.querySelector('.rhs-hud-score');
     return el ? el.textContent : null;
 };
 const guitarHit = (extra = {}) => ({ isDefault: true, counted: true, hit: true, points: 50, multiplier: 1, streak: 1, ...extra });
@@ -1117,17 +1117,17 @@ test('Go forces the song count-in, and teardown clears it', () => {
 test("mount hides every plugin's own score display; leaving shows them again", () => {
     const { rt, fb, doc, calls, mounts, loadSong } = setup();
     rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
-    assert.ok(doc.body.classList.contains('bab-band-song'), 'set at session start, before any count-in');
+    assert.ok(doc.body.classList.contains('rhs-band-song'), 'set at session start, before any count-in');
     loadSong(DRUM_ITEM);
     const lane = mounts[0].drumCanvas;
     assert.ok(lane);
     assert.deepEqual(calls.hides, [['nd', true], ['drums', lane, true], ['scorecard', true]]);
-    assert.ok(doc.body.classList.contains('bab-band-song'));
-    assert.ok(doc.getElementById('player').querySelector('.bab-hud'), 'the band HUD is up');
+    assert.ok(doc.body.classList.contains('rhs-band-song'));
+    assert.ok(doc.getElementById('player').querySelector('.rhs-hud'), 'the band HUD is up');
     fb.emit('screen:changing', { id: 'v3-songs', from: 'player' });
     assert.deepEqual(calls.hides.slice(3).sort(), [['drums', lane, false], ['nd', false], ['scorecard', false]].sort());
-    assert.equal(doc.body.classList.contains('bab-band-song'), false);
-    assert.equal(doc.getElementById('player').querySelector('.bab-hud'), null);
+    assert.equal(doc.body.classList.contains('rhs-band-song'), false);
+    assert.equal(doc.getElementById('player').querySelector('.rhs-hud'), null);
     rt.dispose();
 });
 
@@ -1151,8 +1151,8 @@ test('every way a session ends gives each display back and clears the count-in o
         env.rt.startSession({ song: FULL_ITEM, prefs: prefsWith({ vocals: SINGER }) });
         env.fb.emit('count-in:tick', { n: 1, total: 4 });
         env.loadSong(FULL_ITEM, { hasPhraseData: false });
-        assert.ok(env.player.querySelector('.bab-toasts'), `${name}: a toast is up`);
-        assert.ok(env.player.querySelector('.bab-countin'), `${name}: the count-in is up`);
+        assert.ok(env.player.querySelector('.rhs-toasts'), `${name}: a toast is up`);
+        assert.ok(env.player.querySelector('.rhs-countin'), `${name}: the count-in is up`);
         assert.ok(env.calls.hides.some((h) => h[0] === 'karaoke' && h[1] === true), name);
         exit(env);
         assert.equal(env.rt.phase(), 'idle', name);
@@ -1162,11 +1162,11 @@ test('every way a session ends gives each display back and clears the count-in o
         assert.ok(last.size >= 3, name);
         assert.ok([...last.values()].every((v) => v === false), `${name}: ${JSON.stringify([...last].map(([k, v]) => [typeof k === 'string' ? k : 'canvas', v]))}`);
         assert.equal(env.calls.countIn.at(-1), null, name);
-        assert.equal(env.doc.body.classList.contains('bab-band-song'), false, name);
-        assert.equal(env.player.querySelector('.bab-hud'), null, name);
-        assert.equal(env.player.querySelector('.bab-part-hud'), null, name);
-        assert.equal(env.player.querySelector('.bab-toasts'), null, `${name}: toasts cleared`);
-        assert.equal(env.player.querySelector('.bab-countin'), null, `${name}: count-in gone`);
+        assert.equal(env.doc.body.classList.contains('rhs-band-song'), false, name);
+        assert.equal(env.player.querySelector('.rhs-hud'), null, name);
+        assert.equal(env.player.querySelector('.rhs-part-hud'), null, name);
+        assert.equal(env.player.querySelector('.rhs-toasts'), null, `${name}: toasts cleared`);
+        assert.equal(env.player.querySelector('.rhs-countin'), null, `${name}: count-in gone`);
         assert.equal(last.get('karaoke'), false, `${name}: karaoke's own HUD back`);
         env.rt.dispose();
     }
@@ -1183,13 +1183,13 @@ test('a failed mount or a failed Go still clears the count-in override and the b
     assert.deepEqual(a.calls.hides, [], 'no band HUD, so the plugins keep theirs');
     a.fb.emit('song:stop', {});
     assert.deepEqual(a.calls.countIn, [true, null]);
-    assert.equal(a.doc.body.classList.contains('bab-band-song'), false);
+    assert.equal(a.doc.body.classList.contains('rhs-band-song'), false);
     a.rt.dispose();
     const b = setup();
     b.win.playSong = () => Promise.reject(new Error('load failed'));
     await assert.rejects(b.rt.startSession({ song: ITEM, prefs: prefsWith() }), /load failed/);
     assert.deepEqual(b.calls.countIn, [true, null]);
-    assert.equal(b.doc.body.classList.contains('bab-band-song'), false);
+    assert.equal(b.doc.body.classList.contains('rhs-band-song'), false);
     b.rt.dispose();
 });
 
@@ -1401,7 +1401,7 @@ test("vocals that couldn't start leave the band, so they never pin it at ×1", a
     assert.ok(rt.snapshot().parts.vocals);
     await flush();
     assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
-    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1, 'the strip HUD goes too');
+    assert.equal(player.querySelectorAll('.rhs-part-hud').length, 1, 'the strip HUD goes too');
     fireWin('notedetect:hit', guitarHit({ multiplier: 2, streak: 10 }));
     assert.equal(rt.snapshot().bandMultiplier, 2);
     assert.ok(Number.isFinite(rt.snapshot().parts.guitar.stars), 'guitar thresholds kept');
@@ -1419,12 +1419,12 @@ test('a splitscreen remount keeps the score and re-hosts the HUD', () => {
     timers.fire(50);
     assert.equal(mounts.length, 2);
     assert.equal(scoreText(player), '100');
-    assert.equal(player.querySelectorAll('.bab-hud').length, 1);
-    const hud = mounts[1].laneSlot('guitar').querySelector('.bab-part-hud');
+    assert.equal(player.querySelectorAll('.rhs-hud').length, 1);
+    const hud = mounts[1].laneSlot('guitar').querySelector('.rhs-part-hud');
     assert.ok(hud, 'the guitar lane HUD is in the new lane');
-    assert.equal(hud.querySelector('.bab-mult').textContent, '×2');
-    assert.ok(mounts[1].laneSlot('drums').querySelector('.bab-part-hud'));
-    assert.equal(player.querySelectorAll('.bab-part-hud').length, 2);
+    assert.equal(hud.querySelector('.rhs-mult').textContent, '×2');
+    assert.ok(mounts[1].laneSlot('drums').querySelector('.rhs-part-hud'));
+    assert.equal(player.querySelectorAll('.rhs-part-hud').length, 2);
     assert.ok(env.calls.hides.some((h) => h[0] === 'drums' && h[1] === mounts[1].drumCanvas && h[2] === true),
         'the new drum lane canvas is hidden');
     rt.dispose();
@@ -1436,26 +1436,26 @@ test('toasts stack: one difficulty and no pitch both show', async () => {
     rt.startSession({ song: item, prefs: prefsWith({ vocals: SINGER }) });
     loadSong(item, { hasPhraseData: false });
     await flush();
-    const box = player.querySelector('.bab-toasts');
+    const box = player.querySelector('.rhs-toasts');
     assert.ok(box);
-    assert.deepEqual(box.querySelectorAll('div.bab-toast').map((t) => t.textContent),
+    assert.deepEqual(box.querySelectorAll('div.rhs-toast').map((t) => t.textContent),
         ['This chart has one difficulty', "Vocals couldn't start"]);
     rt.dispose();
-    assert.equal(player.querySelector('.bab-toasts'), null, 'cleared at teardown');
+    assert.equal(player.querySelector('.rhs-toasts'), null, 'cleared at teardown');
 });
 
 test("the band's count-in shows over the player and goes at teardown", () => {
     const { rt, fb, loadSong, player } = setup();
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     fb.emit('count-in:tick', { n: 1, total: 4 });
-    assert.equal(player.querySelector('.bab-countin').textContent, '4', 'drawn before the stage mounts');
+    assert.equal(player.querySelector('.rhs-countin').textContent, '4', 'drawn before the stage mounts');
     loadSong(ITEM);
     fb.emit('count-in:tick', { n: 2, total: 4 });
-    assert.equal(player.querySelector('.bab-countin').textContent, '3');
+    assert.equal(player.querySelector('.rhs-countin').textContent, '3');
     fb.emit('song:stop', {});
-    assert.equal(player.querySelector('.bab-countin'), null);
+    assert.equal(player.querySelector('.rhs-countin'), null);
     fb.emit('count-in:tick', { n: 3, total: 4 });
-    assert.equal(player.querySelector('.bab-countin'), null, 'no longer listening');
+    assert.equal(player.querySelector('.rhs-countin'), null, 'no longer listening');
     rt.dispose();
 });
 
@@ -1484,7 +1484,7 @@ test('dispose removes every listener: a second runtime on the same bus scores on
     fb.emit('drums:hit', { canvas: mounts.at(-1).drumCanvas, points: 30, multiplier: 1, combo: 1 });
     assert.equal(second.snapshot().score, 80);
     assert.equal(first.snapshot(), null);
-    assert.equal(player.querySelectorAll('.bab-hud').length, 1, 'one band HUD');
+    assert.equal(player.querySelectorAll('.rhs-hud').length, 1, 'one band HUD');
     assert.equal(scoreText(player), '80');
     second.dispose();
     env.rt.dispose();
@@ -1513,11 +1513,11 @@ test("the results show this session's numbers", () => {
     loadSong(DRUM_ITEM);
     fireWin('notedetect:hit', guitarHit());
     fb.emit('song:ended', {});
-    const card = player.querySelector('.bab-results').querySelector('.bab-card[data-part="guitar"]');
-    const stats = card.querySelectorAll('.bab-stat').map((r) => r.children.map((c) => c.textContent));
+    const card = player.querySelector('.rhs-results').querySelector('.rhs-card[data-part="guitar"]');
+    const stats = card.querySelectorAll('.rhs-stat').map((r) => r.children.map((c) => c.textContent));
     assert.ok(stats.some(([label, value]) => label === 'Notes hit' && value === '1 / 1'), JSON.stringify(stats));
-    assert.equal(card.querySelector('.bab-card-pct').textContent, '100%');
-    assert.equal(player.querySelector('.bab-results-score').textContent, '50');
+    assert.equal(card.querySelector('.rhs-card-pct').textContent, '100%');
+    assert.equal(player.querySelector('.rhs-results-score').textContent, '50');
     assert.ok(mounts[0].drumCanvas);
     rt.dispose();
 });
@@ -1533,7 +1533,7 @@ test("the drums card reads star power phrases from the band's drum canvas", () =
     loadSong(DRUM_ITEM);
     fb.emit('song:ended', {});
     assert.deepEqual(asked, [mounts[0].drumCanvas]);
-    const stats = player.querySelector('.bab-card[data-part="drums"]').querySelectorAll('.bab-stat')
+    const stats = player.querySelector('.rhs-card[data-part="drums"]').querySelectorAll('.rhs-stat')
         .map((r) => r.children.map((c) => c.textContent));
     assert.ok(stats.some(([label, value]) => label === 'Star power phrases' && value === '4 / 5'), JSON.stringify(stats));
     rt.dispose();
@@ -1549,9 +1549,9 @@ test('a throwing getInstanceState still shows the results, without star power', 
         loadSong(DRUM_ITEM);
         fb.emit('song:ended', {});
     } finally { console.warn = warn; }
-    const drums = player.querySelector('.bab-card[data-part="drums"]');
+    const drums = player.querySelector('.rhs-card[data-part="drums"]');
     assert.ok(drums);
-    assert.ok(!drums.querySelectorAll('.bab-stat').some((r) => r.children[0].textContent === 'Star power phrases'));
+    assert.ok(!drums.querySelectorAll('.rhs-stat').some((r) => r.children[0].textContent === 'Star power phrases'));
     rt.dispose();
 });
 
@@ -1564,10 +1564,10 @@ test('a session whose stage never mounted still ends on the results', () => {
         loadSong(ITEM);
     } finally { console.error = error; }
     fb.emit('song:ended', {});
-    const results = player.querySelector('.bab-results');
+    const results = player.querySelector('.rhs-results');
     assert.ok(results);
-    assert.equal(results.querySelector('.bab-results-score').textContent, '0');
-    assert.equal(results.querySelectorAll('.bab-card').length, 0);
+    assert.equal(results.querySelector('.rhs-results-score').textContent, '0');
+    assert.equal(results.querySelectorAll('.rhs-card').length, 0);
     rt.next();
     assert.equal(calls.release, 1);
     assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
@@ -1607,11 +1607,11 @@ test('a drum lane that failed to start leaves the band: ×N from the other parts
     rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
     loadSong(DRUM_ITEM);
     assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
-    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1, 'no drums HUD');
+    assert.equal(player.querySelectorAll('.rhs-part-hud').length, 1, 'no drums HUD');
     fireWin('notedetect:hit', guitarHit({ multiplier: 3, streak: 20 }));
     assert.equal(rt.snapshot().bandMultiplier, 3);
     fb.emit('song:ended', {});
-    assert.deepEqual(player.querySelector('.bab-results').querySelectorAll('.bab-card').map((c) => c.getAttribute('data-part')), ['guitar']);
+    assert.deepEqual(player.querySelector('.rhs-results').querySelectorAll('.rhs-card').map((c) => c.getAttribute('data-part')), ['guitar']);
     rt.dispose();
 });
 
@@ -1624,7 +1624,7 @@ test('drums alone with the drums plugin missing leaves the band', async () => {
     loadSong(item);
     await flush();
     assert.deepEqual(Object.keys(rt.snapshot().parts), ['vocals']);
-    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1, 'the strip HUD only');
+    assert.equal(player.querySelectorAll('.rhs-part-hud').length, 1, 'the strip HUD only');
     rt.dispose();
 });
 
@@ -1650,7 +1650,7 @@ test("vocals' mic failing after guitar judgments still drops vocals", async () =
     assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
     assert.equal(rt.snapshot().bandMultiplier, 2);
     assert.equal(rt.snapshot().parts.guitar.score, 50, 'the guitar judgment is kept');
-    assert.equal(player.querySelectorAll('.bab-part-hud').length, 1, 'the strip HUD goes');
+    assert.equal(player.querySelectorAll('.rhs-part-hud').length, 1, 'the strip HUD goes');
     rt.dispose();
 });
 
@@ -1816,8 +1816,8 @@ function odSetup(opts) {
 }
 
 const odHud = (player, part) => {
-    const hud = player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === part);
-    return hud ? hud.querySelector('.bab-od').querySelector('i') : null;
+    const hud = player.querySelectorAll('.rhs-part-hud').find((h) => h.getAttribute('data-part') === part);
+    return hud ? hud.querySelector('.rhs-od').querySelector('i') : null;
 };
 
 // Nine hits clear both phrases; two ticks past them fill half a bar; three
@@ -2015,10 +2015,10 @@ const guitarMiss = () => ({ isDefault: true, counted: true, hit: false, points: 
 const FAIL_CLAIM = 'rockherosmith:fail:guitar';
 const capCalls = (calls, name, pred = () => true) => calls.caps.filter((c) => c[0] === name && pred(c[1])).map((c) => c[1]);
 const stemsCommand = (calls, command) => capCalls(calls, 'dispatch', (r) => r.capability === 'stems' && r.command === command);
-const toastTexts = (player) => player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
+const toastTexts = (player) => player.querySelectorAll('div.rhs-toast').map((t) => t.textContent);
 const partCallout = (player, part) => {
-    const hud = player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === part);
-    return hud ? hud.querySelector('.bab-callout').textContent : null;
+    const hud = player.querySelectorAll('.rhs-part-hud').find((h) => h.getAttribute('data-part') === part);
+    return hud ? hud.querySelector('.rhs-callout').textContent : null;
 };
 
 // 14 guitar misses empty the crowd from its 0.66 start (−0.05 each), at display times from..from+13.
@@ -2036,8 +2036,8 @@ test('an empty crowd drops the player: grey lane, stem muted, toast', () => {
     loadSong(DRUM_ITEM);
     dropGuitar(env);
     assert.equal(rt.snapshot().parts.guitar.failed, true);
-    assert.ok(mounts[0].lanes.guitar.classList.contains('bab-failed'));
-    assert.equal(mounts[0].lanes.drums.classList.contains('bab-failed'), false);
+    assert.ok(mounts[0].lanes.guitar.classList.contains('rhs-failed'));
+    assert.equal(mounts[0].lanes.drums.classList.contains('rhs-failed'), false);
     assert.deepEqual(capCalls(calls, 'claim'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'rockherosmith' }]);
     assert.deepEqual(stemsCommand(calls, 'mute').map((r) => r.args), [{ id: 'guitar', claimId: FAIL_CLAIM }]);
     assert.ok(toastTexts(player).includes('Guitar dropped out: overdrive brings them back'));
@@ -2053,7 +2053,7 @@ test("a bandmate's overdrive rescues them", async () => {
     loadSong(DRUM_ITEM);
     dropGuitar(env);
     fb.emit('drums:sp-activate', { canvas: mounts[0].drumCanvas, spActive: true, spAmount: 0.5 });
-    assert.equal(mounts[0].lanes.guitar.classList.contains('bab-failed'), false);
+    assert.equal(mounts[0].lanes.guitar.classList.contains('rhs-failed'), false);
     assert.equal(rt.snapshot().parts.guitar.crowd, 0.4);
     assert.equal(partCallout(player, 'guitar'), 'SAVED!');
     await flush();   // the restore follows the mute's answer
@@ -2071,7 +2071,7 @@ test('no fail never drops', () => {
     assert.equal(rt.snapshot().parts.guitar.crowd, 0);
     assert.deepEqual(stemsCommand(calls, 'mute'), []);
     assert.deepEqual(capCalls(calls, 'claim'), []);
-    assert.equal(mounts[0].lanes.guitar.classList.contains('bab-failed'), false);
+    assert.equal(mounts[0].lanes.guitar.classList.contains('rhs-failed'), false);
     rt.dispose();
 });
 
@@ -2087,9 +2087,9 @@ test('everyone out: the song pauses and the results say Band failed', async () =
     ]);
     await flush();
     assert.equal(calls.audioPause, 0, "core's pause answered 'paused'");
-    const results = player.querySelector('.bab-results');
+    const results = player.querySelector('.rhs-results');
     assert.ok(results);
-    assert.equal(results.querySelector('.bab-results-failed').textContent, 'Band failed');
+    assert.equal(results.querySelector('.rhs-results-failed').textContent, 'Band failed');
     assert.equal(calls.hold, 0, 'the song never ended: no exit is held');
     rt.dispose();
 });
@@ -2120,7 +2120,7 @@ test('after Band failed, Next song reaches the band screen and Play again replay
         await flush();
         assert.equal(calls.hold, 0, exit);
         assert.equal(calls.release, 0, `${exit}: no exit to release`);
-        assert.equal(player.querySelector('.bab-results'), null, exit);
+        assert.equal(player.querySelector('.rhs-results'), null, exit);
         if (exit === 'next') {
             assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
             assert.equal(rt.phase(), 'idle');
@@ -2141,10 +2141,10 @@ test('a seek back before the drop restores the player silently', async () => {
     rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
     loadSong(DRUM_ITEM);
     dropGuitar(env);
-    assert.ok(mounts[0].lanes.guitar.classList.contains('bab-failed'));
+    assert.ok(mounts[0].lanes.guitar.classList.contains('rhs-failed'));
     fb.emit('song:seek', { from: 20, to: 0.5 });
     assert.equal(rt.snapshot().parts.guitar.failed, false);
-    assert.equal(mounts[0].lanes.guitar.classList.contains('bab-failed'), false);
+    assert.equal(mounts[0].lanes.guitar.classList.contains('rhs-failed'), false);
     assert.notEqual(partCallout(player, 'guitar'), 'SAVED!');
     await flush();   // the restore follows the mute's answer
     assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
@@ -2186,7 +2186,7 @@ test('a song without that stem still drops the player', () => {
     rt.startSession({ song: DRUM_ITEM, prefs: failPrefs() });
     loadSong(DRUM_ITEM);
     dropGuitar(env);
-    assert.ok(mounts[0].lanes.guitar.classList.contains('bab-failed'));
+    assert.ok(mounts[0].lanes.guitar.classList.contains('rhs-failed'));
     assert.deepEqual(calls.caps, []);
     rt.dispose();
 });
@@ -2203,8 +2203,8 @@ test('a HUD remount keeps a dropped part greyed', async () => {
     fail();
     await flush();
     assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar', 'drums'], 'vocals left the band');
-    const hud = player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === 'guitar');
-    assert.ok(hud.classList.contains('bab-failed'), 'the remounted HUD is greyed again');
+    const hud = player.querySelectorAll('.rhs-part-hud').find((h) => h.getAttribute('data-part') === 'guitar');
+    assert.ok(hud.classList.contains('rhs-failed'), 'the remounted HUD is greyed again');
     assert.equal(rt.phase(), 'playing');
     rt.dispose();
 });
@@ -2224,7 +2224,7 @@ test('dropping the last part still alive fails the band', async () => {
     await flush();
     assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
     assert.equal(rt.phase(), 'ending');
-    assert.equal(player.querySelector('.bab-results-failed').textContent, 'Band failed');
+    assert.equal(player.querySelector('.rhs-results-failed').textContent, 'Band failed');
     assert.equal(capCalls(calls, 'dispatch', (r) => r.capability === 'playback').length, 1);
     rt.dispose();
 });
@@ -2247,8 +2247,8 @@ test("a dropped part's rescue stays: the rescued player is still in", async () =
     assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar']);
     assert.equal(rt.snapshot().parts.guitar.failed, false, 'still rescued after vocals left');
     assert.equal(rt.phase(), 'playing');
-    const hud = player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === 'guitar');
-    assert.equal(hud.classList.contains('bab-failed'), false);
+    const hud = player.querySelectorAll('.rhs-part-hud').find((h) => h.getAttribute('data-part') === 'guitar');
+    assert.equal(hud.classList.contains('rhs-failed'), false);
     assert.equal(stemsCommand(calls, 'mute').length, 1, 'no new mute');
     rt.dispose();
 });
@@ -2318,7 +2318,7 @@ test('karaoke od-activate without a vocals part records and calls out nothing', 
     assert.deepEqual(Object.keys(parts), ['guitar', 'drums']);
     assert.equal(parts.guitar.failed, true, 'a karaoke deploy outside the band rescues nobody');
     assert.equal(parts.drums.deploys, 0);
-    assert.ok(!player.querySelectorAll('.bab-callout').some((c) => c.textContent === 'OVERDRIVE!'));
+    assert.ok(!player.querySelectorAll('.rhs-callout').some((c) => c.textContent === 'OVERDRIVE!'));
     rt.dispose();
 });
 
@@ -2951,18 +2951,18 @@ test('full screen on: Go asks once, Play again keeps it, Next song leaves it', (
     rt.startSession({ song: ITEM, prefs: fullPrefs(true) });
     loadSong(ITEM);
     assert.equal(calls.fsRequest, 1);
-    assert.ok(player.classList.contains('bab-full'));
+    assert.ok(player.classList.contains('rhs-full'));
     assert.deepEqual(rt.stageUi(), { full: true, fullScreen: true, sidebar: false, overlay: null });
     fb.emit('song:ended', {});
     rt.again();
     loadSong(ITEM);
     assert.equal(calls.fsRequest, 1, 'Play again finds it already on');
     assert.equal(calls.fsExit, 0);
-    assert.ok(player.classList.contains('bab-full'));
+    assert.ok(player.classList.contains('rhs-full'));
     fb.emit('song:ended', {});
     rt.next();
     assert.equal(calls.fsExit, 1);
-    assert.ok(!player.classList.contains('bab-full'));
+    assert.ok(!player.classList.contains('rhs-full'));
     assert.equal(rt.stageUi(), null);
     rt.dispose();
 });
@@ -2972,15 +2972,15 @@ test("full screen off: no request until the chrome's Full screen button", () => 
     rt.startSession({ song: ITEM, prefs: fullPrefs(false) });
     loadSong(ITEM);
     assert.equal(calls.fsRequest, 0);
-    assert.ok(!player.classList.contains('bab-full'));
-    const btn = player.querySelector('.bab-chrome-full');
+    assert.ok(!player.classList.contains('rhs-full'));
+    const btn = player.querySelector('.rhs-chrome-full');
     btn.click();
     assert.equal(calls.fsRequest, 1);
-    assert.ok(player.classList.contains('bab-full'));
+    assert.ok(player.classList.contains('rhs-full'));
     assert.equal(rt.stageUi().full, true);
     btn.click();
     assert.equal(calls.fsExit, 1);
-    assert.ok(!player.classList.contains('bab-full'));
+    assert.ok(!player.classList.contains('rhs-full'));
     assert.equal(rt.stageUi().full, false);
     rt.dispose();
 });
@@ -2993,7 +2993,7 @@ test('leaving browser full screen turns full mode off', () => {
     doc.fire('fullscreenchange');
     assert.equal(rt.stageUi().full, false);
     assert.equal(rt.stageUi().fullScreen, false);
-    assert.ok(!player.classList.contains('bab-full'));
+    assert.ok(!player.classList.contains('rhs-full'));
     assert.equal(calls.fsExit, 0, 'nothing left to exit');
     rt.dispose();
     assert.equal(doc.listenerCount(), 0, 'dispose removes the fullscreenchange listener');
@@ -3005,11 +3005,11 @@ test('M opens the sidebar; Escape closes it and stays in the song', () => {
     loadSong(ITEM);
     const m = keyWin('KeyM', 'm');
     assert.ok(m.defaultPrevented);
-    assert.ok(bodyHas(doc, 'bab-sidebar-open'));
+    assert.ok(bodyHas(doc, 'rhs-sidebar-open'));
     assert.equal(rt.stageUi().sidebar, true);
     const esc = keyWin('Escape', 'Escape');
     assert.ok(esc.defaultPrevented);
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'));
     assert.equal(rt.phase(), 'playing');
     assert.deepEqual(calls.showScreen, []);
     // With the sidebar shut, Escape is core's again (leave the song).
@@ -3021,7 +3021,7 @@ test('M opens the sidebar; Escape closes it and stays in the song', () => {
     Object.defineProperty(typing, 'target', { value: { tagName: 'INPUT' } });
     win.dispatchEvent(typing);
     assert.equal(typing.defaultPrevented, false);
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'));
     rt.dispose();
 });
 
@@ -3029,13 +3029,13 @@ test('the Menu button opens the sidebar and never toggles it shut', () => {
     const { rt, doc, loadSong, keyWin, player } = setup();
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM);
-    const menu = player.querySelector('.bab-chrome-menu');
+    const menu = player.querySelector('.rhs-chrome-menu');
     menu.click();
-    assert.ok(bodyHas(doc, 'bab-sidebar-open'));
+    assert.ok(bodyHas(doc, 'rhs-sidebar-open'));
     menu.click();
-    assert.ok(bodyHas(doc, 'bab-sidebar-open'), 'a second click keeps it open');
+    assert.ok(bodyHas(doc, 'rhs-sidebar-open'), 'a second click keeps it open');
     keyWin('KeyM', 'm');
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'M toggles');
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'), 'M toggles');
     rt.dispose();
 });
 
@@ -3047,19 +3047,19 @@ test('Settings from the sidebar pauses, shows over the stage and resumes with th
     const click = sidebar.fire('click', { target: navLinks.settings });
     assert.ok(click.defaultPrevented);
     assert.equal(calls.pause, 1);
-    assert.ok(bodyHas(doc, 'bab-settings-over'));
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'the sidebar closed first');
+    assert.ok(bodyHas(doc, 'rhs-settings-over'));
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'), 'the sidebar closed first');
     assert.deepEqual(calls.nav, [], 'the link itself is not followed');
     assert.equal(settingsScreen.getAttribute('aria-modal'), 'true');
     assert.equal(rt.stageUi().overlay, 'settings');
     assert.equal(rt.phase(), 'playing');
     // M does nothing under Settings.
     keyWin('KeyM', 'm');
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'));
     win.highway.setMastery(0.9); // core's loadSettings applies the solo mastery
     const esc = keyWin('Escape', 'Escape');
     assert.ok(esc.defaultPrevented);
-    assert.ok(!bodyHas(doc, 'bab-settings-over'));
+    assert.ok(!bodyHas(doc, 'rhs-settings-over'));
     assert.equal(calls.setMastery.at(-1), 0.5);
     assert.deepEqual(calls.resume, [{ wasPlaying: true, gen: 1 }]);
     assert.ok(calls.resumeAt[0] > calls.setMasteryAt.at(-1), 'the band mastery is back before the resume');
@@ -3118,8 +3118,8 @@ test('every exit closes the sidebar, Settings and full screen', async () => {
         sidebar.fire('click', { target: navLinks.settings });
         keyWin('KeyM', 'm'); // ignored under Settings
         fb.emit('song:stop', {});
-        assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
-        assert.ok(!bodyHas(doc, 'bab-settings-over'));
+        assert.ok(!bodyHas(doc, 'rhs-sidebar-open'));
+        assert.ok(!bodyHas(doc, 'rhs-settings-over'));
         assert.equal(settingsScreen.getAttribute('role'), null);
         assert.deepEqual(calls.resume, []);
         assert.equal(calls.fsExit, 1);
@@ -3171,7 +3171,7 @@ test('the loop button cycles start, end and clear', () => {
     const { rt, calls, loadSong, player } = setup();
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM);
-    const btn = player.querySelector('.bab-chrome-loop');
+    const btn = player.querySelector('.rhs-chrome-loop');
     assert.equal(btn.textContent, 'Loop A');
     btn.click();
     assert.equal(btn.textContent, 'Loop B');
@@ -3187,7 +3187,7 @@ test('End asks core to leave the song', () => {
     const { rt, calls, loadSong, player } = setup();
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM);
-    player.querySelector('.bab-chrome-end').click();
+    player.querySelector('.rhs-chrome-end').click();
     assert.equal(calls.exitSong, 1);
     rt.dispose();
 });
@@ -3215,16 +3215,16 @@ test('the sidebar, M and the chrome exist only while the song plays', () => {
     loadSong(ITEM);
     fb.emit('song:ended', {});
     keyWin('KeyM', 'm');
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
-    player.querySelector('.bab-chrome-menu').click();
-    player.querySelector('.bab-edge').fire('pointerenter');
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'the chrome opens nothing under the results');
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'));
+    player.querySelector('.rhs-chrome-menu').click();
+    player.querySelector('.rhs-edge').fire('pointerenter');
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'), 'the chrome opens nothing under the results');
     sidebar.fire('click', { target: navLinks.settings });
-    assert.ok(!bodyHas(doc, 'bab-settings-over'));
+    assert.ok(!bodyHas(doc, 'rhs-settings-over'));
     assert.equal(calls.pause, 0);
     rt.next();
-    assert.equal(player.querySelector('.bab-chrome'), null);
-    assert.equal(player.querySelector('.bab-edge'), null);
+    assert.equal(player.querySelector('.rhs-chrome'), null);
+    assert.equal(player.querySelector('.rhs-edge'), null);
     rt.dispose();
 });
 
@@ -3234,7 +3234,7 @@ test('a song ending with the sidebar open closes it for the results', () => {
     loadSong(ITEM);
     keyWin('KeyM', 'm');
     fb.emit('song:ended', {});
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'));
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'));
     rt.dispose();
 });
 
@@ -3264,15 +3264,15 @@ test('every stage unmount takes the chrome with it (splitscreen remount)', () =>
     win.slopsmithSplitscreen.stop = () => {}; // splitscreen takes its time going down
     env.setSplit(true);
     fb.emit('splitscreen:panels-changed', {});
-    assert.equal(player.querySelectorAll('.bab-chrome').length, 0);
-    assert.ok(!player.classList.contains('bab-full'), 'no full-mode CSS without a stage');
+    assert.equal(player.querySelectorAll('.rhs-chrome').length, 0);
+    assert.ok(!player.classList.contains('rhs-full'), 'no full-mode CSS without a stage');
     env.setSplit(false);
     timers.fire(50);
-    assert.equal(player.querySelectorAll('.bab-chrome').length, 1, 'the remount brings it back');
-    assert.ok(player.classList.contains('bab-full'));
+    assert.equal(player.querySelectorAll('.rhs-chrome').length, 1, 'the remount brings it back');
+    assert.ok(player.classList.contains('rhs-full'));
     fb.emit('song:stop', {});
-    assert.equal(player.querySelectorAll('.bab-chrome').length, 0);
-    assert.ok(!player.classList.contains('bab-full'));
+    assert.equal(player.querySelectorAll('.rhs-chrome').length, 0);
+    assert.ok(!player.classList.contains('rhs-full'));
     rt.dispose();
 });
 
@@ -3363,11 +3363,11 @@ test('the song ending under Settings closes it before the results and resumes no
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM);
     sidebar.fire('click', { target: navLinks.settings });
-    assert.ok(bodyHas(doc, 'bab-settings-over'));
+    assert.ok(bodyHas(doc, 'rhs-settings-over'));
     fb.emit('song:ended', {});
-    assert.ok(!bodyHas(doc, 'bab-settings-over'));
+    assert.ok(!bodyHas(doc, 'rhs-settings-over'));
     assert.equal(settingsScreen.getAttribute('role'), null);
-    assert.ok(player.querySelector('.bab-results'), 'the results show');
+    assert.ok(player.querySelector('.rhs-results'), 'the results show');
     assert.deepEqual(calls.resume, []);
     assert.equal(rt.stageUi().overlay, null);
     keyWin('Escape', 'Escape');
@@ -3382,7 +3382,7 @@ test('the song ending under the leave prompt closes it before the results and re
     sidebar.fire('click', { target: navLinks.songs });
     fb.emit('song:ended', {});
     assert.ok(!doc.body.querySelector('.feedBack-modal'), 'the prompt is gone');
-    assert.ok(player.querySelector('.bab-results'));
+    assert.ok(player.querySelector('.rhs-results'));
     assert.equal(rt.stageUi().overlay, null);
     prompts[0].resolve(true);
     await flush();
@@ -3396,14 +3396,14 @@ test('a held M opens the sidebar once', () => {
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM);
     keyWin('KeyM', 'm');
-    assert.ok(bodyHas(doc, 'bab-sidebar-open'));
+    assert.ok(bodyHas(doc, 'rhs-sidebar-open'));
     for (let i = 0; i < 2; i++) {
         const e = keyWin('KeyM', 'm', { repeat: true });
         assert.ok(e.defaultPrevented, 'a repeat is still consumed');
-        assert.ok(bodyHas(doc, 'bab-sidebar-open'), 'a repeat does not toggle');
+        assert.ok(bodyHas(doc, 'rhs-sidebar-open'), 'a repeat does not toggle');
     }
     keyWin('KeyM', 'm', { repeat: false });
-    assert.ok(!bodyHas(doc, 'bab-sidebar-open'), 'a fresh press closes it');
+    assert.ok(!bodyHas(doc, 'rhs-sidebar-open'), 'a fresh press closes it');
     rt.dispose();
 });
 
@@ -3479,7 +3479,7 @@ function endToEnd({ activeAtNext = false, extraHides = [] } = {}) {
     parseHtml(BAND_HTML, env.doc, env.bandScreen);
     if (activeAtNext) env.bandScreen.classList.add('active');
     bs = createBandScreen({
-        root: env.doc.getElementById('build-a-band-root'), doc: env.doc, win: env.win,
+        root: env.doc.getElementById('rockherosmith-root'), doc: env.doc, win: env.win,
         storage: env.storage, loadPrefs: () => prefsWith(), savePrefs: (p) => p, deviceMemo: {},
         fetchJson: async () => ({ songs: [] }), onGo: () => false,
         library: { pick(opts) { picks.push(opts); return new Promise(() => {}); } },
@@ -3582,7 +3582,7 @@ async function goCtl(env, prefs = ctlPrefs(), item = FF_ITEM) {
 // A five-fret band event's detail on a lane canvas.
 const ffEv = (canvas, extra = {}) => ({ canvas, controllerKey: 'Xbox#1', score: 0, combo: 1, multiplier: 1,
     spActive: false, resets: 1, noteTime: 0, ...extra });
-const partHud = (player, id) => player.querySelectorAll('.bab-part-hud').find((h) => h.getAttribute('data-part') === id) || null;
+const partHud = (player, id) => player.querySelectorAll('.rhs-part-hud').find((h) => h.getAttribute('data-part') === id) || null;
 const ffHides = (calls) => calls.hides.filter((h) => h[0] === 'five_fret');
 
 test('Go with a joined controller: ctl1 in the ledger and HUD, its score HUD hidden', async () => {
@@ -3682,7 +3682,7 @@ test('sp-activate rescues a failed bandmate', async () => {
         fb.emit('five_fret:miss', ffEv(ctl2, { combo: 0, controllerKey: 'Xbox#2' }));
     }
     assert.equal(rt.snapshot().parts.ctl2.failed, true);
-    assert.ok(mounts[0].lanes.ctl2.classList.contains('bab-failed'));
+    assert.ok(mounts[0].lanes.ctl2.classList.contains('rhs-failed'));
     assert.ok(toastTexts(player).includes('Bass (5-Fret) · Xbox 2 dropped out: overdrive brings them back'), JSON.stringify(toastTexts(player)));
     // A dropped-out controller's own deploy rescues nobody; a bandmate's does.
     fb.emit('five_fret:sp-activate', ffEv(ctl2, { controllerKey: 'Xbox#2', spActive: true }));
@@ -3784,9 +3784,9 @@ test("teardown unhides and the results keep the controller's numbers", async () 
     const canvas = mounts[0].ctlCanvas.ctl1;
     fb.emit('five_fret:hit', ffEv(canvas, { score: 120 }));
     fb.emit('song:ended', {});
-    assert.ok(player.querySelector('.bab-results'), 'the results show');
+    assert.ok(player.querySelector('.rhs-results'), 'the results show');
     assert.equal(rt.snapshot().parts.ctl1.score, 120);
-    assert.equal(player.querySelector('.bab-results-score').textContent, '120');
+    assert.equal(player.querySelector('.rhs-results-score').textContent, '120');
     rt.next();
     assert.deepEqual(ffHides(calls), [['five_fret', canvas, true], ['five_fret', canvas, false]]);
     // Leaving mid-song unhides too.
@@ -4149,7 +4149,7 @@ test('sp-activate on the controller lane rescues a failed bandmate', async () =>
         fb.emit('drums:miss', drEv(ctl2, { combo: 0 }));
     }
     assert.equal(rt.snapshot().parts.ctl2.failed, true);
-    assert.ok(mounts[0].lanes.ctl2.classList.contains('bab-failed'));
+    assert.ok(mounts[0].lanes.ctl2.classList.contains('rhs-failed'));
     fb.emit('drums:sp-activate', drEv(ctl2, { spActive: true }));
     assert.equal(rt.snapshot().parts.ctl2.failed, true, "its own deploy rescues nobody");
     fb.emit('drums:sp-activate', drEv(mounts[0].drumCanvas, { spActive: true }));

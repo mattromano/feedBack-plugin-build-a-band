@@ -22,7 +22,7 @@ const PLAYS_AS_HINT = 'X: 5-Fret \u00b7 B: Drums';
 // Per kind: the Setup column's lights (the join manager's lit flags, CONTROLLER_KINDS
 // lights) and the look. An undecided controller shows a plain gamepad and no lights.
 const LIGHTS = { five_fret: ['green', 'red', 'yellow', 'blue', 'orange'], drums: ['red', 'yellow', 'blue', 'green', 'kick'] };
-const LIGHT_CLASS = { five_fret: 'bab-fret', drums: 'bab-drumpad' };
+const LIGHT_CLASS = { five_fret: 'rhs-fret', drums: 'rhs-drumpad' };
 const LOOK = {
     five_fret: FIVE_FRET_PART,
     drums: DRUMS_CONTROLLER_PART,
@@ -46,10 +46,10 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
     }
 
     function top(nameEls, icoEls) {
-        const t = el('div', 'bab-top');
-        const ico = el('span', 'bab-ico');
+        const t = el('div', 'rhs-top');
+        const ico = el('span', 'rhs-ico');
         icoEls.push(ico);
-        const name = el('h2', 'bab-part-name');
+        const name = el('h2', 'rhs-part-name');
         nameEls.push(name);
         t.append(ico, name);
         return t;
@@ -57,8 +57,8 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
 
     // A labelled segment; each button calls send(value).
     function seg(label, field, options, send) {
-        const wrap = el('div', 'bab-field');
-        const box = el('div', 'bab-seg');
+        const wrap = el('div', 'rhs-field');
+        const box = el('div', 'rhs-seg');
         box.setAttribute('data-field', field);
         const buttons = {};
         for (const [value, text] of options) {
@@ -71,7 +71,7 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
             buttons[value] = b;
             box.appendChild(b);
         }
-        wrap.append(el('span', 'bab-label', label), box);
+        wrap.append(el('span', 'rhs-label', label), box);
         return { field: wrap, buttons };
     }
     const prefSeg = (key, label, field, options, toPref = (v) => v) =>
@@ -82,46 +82,46 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
         const icos = [];
         const notes = [];
 
-        const col = el('div', 'bab-col bab-ctl');
+        const col = el('div', 'rhs-col rhs-ctl');
         col.setAttribute('data-ctl', key);
         const colTop = top(names, icos);
         const playsAs = seg('Plays as', 'playsAs', PLAYS_AS, (k) => { if (onPlaysAs) onPlaysAs(key, k); });
-        playsAs.field.classList.add('bab-playsas');
-        const hint = el('span', 'bab-playsas-hint', PLAYS_AS_HINT);
+        playsAs.field.classList.add('rhs-playsas');
+        const hint = el('span', 'rhs-playsas-hint', PLAYS_AS_HINT);
         playsAs.field.appendChild(hint);
-        const lightBox = el('div', 'bab-lights');
-        const colNote = el('div', 'bab-note');
+        const lightBox = el('div', 'rhs-lights');
+        const colNote = el('div', 'rhs-note');
         notes.push(colNote);
-        const actions = el('div', 'bab-ctl-actions');
-        const controls = el('button', 'bab-ctl-controls', 'Controls');
+        const actions = el('div', 'rhs-ctl-actions');
+        const controls = el('button', 'rhs-ctl-controls', 'Controls');
         controls.type = 'button';
         controls.addEventListener('click', () => onControls(key));
-        const leave = el('button', 'bab-ctl-leave');
+        const leave = el('button', 'rhs-ctl-leave');
         leave.type = 'button';
-        const leaveIco = el('span', 'bab-btn-ico');
+        const leaveIco = el('span', 'rhs-btn-ico');
         leaveIco.innerHTML = icon('log-out', { size: 14 });
         leave.append(leaveIco, 'Leave');
         leave.addEventListener('click', () => onLeave(key));
         actions.append(controls, leave);
 
-        const row = el('div', 'bab-part bab-ctl');
+        const row = el('div', 'rhs-part rhs-ctl');
         row.setAttribute('data-ctl', key);
         const rowTop = top(names, icos);
         const partTags = {};
         const partAlso = {};
         const part = prefSeg(key, 'Part', 'part', PART_ORDER.map((p) => {
-            partTags[p] = el('span', 'bab-tag', '');
-            partAlso[p] = el('span', 'bab-also', '');
-            return [p, [el('span', 'bab-seg-text', FIVE_FRET_PART_LABELS[p]), partTags[p], partAlso[p]]];
+            partTags[p] = el('span', 'rhs-tag', '');
+            partAlso[p] = el('span', 'rhs-also', '');
+            return [p, [el('span', 'rhs-seg-text', FIVE_FRET_PART_LABELS[p]), partTags[p], partAlso[p]]];
         }));
         // Drums has one part: a fixed segment that names who else is on drums.
-        const drumAlso = el('span', 'bab-also', '');
-        const drumPart = seg('Part', 'drumPart', [['drums', [el('span', 'bab-seg-text', DRUMS_CONTROLLER_PART.label), drumAlso]]], () => {});
+        const drumAlso = el('span', 'rhs-also', '');
+        const drumPart = seg('Part', 'drumPart', [['drums', [el('span', 'rhs-seg-text', DRUMS_CONTROLLER_PART.label), drumAlso]]], () => {});
         const difficulty = prefSeg(key, 'Difficulty', 'difficulty', DIFFICULTIES.map((d) => [d, DIFFICULTY_LABELS[d] || d]));
         const lefty = prefSeg(key, 'Lefty', 'lefty', LEFTY, (v) => v === 'on');
         const partAudio = prefSeg(key, 'Part audio', 'partAudio', PART_AUDIO);
         const soundMode = prefSeg(key, 'Sound', 'soundMode', SOUND_MODES);
-        const rowNote = el('div', 'bab-note');
+        const rowNote = el('div', 'rhs-note');
         notes.push(rowNote);
 
         return {
@@ -149,7 +149,7 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
         c.layout = sig;
         const look = LOOK[kind || 'none'];
         for (const ico of c.icos) ico.innerHTML = icon(look.icon, { size: 30 });
-        for (const e of [c.col, c.row]) e.style.setProperty('--bab-c', look.color);
+        for (const e of [c.col, c.row]) e.style.setProperty('--rhs-c', look.color);
         if (c.kind !== kind) {
             c.kind = kind;
             c.lightNames = LIGHTS[kind] || NO_LIGHTS;
@@ -163,7 +163,7 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
                 c.lit[n] = false;
                 return s;
             });
-            c.lightBox.className = kind === 'five_fret' ? 'bab-lights bab-frets' : 'bab-lights bab-drumpads';
+            c.lightBox.className = kind === 'five_fret' ? 'rhs-lights rhs-frets' : 'rhs-lights rhs-drumpads';
             c.lightBox.replaceChildren(...spans);
         }
         c.col.replaceChildren(c.colTop, ...(ask ? [c.playsAsField] : []), ...(kind ? [c.lightBox] : []), c.colNote, c.actions);
@@ -189,12 +189,12 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
         for (const n of c.names) n.textContent = r.name || r.key;
         for (const n of c.notes) n.textContent = r.note || '';
         for (const e of [c.col, c.row]) {
-            e.classList.toggle('bab-off', !r.on);
-            e.classList.toggle('bab-unavailable', !!r.unavailable);
+            e.classList.toggle('rhs-off', !r.on);
+            e.classList.toggle('rhs-unavailable', !!r.unavailable);
         }
         // An undecided column sits out, but the Plays as question it asks stays
         // at full strength (CSS), with Leave and Controls.
-        c.col.classList.toggle('bab-asking', !kind && kinds.length > 1);
+        c.col.classList.toggle('rhs-asking', !kind && kinds.length > 1);
         press(c.segs.playsAs, kind, (k) => !kinds.includes(k));
         c.hint.textContent = r.standard ? PLAYS_AS_HINT : '';
         const parts = r.parts || {};
@@ -246,7 +246,7 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
                 const on = !!(lit && lit[n]);
                 if (c.lit[n] === on) continue;
                 c.lit[n] = on;
-                c.lights[n].classList.toggle('bab-lit', on);
+                c.lights[n].classList.toggle('rhs-lit', on);
             }
         },
         destroy() {

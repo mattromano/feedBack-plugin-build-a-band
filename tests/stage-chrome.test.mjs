@@ -6,8 +6,8 @@ import { readFileSync } from 'node:fs';
 import { createStageChrome } from '../src/stage-chrome.js';
 import { makeDoc } from './fake-dom.mjs';
 
-const svg = (b) => b.querySelector('.bab-chrome-icon').innerHTML;
-const CLASSES = ['bab-chrome-menu', 'bab-chrome-loop', 'bab-chrome-full', 'bab-chrome-end'];
+const svg = (b) => b.querySelector('.rhs-chrome-icon').innerHTML;
+const CLASSES = ['rhs-chrome-menu', 'rhs-chrome-loop', 'rhs-chrome-full', 'rhs-chrome-end'];
 
 function setup({ full = false } = {}) {
     const doc = makeDoc();
@@ -20,7 +20,7 @@ function setup({ full = false } = {}) {
         doc, player, full,
         onMenu: cb('menu'), onLoop: cb('loop'), onFullScreen: cb('full'), onEnd: cb('end'), onEdge: cb('edge'),
     });
-    const row = player.querySelector('.bab-chrome');
+    const row = player.querySelector('.rhs-chrome');
     const btn = (cls) => row.querySelector('.' + cls);
     return { doc, player, calls, chrome, row, btn };
 }
@@ -34,18 +34,18 @@ test('the chrome row holds Menu, loop, full screen and End', () => {
         assert.equal(b.getAttribute('type'), 'button');
         assert.equal(b.getAttribute('aria-label'), b.getAttribute('title'));
     }
-    assert.equal(btn('bab-chrome-menu').getAttribute('title'), 'Menu (M)');
-    assert.equal(btn('bab-chrome-loop').getAttribute('title'), 'Set loop start');
-    assert.equal(btn('bab-chrome-full').getAttribute('title'), 'Full screen');
-    assert.equal(btn('bab-chrome-end').getAttribute('title'), 'End song');
-    assert.ok(svg(btn('bab-chrome-menu')).includes('<line x1="4" x2="20" y1="12" y2="12"/>'));
-    assert.ok(svg(btn('bab-chrome-loop')).includes('<path d="m17 2 4 4-4 4"/>'));
-    assert.ok(svg(btn('bab-chrome-full')).includes('<path d="M8 3H5a2 2 0 0 0-2 2v3"/>'));
-    assert.ok(svg(btn('bab-chrome-end')).includes('<polyline points="16 17 21 12 16 7"/>'));
+    assert.equal(btn('rhs-chrome-menu').getAttribute('title'), 'Menu (M)');
+    assert.equal(btn('rhs-chrome-loop').getAttribute('title'), 'Set loop start');
+    assert.equal(btn('rhs-chrome-full').getAttribute('title'), 'Full screen');
+    assert.equal(btn('rhs-chrome-end').getAttribute('title'), 'End song');
+    assert.ok(svg(btn('rhs-chrome-menu')).includes('<line x1="4" x2="20" y1="12" y2="12"/>'));
+    assert.ok(svg(btn('rhs-chrome-loop')).includes('<path d="m17 2 4 4-4 4"/>'));
+    assert.ok(svg(btn('rhs-chrome-full')).includes('<path d="M8 3H5a2 2 0 0 0-2 2v3"/>'));
+    assert.ok(svg(btn('rhs-chrome-end')).includes('<polyline points="16 17 21 12 16 7"/>'));
     // The edge comes after the row.
     assert.equal(player.children.indexOf(row), 0);
-    assert.ok(player.children[1].classList.contains('bab-edge'));
-    assert.ok(!player.classList.contains('bab-full'));
+    assert.ok(player.children[1].classList.contains('rhs-edge'));
+    assert.ok(!player.classList.contains('rhs-full'));
 });
 
 test('clicks call back', () => {
@@ -54,20 +54,20 @@ test('clicks call back', () => {
     for (const cls of CLASSES) btn(cls).fire('click', { stopPropagation() { stopped++; } });
     assert.deepEqual(calls, ['menu', 'loop', 'full', 'end']);
     assert.equal(stopped, 4);
-    player.querySelector('.bab-edge').fire('pointerenter');
+    player.querySelector('.rhs-edge').fire('pointerenter');
     assert.deepEqual(calls, ['menu', 'loop', 'full', 'end', 'edge']);
 });
 
 test('setFull', () => {
     const { player, chrome, btn } = setup({ full: true });
-    const full = btn('bab-chrome-full');
-    assert.ok(player.classList.contains('bab-full'));
+    const full = btn('rhs-chrome-full');
+    assert.ok(player.classList.contains('rhs-full'));
     assert.equal(full.getAttribute('aria-pressed'), 'true');
     assert.equal(full.getAttribute('title'), 'Exit full screen');
     assert.equal(full.getAttribute('aria-label'), 'Exit full screen');
     assert.ok(svg(full).includes('<path d="M8 3v3a2 2 0 0 1-2 2H3"/>'), 'minimize icon');
     chrome.setFull(false);
-    assert.ok(!player.classList.contains('bab-full'));
+    assert.ok(!player.classList.contains('rhs-full'));
     assert.equal(full.getAttribute('aria-pressed'), 'false');
     assert.equal(full.getAttribute('title'), 'Full screen');
     assert.equal(full.getAttribute('aria-label'), 'Full screen');
@@ -76,7 +76,7 @@ test('setFull', () => {
 
 test('setLoop', () => {
     const { chrome, btn } = setup();
-    const loop = btn('bab-chrome-loop');
+    const loop = btn('rhs-chrome-loop');
     assert.ok(loop.textContent.includes('Loop A'));
     chrome.setLoop('a');
     assert.ok(loop.textContent.includes('Loop B'));
@@ -93,18 +93,18 @@ test('setLoop', () => {
 test('destroy', () => {
     const { player, chrome } = setup({ full: true });
     chrome.destroy();
-    assert.equal(player.querySelector('.bab-chrome'), null);
-    assert.equal(player.querySelector('.bab-edge'), null);
-    assert.ok(!player.classList.contains('bab-full'));
+    assert.equal(player.querySelector('.rhs-chrome'), null);
+    assert.equal(player.querySelector('.rhs-edge'), null);
+    assert.ok(!player.classList.contains('rhs-full'));
     assert.doesNotThrow(() => chrome.destroy());
 });
 
 test('stage CSS: hover chrome and full mode replace the stage hides', () => {
-    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
-    assert.ok(!css.includes('#player.bab-stage #player-hud { display: none; }'));
-    assert.ok(!css.includes('#player.bab-stage #section-map { display: none; }'));
-    assert.ok(css.includes('#player.bab-full #v3-railzone { display: none; }'));
-    assert.ok(css.includes('#player.bab-full .bab-lanes { bottom: 0 !important; }'));
+    const css = readFileSync(new URL('../assets/rockherosmith.css', import.meta.url), 'utf8');
+    assert.ok(!css.includes('#player.rhs-stage #player-hud { display: none; }'));
+    assert.ok(!css.includes('#player.rhs-stage #section-map { display: none; }'));
+    assert.ok(css.includes('#player.rhs-full #v3-railzone { display: none; }'));
+    assert.ok(css.includes('#player.rhs-full .rhs-lanes { bottom: 0 !important; }'));
 });
 
 const rule = (css, sel) => {
@@ -114,22 +114,22 @@ const rule = (css, sel) => {
 };
 
 test('stage CSS: the HUD is click-through until the chrome shows, and sits above the lane chrome', () => {
-    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../assets/rockherosmith.css', import.meta.url), 'utf8');
     // Everything in the HUD (core's Up Next pill is pointer-events: auto) is
     // click-through on the stage; only the reveal gives the pill clicks back.
-    assert.match(rule(css, '#player.bab-stage #player-hud,\n#player.bab-stage #player-hud *'), /pointer-events: none;/);
-    assert.match(rule(css, '#player.bab-stage.chrome-active #player-hud .v3-upnext,\n#player.bab-stage.pop-open #player-hud .v3-upnext'), /pointer-events: auto;/);
+    assert.match(rule(css, '#player.rhs-stage #player-hud,\n#player.rhs-stage #player-hud *'), /pointer-events: none;/);
+    assert.match(rule(css, '#player.rhs-stage.chrome-active #player-hud .v3-upnext,\n#player.rhs-stage.pop-open #player-hud .v3-upnext'), /pointer-events: auto;/);
     // The HUD anchor clears the lane chrome band: transport + section map and
     // row (60px) + the lane chrome's 0.75rem lift + its 2.5rem band.
-    assert.match(rule(css, '#player.bab-stage #player-hud'), /bottom: calc\(var\(--bab-transport-h, 72px\) \+ 60px \+ 0\.75rem \+ 2\.5rem\);/);
-    assert.match(rule(css, '#player.bab-stage .bab-lane-chrome'), /bottom: calc\(60px \+ 0\.75rem\);/);
-    assert.match(rule(css, '#player.bab-stage.bab-full .bab-lane-chrome'), /bottom: calc\(var\(--bab-transport-h, 72px\) \+ 60px \+ 0\.75rem\);/);
+    assert.match(rule(css, '#player.rhs-stage #player-hud'), /bottom: calc\(var\(--rhs-transport-h, 72px\) \+ 60px \+ 0\.75rem \+ 2\.5rem\);/);
+    assert.match(rule(css, '#player.rhs-stage .rhs-lane-chrome'), /bottom: calc\(60px \+ 0\.75rem\);/);
+    assert.match(rule(css, '#player.rhs-stage.rhs-full .rhs-lane-chrome'), /bottom: calc\(var\(--rhs-transport-h, 72px\) \+ 60px \+ 0\.75rem\);/);
 });
 
 test('stage CSS: only the chrome row buttons take clicks', () => {
-    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
-    assert.match(rule(css, '#player .bab-chrome'), /pointer-events: none;/);
-    const shown = rule(css, '#player.chrome-active .bab-chrome,\n#player.pop-open .bab-chrome');
+    const css = readFileSync(new URL('../assets/rockherosmith.css', import.meta.url), 'utf8');
+    assert.match(rule(css, '#player .rhs-chrome'), /pointer-events: none;/);
+    const shown = rule(css, '#player.chrome-active .rhs-chrome,\n#player.pop-open .rhs-chrome');
     assert.ok(shown && !/pointer-events/.test(shown), 'the shown row stays click-through');
-    assert.match(rule(css, '#player.chrome-active .bab-chrome button,\n#player.pop-open .bab-chrome button'), /pointer-events: auto;/);
+    assert.match(rule(css, '#player.chrome-active .rhs-chrome button,\n#player.pop-open .rhs-chrome button'), /pointer-events: auto;/);
 });

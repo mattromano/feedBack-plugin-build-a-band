@@ -1,0 +1,729 @@
+@import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;800&family=Barlow:wght@500;600;700&display=swap');
+
+/* ── Band screen (#rockherosmith-root.rhs-screen) ───────────────────────────
+   Plugin-scoped: every rule sits under .rhs-screen. Part colour comes from
+   --rhs-c, set per column from the part registry. */
+.rhs-screen {
+    --rhs-bg: #0b0b10;
+    --rhs-panel: #15151d;
+    --rhs-line: #2a2a36;
+    --rhs-text: #ecebf2;
+    --rhs-dim: #8d8ca0;
+    --rhs-ok: #41d17a;
+    --rhs-field: #0f0f15;
+    --rhs-head: 'Unbounded', system-ui, sans-serif;
+    min-height: 100%;
+    background: var(--rhs-bg);
+    color: var(--rhs-text);
+    font: 14px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+.rhs-screen *, .rhs-screen *::before, .rhs-screen *::after { box-sizing: border-box; }
+.rhs-screen button { font: inherit; color: inherit; }
+.rhs-screen .rhs-setup, .rhs-screen .rhs-confirm { max-width: 1100px; margin: 0 auto; padding: 26px 20px; }
+.rhs-screen [hidden] { display: none !important; }
+
+/* Two views: Band setup, then Confirm (the picked song, its parts and GO) */
+.rhs-screen[data-view="setup"] .rhs-confirm,
+.rhs-screen[data-view="confirm"] .rhs-setup { display: none; }
+.rhs-screen .rhs-step { margin: 0 0 18px; font-family: var(--rhs-head); font-weight: 700; font-size: 26px; }
+
+/* Song head */
+.rhs-screen .rhs-songhead { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
+.rhs-screen .rhs-art {
+    flex: none; width: 64px; height: 64px; border-radius: 8px;
+    background: linear-gradient(135deg, #444, #222);
+}
+.rhs-screen .rhs-songtext { min-width: 0; }
+.rhs-screen .rhs-title {
+    margin: 0; font-family: var(--rhs-head); font-weight: 700; font-size: 26px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rhs-screen .rhs-artist { color: var(--rhs-dim); }
+.rhs-screen .rhs-chips { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.rhs-screen .rhs-chip {
+    font-size: 12px; padding: 3px 9px; border-radius: 999px;
+    border: 1px solid var(--rhs-line); color: var(--rhs-dim); white-space: nowrap;
+}
+.rhs-screen .rhs-chip.rhs-good { color: var(--rhs-ok); border-color: #2c6b47; }
+.rhs-screen .rhs-chip.rhs-good::before { content: '\25CF\00A0'; }
+.rhs-screen .rhs-art { overflow: hidden; }
+.rhs-screen .rhs-art-img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; display: block; }
+.rhs-screen .rhs-confirm .rhs-songhead .rhs-art { width: 120px; height: 120px; }
+
+/* Part columns */
+/* Controller columns and rows join the same grids (their hosts are display: contents). */
+.rhs-screen .rhs-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.rhs-screen .rhs-parts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.rhs-screen .rhs-ctlcols, .rhs-screen .rhs-ctlparts { display: contents; }
+.rhs-screen .rhs-col,
+.rhs-screen .rhs-part {
+    --rhs-c: #888;
+    display: flex; flex-direction: column; gap: 12px; padding: 18px;
+    background: var(--rhs-panel); border: 1px solid var(--rhs-line);
+    border-top: 4px solid var(--rhs-c); border-radius: 14px;
+    transition: opacity 0.2s, filter 0.2s;
+}
+.rhs-screen .rhs-col.rhs-off, .rhs-screen .rhs-part.rhs-off { opacity: 0.35; }
+.rhs-screen .rhs-col.rhs-unavailable, .rhs-screen .rhs-part.rhs-unavailable { opacity: 0.35; filter: grayscale(1); }
+/* An undecided controller: dimmed, apart from the Plays as question and Leave / Controls. */
+.rhs-screen .rhs-col.rhs-unavailable.rhs-asking { opacity: 1; filter: none; }
+.rhs-screen .rhs-col.rhs-unavailable.rhs-asking > :not(.rhs-playsas):not(.rhs-ctl-actions) { opacity: 0.35; filter: grayscale(1); }
+.rhs-screen .rhs-top { display: flex; align-items: center; gap: 10px; }
+.rhs-screen .rhs-ico { font-size: 34px; line-height: 1; }
+.rhs-screen .rhs-col .rhs-ico, .rhs-screen .rhs-part .rhs-ico { display: inline-flex; color: var(--rhs-c); }
+.rhs-screen .rhs-part-name { margin: 0; flex: 1; font-family: var(--rhs-head); font-weight: 700; font-size: 20px; }
+.rhs-screen .rhs-toggle {
+    position: relative; flex: none; width: 42px; height: 24px; padding: 0;
+    border: 0; border-radius: 12px; background: var(--rhs-c); cursor: pointer;
+}
+.rhs-screen .rhs-toggle::after {
+    content: ''; position: absolute; top: 3px; right: 3px; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; transition: right 0.2s;
+}
+.rhs-screen .rhs-toggle[aria-pressed="false"] { background: #444; }
+.rhs-screen .rhs-toggle[aria-pressed="false"]::after { right: 21px; }
+.rhs-screen .rhs-label {
+    display: block; margin-bottom: 4px; font-size: 11px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--rhs-dim);
+}
+.rhs-screen .rhs-seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.rhs-screen .rhs-seg button {
+    flex: 1; padding: 7px 4px; font-size: 12px; text-align: center; cursor: pointer;
+    background: var(--rhs-field); border: 1px solid var(--rhs-line); border-radius: 7px;
+}
+.rhs-screen .rhs-seg button[aria-pressed="true"] {
+    background: color-mix(in srgb, var(--rhs-c) 25%, var(--rhs-field));
+    border-color: var(--rhs-c); color: #fff;
+}
+/* Also the guitar arrangements the picked song lacks */
+.rhs-screen .rhs-seg button:disabled,
+.rhs-screen .rhs-part[data-part="guitar"] .rhs-seg[data-field="arrangement"] button:disabled { opacity: 0.3; cursor: not-allowed; }
+.rhs-screen .rhs-note { min-height: 1.2em; font-size: 11px; color: var(--rhs-dim); }
+
+/* Input device pick + silent signal light */
+.rhs-screen .rhs-device {
+    width: 100%; padding: 7px 8px; font: inherit; font-size: 12px; color: var(--rhs-text);
+    background: var(--rhs-field); border: 1px solid var(--rhs-line); border-radius: 7px;
+}
+.rhs-screen .rhs-findkit {
+    margin-top: 6px; padding: 6px 10px; font-size: 12px; cursor: pointer;
+    background: transparent; border: 1px dashed var(--rhs-c); border-radius: 7px;
+}
+.rhs-screen .rhs-findkit[hidden] { display: none; }
+.rhs-screen .rhs-part-device { font-size: 12px; color: var(--rhs-dim); }
+.rhs-screen .rhs-signal { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--rhs-dim); }
+.rhs-screen .rhs-light {
+    --rhs-level: 0;
+    position: relative; flex: none; width: 46px; height: 8px; overflow: hidden;
+    border-radius: 4px; background: var(--rhs-field); border: 1px solid var(--rhs-line);
+}
+.rhs-screen .rhs-light::after {
+    content: ''; position: absolute; inset: 0 auto 0 0;
+    width: calc(var(--rhs-level) * 100%); background: var(--rhs-ok);
+}
+.rhs-screen .rhs-signal.rhs-lit,
+.rhs-screen .rhs-signal.rhs-hit { color: var(--rhs-text); }
+.rhs-screen .rhs-signal.rhs-hit .rhs-light::after { width: 100%; background: var(--rhs-c); }
+.rhs-screen .rhs-signal.rhs-warn .rhs-signal-label { color: #e0a33d; }
+
+/* Mic-hit sensitivity check: slider, live level with the threshold tick, flash light */
+.rhs-screen .rhs-michit {
+    display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 6px 8px;
+    font-size: 12px; color: var(--rhs-dim);
+}
+.rhs-screen .rhs-michit-db { width: 100%; accent-color: var(--rhs-c); }
+.rhs-screen .rhs-michit-meter {
+    position: relative; grid-column: 1 / -1; height: 8px; overflow: hidden;
+    border-radius: 4px; background: var(--rhs-field); border: 1px solid var(--rhs-line);
+}
+.rhs-screen .rhs-michit-meter i {
+    position: absolute; inset: 0 auto 0 0; width: 0; background: var(--rhs-ok);
+}
+.rhs-screen .rhs-michit-meter b {
+    position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: var(--rhs-c);
+}
+.rhs-screen .rhs-michit-light {
+    justify-self: start; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--rhs-field); border: 1px solid var(--rhs-line);
+}
+.rhs-screen .rhs-michit-light.rhs-hit { background: var(--rhs-c); border-color: var(--rhs-c); box-shadow: 0 0 8px var(--rhs-c); }
+.rhs-screen .rhs-michit-text { grid-column: 2; }
+.rhs-screen .rhs-michit.rhs-disabled { opacity: 0.5; }
+/* The join slot: Press Start on a controller to join, or why not, and Set up links */
+.rhs-screen .rhs-joinslot {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    padding: 14px; font-size: 12px; text-align: center; color: var(--rhs-dim);
+    background: transparent; border: 2px dashed var(--rhs-line); border-radius: 14px;
+}
+.rhs-screen .rhs-joinslot .rhs-ico { display: inline-flex; opacity: 0.6; }
+.rhs-screen .rhs-setup-link {
+    padding: 5px 10px; font-size: 12px; cursor: pointer; color: var(--rhs-text);
+    background: transparent; border: 1px dashed #2ecc40; border-radius: 7px;
+}
+
+/* Controller players: the Setup column's fret lights and buttons, the Confirm row's tags */
+.rhs-screen .rhs-ctl .rhs-part-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rhs-screen .rhs-frets { display: flex; gap: 6px; }
+.rhs-screen .rhs-fret {
+    --rhs-fret: #888;
+    flex: 1; height: 14px; border-radius: 4px;
+    background: var(--rhs-field); border: 2px solid color-mix(in srgb, var(--rhs-fret) 55%, var(--rhs-line));
+    transition: background 0.05s;
+}
+.rhs-screen .rhs-fret[data-fret="green"] { --rhs-fret: #2ecc40; }
+.rhs-screen .rhs-fret[data-fret="red"] { --rhs-fret: #ff4136; }
+.rhs-screen .rhs-fret[data-fret="yellow"] { --rhs-fret: #ffdc00; }
+.rhs-screen .rhs-fret[data-fret="blue"] { --rhs-fret: #0074d9; }
+.rhs-screen .rhs-fret[data-fret="orange"] { --rhs-fret: #ff851b; }
+.rhs-screen .rhs-fret.rhs-lit { background: var(--rhs-fret); box-shadow: 0 0 8px var(--rhs-fret); }
+/* A drums controller's lights: four pads (a cymbal lights its pad's colour) and the kick */
+.rhs-screen .rhs-drumpads { display: flex; gap: 6px; }
+.rhs-screen .rhs-drumpad {
+    --rhs-fret: #888;
+    flex: 1; height: 14px; border-radius: 50%;
+    background: var(--rhs-field); border: 2px solid color-mix(in srgb, var(--rhs-fret) 55%, var(--rhs-line));
+    transition: background 0.05s;
+}
+.rhs-screen .rhs-drumpad[data-light="red"] { --rhs-fret: #ff4136; }
+.rhs-screen .rhs-drumpad[data-light="yellow"] { --rhs-fret: #ffdc00; }
+.rhs-screen .rhs-drumpad[data-light="blue"] { --rhs-fret: #0074d9; }
+.rhs-screen .rhs-drumpad[data-light="green"] { --rhs-fret: #2ecc40; }
+.rhs-screen .rhs-drumpad[data-light="kick"] { --rhs-fret: #f28c28; flex: 1.6; border-radius: 4px; }
+.rhs-screen .rhs-drumpad.rhs-lit { background: var(--rhs-fret); box-shadow: 0 0 8px var(--rhs-fret); }
+/* Plays as (5-Fret | Drums) and its pad hint */
+.rhs-screen .rhs-playsas-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--rhs-dim); }
+.rhs-screen .rhs-playsas-hint:empty { display: none; }
+.rhs-screen .rhs-ctl-actions { display: flex; gap: 8px; margin-top: auto; }
+.rhs-screen .rhs-ctl-actions button {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 6px 10px; font-size: 12px; cursor: pointer;
+    background: var(--rhs-field); border: 1px solid var(--rhs-line); border-radius: 7px;
+}
+.rhs-screen .rhs-btn-ico { display: inline-flex; }
+.rhs-screen .rhs-ctl .rhs-seg[data-field="part"] button,
+.rhs-screen .rhs-ctl .rhs-seg[data-field="drumPart"] button { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.rhs-screen .rhs-ctl .rhs-tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--rhs-dim); }
+.rhs-screen .rhs-ctl .rhs-tag:empty, .rhs-screen .rhs-ctl .rhs-also:empty { display: none; }
+.rhs-screen .rhs-ctl .rhs-also { font-size: 10px; color: var(--rhs-dim); }
+
+/* Setup bar and Go bar */
+.rhs-screen .rhs-setupbar,
+.rhs-screen .rhs-gobar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 22px; }
+.rhs-screen .rhs-failing { --rhs-c: #4aa3ff; min-width: 230px; }
+.rhs-screen .rhs-fsbox { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.rhs-screen .rhs-hint,
+.rhs-screen .rhs-setup-hint { color: var(--rhs-dim); font-size: 12px; }
+.rhs-screen .rhs-setup-hint { margin-left: auto; }
+.rhs-screen .rhs-choose,
+.rhs-screen .rhs-go {
+    padding: 14px 54px; border: 0; border-radius: 12px; cursor: pointer;
+    font-family: var(--rhs-head); font-weight: 800; font-size: 20px; letter-spacing: 0.08em; color: #fff;
+    background: linear-gradient(180deg, #4aa3ff, #2a6fd6); box-shadow: 0 6px 24px #2a6fd655;
+}
+.rhs-screen .rhs-choose { padding: 14px 32px; font-size: 16px; letter-spacing: 0.02em; }
+.rhs-screen .rhs-go { margin-left: auto; }
+.rhs-screen .rhs-choose:disabled,
+.rhs-screen .rhs-go:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+.rhs-screen .rhs-change,
+.rhs-screen .rhs-setup-btn,
+.rhs-screen .rhs-continue {
+    padding: 8px 14px; font-size: 13px; cursor: pointer;
+    background: transparent; border: 1px solid var(--rhs-line); border-radius: 7px;
+}
+.rhs-screen .rhs-change:hover:not(:disabled),
+.rhs-screen .rhs-setup-btn:hover,
+.rhs-screen .rhs-continue:hover { border-color: #4aa3ff; }
+.rhs-screen .rhs-change:disabled { opacity: 0.35; cursor: not-allowed; }
+
+@media (max-width: 860px) {
+    .rhs-screen .rhs-cols, .rhs-screen .rhs-parts { grid-template-columns: minmax(0, 1fr); }
+    .rhs-screen .rhs-songhead { flex-wrap: wrap; }
+    .rhs-screen .rhs-chips { margin-left: 0; justify-content: flex-start; }
+}
+
+/* ── Stage (inside core #player while band mode is on) ─────────────────────
+   .rhs-lanes overlays #player down to the footer (bottom set from JS). The
+   guitar slot is empty: core's #highway canvas is positioned over it and
+   sized to its zoom box via highway.setContainer(), then drawn at the lane's
+   zoom. Everything here is scoped under #player.rhs-stage, so removing the
+   class restores the normal layout. */
+#player.rhs-stage #highway {
+    position: absolute;
+    left: 0;
+    top: var(--rhs-lanes-top, 0px);
+    flex: none;
+    transform: scale(var(--rhs-main-zoom, 1));
+    transform-origin: 0 0;
+}
+/* The stage's hover chrome (plan 7 R5): core's chrome-active / pop-open reveal
+   shows, stacked from the bottom, the transport (--rhs-transport-h, measured
+   from the footer), the section map (20px) and the band chrome row (40px), with
+   core's HUD column (time, A/V offset, Up Next) on the right above them. The
+   band HUD bar still replaces the song info and the live performance HUD
+   (plan 4 R9). The HUD column sits above the lane chrome band (the lane
+   chrome's 0.75rem lift plus its 2.5rem height), so the time and Up Next never
+   cover the rightmost lane's Zoom and Fret buttons. */
+#player.rhs-stage #player-hud {
+    display: flex;
+    justify-content: flex-end;
+    top: auto;
+    bottom: calc(var(--rhs-transport-h, 72px) + 60px + 0.75rem + 2.5rem);
+    opacity: 0;
+    transition: opacity .25s ease;
+}
+#player.rhs-stage.chrome-active #player-hud,
+#player.rhs-stage.pop-open #player-hud { opacity: 1; }
+/* Invisible, the HUD must not take clicks: core's Up Next pill is
+   pointer-events: auto. Only the reveal gives it clicks back. */
+#player.rhs-stage #player-hud,
+#player.rhs-stage #player-hud * { pointer-events: none; }
+#player.rhs-stage.chrome-active #player-hud .v3-upnext,
+#player.rhs-stage.pop-open #player-hud .v3-upnext { pointer-events: auto; }
+#player.rhs-stage #player-hud > :first-child,
+#player.rhs-stage #v3-live-performance-hud { display: none !important; }
+/* The section map plugin inlines position: relative; top: 0, hence !important. */
+#player.rhs-stage #section-map {
+    position: absolute !important;
+    top: auto !important;
+    bottom: var(--rhs-transport-h, 72px) !important;
+    left: 0;
+    right: 0;
+    z-index: 21 !important;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+}
+#player.rhs-stage.chrome-active #section-map,
+#player.rhs-stage.pop-open #section-map { opacity: 1; pointer-events: auto; }
+#player .rhs-chrome {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--rhs-transport-h, 72px) + 20px);
+    height: 40px;
+    z-index: 22;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: 0 1rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+}
+/* The row stays click-through when shown: only its buttons take clicks, so
+   the strip between them never covers the lanes. */
+#player.chrome-active .rhs-chrome,
+#player.pop-open .rhs-chrome { opacity: 1; }
+#player.chrome-active .rhs-chrome button,
+#player.pop-open .rhs-chrome button { pointer-events: auto; }
+#player .rhs-chrome button {
+    display: inline-flex;
+    align-items: center;
+    gap: .375rem;
+    height: 32px;
+    padding: 0 .625rem;
+    border-radius: .5rem;
+    background: rgba(10, 10, 16, 0.8);
+    color: #ddd;
+    font-size: .8rem;
+    cursor: pointer;
+}
+#player .rhs-chrome button:hover { background: rgba(40, 40, 56, 0.9); color: #fff; }
+#player .rhs-chrome button[aria-pressed="true"] { color: #fff; }
+#player .rhs-chrome-icon { display: inline-flex; }
+#player .rhs-chrome .rhs-chrome-end { margin-left: auto; }
+/* Full mode (R2, R6): no tool rail, the lanes run to the bottom and the
+   transport overlays them on hover. */
+#player.rhs-full #v3-railzone { display: none; }
+#player.rhs-full .rhs-lanes { bottom: 0 !important; }
+#player.rhs-full .v3-transport {
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0));
+}
+/* Full mode's left edge opens the sidebar (R7); windowed, it stays core's rail. */
+#player .rhs-edge {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    z-index: 31;
+    display: none;
+}
+#player.rhs-full .rhs-edge { display: block; }
+/* Lane chrome lifts above the stacked hover chrome (R6). */
+#player.rhs-stage .rhs-lane-chrome { bottom: calc(60px + 0.75rem); }
+#player.rhs-stage.rhs-full .rhs-lane-chrome { bottom: calc(var(--rhs-transport-h, 72px) + 60px + 0.75rem); }
+/* Vocals alone: no lane holds the main highway. setVisible(false) stops its
+   drawing; this hides the last frame left on the canvas. */
+#player.rhs-stage.rhs-main-hidden #highway { visibility: hidden; }
+#player .rhs-lanes {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 2;
+    pointer-events: none;
+}
+#player .rhs-lane {
+    position: absolute;
+    top: var(--rhs-lanes-top, 0px);
+    bottom: 0;
+    overflow: hidden;
+}
+#player .rhs-lane[data-part="drums"],
+#player .rhs-lane.rhs-lane-ctl {
+    pointer-events: auto;
+    background: #050508;
+}
+/* The lane holding the main highway stays see-through and lets input reach
+   #highway beneath it: this overrides the drum lane above when drums play
+   alone, with or without vocals. */
+#player .rhs-lane.rhs-lane-main {
+    pointer-events: none;
+    background: none;
+}
+/* Vocal strip slot: full width under the HUD row (top/height set from JS). */
+#player .rhs-strip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+/* Per-lane zoom: an untransformed measuring box (100/z % of the lane) that
+   the lane's highway sizes to; never shown, never hit. */
+#player .rhs-zoom-box {
+    position: absolute;
+    left: 0;
+    top: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+#player .rhs-divider {
+    position: absolute;
+    top: var(--rhs-lanes-top, 0px);
+    bottom: 0;
+    width: 10px;
+    margin-left: -5px;
+    z-index: 3;
+    cursor: col-resize;
+    pointer-events: auto;
+    touch-action: none;
+}
+#player .rhs-divider::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: rgba(255, 255, 255, 0.18);
+}
+#player .rhs-divider:hover::after,
+#player .rhs-lanes.rhs-dragging .rhs-divider::after {
+    background: rgba(255, 255, 255, 0.5);
+}
+#player .rhs-lanes.rhs-dragging { cursor: col-resize; user-select: none; }
+
+/* Lane chrome (guitar: fret numbers and zoom; drums: zoom), revealed on
+   hover at the bottom right; the lane HUD holds the top. Above the drum
+   lane's canvas. */
+#player .rhs-lane-chrome {
+    position: absolute;
+    bottom: 0.75rem;
+    right: 0.75rem;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.5rem;
+    background: rgba(10, 10, 16, 0.8);
+    color: #ddd;
+    font-size: 0.75rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+#player .rhs-lane.rhs-hover .rhs-lane-chrome {
+    opacity: 1;
+    pointer-events: auto;
+}
+#player .rhs-lane-chrome button {
+    min-width: 1.5rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.375rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.1);
+    color: inherit;
+    cursor: pointer;
+}
+#player .rhs-lane-chrome button:hover { background: rgba(255, 255, 255, 0.2); }
+#player .rhs-lane-chrome .rhs-chrome-zoom { margin-left: 0.5rem; }
+
+/* Toast stack (R18): a column under the HUD in #player, newest at the bottom. */
+#player .rhs-toasts {
+    position: absolute; left: 50%; top: 72px; transform: translateX(-50%); z-index: 30;
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    pointer-events: none;
+}
+#player .rhs-toast {
+    padding: 8px 14px; border-radius: 8px; pointer-events: none;
+    background: rgba(15, 15, 21, 0.92); border: 1px solid #2a2a36; color: #ecebf2;
+    font: 13px/1.3 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* Band count-in (R15): 3-2-1 / ROCK! over the stage. Core's own overlay is hidden for
+   band songs; this one only draws. */
+body.rhs-band-song #count-in-overlay { display: none !important; }
+#player .rhs-countin {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 40;
+    font: 800 180px/1 'Unbounded', system-ui, sans-serif; color: #fff; white-space: nowrap;
+    text-shadow: 0 0 24px #4aa3ff, 0 0 60px #2a6fd6;
+    pointer-events: none; user-select: none;
+}
+
+/* ── Band HUD (plan 4 R6-R9) ───────────────────────────────────────────────
+   .rhs-hud is the 48 px bar across the top of #player (the stage starts under
+   it). Each playing part has a .rhs-part-hud overlay in its lane or the vocal
+   strip, coloured by --rhs-c. Unbounded for numbers and callouts, Barlow for
+   tags. Nothing here takes pointer input. */
+#player .rhs-hud {
+    position: absolute; left: 0; right: 0; top: 0; height: 48px; z-index: 20;
+    box-sizing: border-box; display: flex; align-items: center; gap: 22px; padding: 0 18px;
+    background: linear-gradient(180deg, #14141c, #0b0b10); border-bottom: 1px solid #2a2a36;
+    color: #ecebf2; pointer-events: none; overflow: hidden; white-space: nowrap;
+}
+#player .rhs-hud-score {
+    font: 800 22px/1 'Unbounded', system-ui, sans-serif; font-variant-numeric: tabular-nums;
+    min-width: 7ch;
+}
+#player .rhs-hud-stars { display: inline-flex; gap: 3px; }
+#player .rhs-star { position: relative; display: inline-flex; width: 18px; height: 18px; color: #4a4958; }
+#player .rhs-star-fill {
+    position: absolute; left: 0; top: 0; height: 18px; overflow: hidden; display: inline-flex;
+    color: #f5c542; transition: width 0.3s;
+}
+#player .rhs-star-fill .rhs-icon { flex: none; fill: currentColor; }
+#player .rhs-hud-stars.rhs-gold .rhs-star-fill { color: #ffd23f; filter: drop-shadow(0 0 4px #ffb80099); }
+#player .rhs-hud-song {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    color: #8d8ca0; font: 600 12px/1.2 'Barlow', system-ui, sans-serif;
+}
+#player .rhs-hud-band {
+    margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+}
+#player .rhs-hud-mult {
+    font: 800 18px/1 'Unbounded', system-ui, sans-serif; color: #8d8ca0; transition: color 0.2s, text-shadow 0.2s;
+}
+#player .rhs-hud-mult.rhs-hot { color: #5cc8ff; text-shadow: 0 0 10px #5cc8ff88; }
+#player .rhs-hud-bonus { font: 500 10px/1 'Unbounded', system-ui, sans-serif; color: #5cc8ff; }
+#player .rhs-hud-bonus:empty { display: none; }
+
+#player .rhs-part-hud { position: absolute; inset: 0; z-index: 1; pointer-events: none; color: #ecebf2; }
+#player .rhs-lanehud {
+    position: absolute; top: 10px; left: 10px; right: 10px;
+    display: flex; align-items: flex-start; gap: 10px;
+}
+#player .rhs-tag {
+    display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 5px;
+    background: rgba(0, 0, 0, 0.67); border-left: 3px solid var(--rhs-c);
+    font: 700 12px/1.4 'Barlow', system-ui, sans-serif; letter-spacing: 0.02em;
+}
+#player .rhs-tag .rhs-icon { color: var(--rhs-c); }
+#player .rhs-od {
+    margin-left: auto; width: 90px; height: 9px; margin-top: 5px; border-radius: 5px;
+    background: #222; border: 1px solid #333; overflow: hidden;
+}
+#player .rhs-od i {
+    display: block; height: 100%; background: #5cc8ff; box-shadow: 0 0 10px #5cc8ff;
+    transition: width 0.2s;
+}
+#player .rhs-part-hud.rhs-od-active .rhs-od { border-color: #5cc8ff; box-shadow: 0 0 8px #5cc8ff; }
+#player .rhs-part-hud.rhs-od-active .rhs-glow {
+    box-shadow: inset 0 0 0 3px #5cc8ff, inset 0 0 40px #5cc8ff66;
+}
+/* Enough bar to deploy: the border pulses (opacity-free, shadow only). */
+#player .rhs-part-hud.rhs-od-ready .rhs-od { border-color: #5cc8ff; animation: rhs-od-pulse 1s ease-in-out infinite; }
+@keyframes rhs-od-pulse {
+    0%, 100% { box-shadow: 0 0 2px #5cc8ff; }
+    50% { box-shadow: 0 0 10px 2px #5cc8ff; }
+}
+/* Noodle it up: a glowing band across the guitar lane's lower third. */
+#player .rhs-noodle-zone {
+    display: none; position: absolute; left: 0; right: 0; bottom: 0; height: 33.333%;
+    background: linear-gradient(0deg, #5cc8ff55, #5cc8ff11);
+    border-top: 2px solid #5cc8ff; box-shadow: 0 -4px 24px #5cc8ff88;
+}
+#player .rhs-part-hud.rhs-noodle .rhs-noodle-zone { display: block; }
+/* Dropped out (fail mode): the lane and strip grey, the tag says OUT. */
+#player .rhs-lane.rhs-failed, #player .rhs-strip.rhs-failed { filter: grayscale(1) brightness(0.6); }
+#player .rhs-part-hud.rhs-failed .rhs-tag::after { content: ' · OUT'; }
+#player .rhs-mult {
+    min-width: 34px; text-align: right; color: var(--rhs-c);
+    font: 800 22px/1 'Unbounded', system-ui, sans-serif; text-shadow: 0 0 8px #000;
+}
+#player .rhs-crowd {
+    position: absolute; left: 10px; top: 48px; bottom: 20px; width: 10px; border-radius: 5px; opacity: 0.85;
+    background: linear-gradient(0deg, #c33 0 25%, #cc3 25% 55%, #3b3 55%);
+}
+#player .rhs-crowd i {
+    position: absolute; left: -4px; width: 18px; height: 4px; margin-bottom: -2px; border-radius: 2px;
+    background: #fff; box-shadow: 0 0 6px #fff; transition: bottom 0.25s;
+}
+#player .rhs-crowd i.rhs-crowd-red { box-shadow: 0 0 8px #ff4d4d; }
+#player .rhs-glow {
+    position: absolute; inset: 0; opacity: var(--rhs-glow, 0.15); transition: opacity 0.3s;
+    box-shadow: inset 0 0 0 3px var(--rhs-c), inset 0 0 40px color-mix(in srgb, var(--rhs-c) 30%, transparent);
+}
+/* Miss flash, opacity only: the glow jumps to full and a red layer fades out. */
+#player .rhs-glow::after {
+    content: ''; position: absolute; inset: 0; opacity: 0;
+    box-shadow: inset 0 0 0 4px #ff4d4d, inset 0 0 60px rgba(255, 77, 77, 0.55);
+}
+#player .rhs-glow.rhs-glow-miss { animation: rhs-glow-full 400ms ease-out; }
+#player .rhs-glow.rhs-glow-miss::after { animation: rhs-glow-miss 400ms ease-out; }
+@keyframes rhs-glow-full { from { opacity: 1; } }
+@keyframes rhs-glow-miss { from { opacity: 1; } to { opacity: 0; } }
+#player .rhs-callout {
+    position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%) scale(0.8); opacity: 0;
+    white-space: nowrap; color: #fff; letter-spacing: 0.04em;
+    font: 800 30px/1 'Unbounded', system-ui, sans-serif;
+    text-shadow: 0 0 18px var(--rhs-c), 0 0 4px #000;
+}
+#player .rhs-callout.rhs-show { animation: rhs-pop 1.6s ease-out; }
+@keyframes rhs-pop {
+    0% { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+    15% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); }
+    70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -60%) scale(1); }
+}
+/* The vocal strip is short: the crowd meter moves under the right-hand group
+   and the callout sits mid-strip. */
+#player .rhs-strip .rhs-lanehud { top: 6px; }
+#player .rhs-strip .rhs-crowd { left: auto; right: 10px; top: 32px; bottom: 8px; }
+#player .rhs-strip .rhs-callout { top: 55%; font-size: 20px; }
+@media (prefers-reduced-motion: reduce) {
+    #player .rhs-callout { transform: translate(-50%, -50%); }
+    #player .rhs-callout.rhs-show { animation: rhs-fade 1.6s ease-out; }
+    #player .rhs-glow.rhs-glow-miss, #player .rhs-glow.rhs-glow-miss::after { animation: none; }
+    #player .rhs-part-hud.rhs-od-ready .rhs-od { animation: none; box-shadow: 0 0 8px #5cc8ff; }
+}
+@keyframes rhs-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ── Results (plan 4 R16, R17) ─────────────────────────────────────────────
+   A dialog over the whole of #player when a band song ends: band stars, score
+   and song, one card per part (coloured by --rhs-c) and Play again / Next song.
+   Cards sit in three columns, one below 720 px. Next song is styled like Go. */
+#player .rhs-results {
+    position: absolute; inset: 0; z-index: 50; overflow-y: auto; box-sizing: border-box;
+    background: rgba(11, 11, 16, 0.94); color: #ecebf2;
+    font: 14px/1.4 'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+#player .rhs-results *, #player .rhs-results *::before, #player .rhs-results *::after { box-sizing: border-box; }
+#player .rhs-results-inner { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
+#player .rhs-results-head { text-align: center; margin-bottom: 26px; }
+#player .rhs-results-failed {
+    margin: 0 0 14px; font-size: 30px; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase;
+    color: #ff5a4a; text-shadow: 0 0 18px #ff3b2f66;
+}
+#player .rhs-results-stars { display: inline-flex; gap: 8px; filter: drop-shadow(0 0 20px #f5c54266); }
+#player .rhs-results-stars .rhs-star { width: 40px; height: 40px; }
+#player .rhs-results-stars .rhs-star-fill { height: 40px; }
+#player .rhs-results-stars.rhs-gold .rhs-star-fill { color: #ffd23f; filter: drop-shadow(0 0 6px #ffb80099); }
+#player .rhs-results-score {
+    font: 800 44px/1.15 'Unbounded', system-ui, sans-serif; font-variant-numeric: tabular-nums;
+}
+#player .rhs-results-sub { color: #8d8ca0; }
+#player .rhs-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+#player .rhs-card {
+    background: #15151d; border: 1px solid #2a2a36; border-top: 4px solid var(--rhs-c, #8d8ca0);
+    border-radius: 14px; padding: 18px;
+}
+#player .rhs-card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+#player .rhs-card-icon { display: inline-flex; color: var(--rhs-c, #8d8ca0); }
+#player .rhs-card-name { margin: 0; flex: 1; min-width: 0; font: 700 17px/1.2 'Unbounded', system-ui, sans-serif; }
+#player .rhs-card-diff { font-size: 12px; color: #8d8ca0; }
+#player .rhs-card-sub { margin: -4px 0 6px; font-size: 12px; color: #8d8ca0; overflow-wrap: anywhere; }
+#player .rhs-card-pct {
+    font: 800 40px/1.1 'Unbounded', system-ui, sans-serif; color: var(--rhs-c, #ecebf2);
+    font-variant-numeric: tabular-nums;
+}
+#player .rhs-stat {
+    display: flex; justify-content: space-between; gap: 12px; padding: 6px 0;
+    border-bottom: 1px solid #2a2a36; font-size: 13px;
+}
+#player .rhs-stat:last-of-type { border-bottom: 0; }
+#player .rhs-stat-label { color: #8d8ca0; }
+#player .rhs-stat-value { text-align: right; font-variant-numeric: tabular-nums; }
+#player .rhs-award {
+    margin-top: 10px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 8px;
+    border-radius: 6px; background: color-mix(in srgb, var(--rhs-c, #8d8ca0) 15%, transparent);
+}
+#player .rhs-award-icon { display: inline-flex; color: var(--rhs-c, #ecebf2); }
+#player .rhs-results-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 26px; }
+#player .rhs-results-btns button {
+    display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: #fff;
+}
+#player .rhs-btn-icon { display: inline-flex; }
+#player .rhs-again {
+    background: #222; border: 1px solid #444; border-radius: 10px; padding: 12px 26px;
+    font: 600 15px/1.2 'Barlow', system-ui, sans-serif; color: #ecebf2;
+}
+#player .rhs-again:hover { background: #2c2c34; }
+#player .rhs-next {
+    padding: 14px 54px; border: 0; border-radius: 12px; text-transform: uppercase;
+    font: 800 20px/1.2 'Unbounded', system-ui, sans-serif; letter-spacing: 0.08em;
+    background: linear-gradient(180deg, #4aa3ff, #2a6fd6); box-shadow: 0 6px 24px #2a6fd655;
+}
+#player .rhs-results-btns button:focus-visible { outline: 2px solid #4aa3ff; outline-offset: 3px; }
+@media (max-width: 720px) {
+    #player .rhs-cards { grid-template-columns: minmax(0, 1fr); }
+    #player .rhs-results-score { font-size: 34px; }
+}
+
+/* ===== Plan 7 Task 7: the sidebar over the stage and Settings over the paused song
+   (R7, R9). Above #player (100), below core's confirm dialog (z 250). ===== */
+body.rhs-sidebar-open #v3-sidebar {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 16rem;
+    z-index: 150;
+    box-shadow: 8px 0 32px rgba(0,0,0,.6);
+    animation: rhs-sidebar-in .18s ease-out;
+}
+@keyframes rhs-sidebar-in {
+    from { transform: translateX(-100%); }
+    to { transform: none; }
+}
+body.rhs-settings-over #settings {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 160;
+    overflow-y: auto;
+    background: #0f172a;
+}
+body.rhs-settings-over #settings .fb-settings-back { display: none; }
+#settings .rhs-settings-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 10px;
+    padding: 12px 26px;
+    font: 600 15px/1.2 'Barlow', system-ui, sans-serif;
+    color: #ecebf2;
+    cursor: pointer;
+}
+#settings .rhs-settings-back:hover { background: #2c2c34; }
+#settings .rhs-settings-back:focus-visible { outline: 2px solid #4aa3ff; outline-offset: 3px; }
+/* ===== end Plan 7 Task 7 ===== */

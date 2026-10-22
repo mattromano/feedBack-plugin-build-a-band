@@ -30,7 +30,7 @@ function setup() {
         for (const [id, t] of [...pending]) if (t.ms === ms) { pending.delete(id); t.fn(); }
     };
     const overlay = createCountInOverlay({ doc, bus, getHost: () => player, ...timers });
-    const el = () => player.querySelector('.bab-countin');
+    const el = () => player.querySelector('.rhs-countin');
     return { player, bus, overlay, el, fire, pending };
 }
 
@@ -42,7 +42,7 @@ test('counts down 3-2-1 from core\'s ticks', () => {
     assert.equal(el().textContent, '2');
     bus.emit('count-in:tick', { n: 3, total: 3 });
     assert.equal(el().textContent, '1');
-    assert.equal(player.querySelectorAll('.bab-countin').length, 1);
+    assert.equal(player.querySelectorAll('.rhs-countin').length, 1);
 });
 
 test('a non-finite total shows n', () => {

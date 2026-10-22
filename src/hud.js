@@ -44,27 +44,27 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
     const flag = (node, cls, on) => put(node, cls, on, (v) => { node.classList.toggle(cls, v); });
 
     // ── The bar ──
-    const bar = el('div', 'bab-hud');
-    const scoreEl = el('span', 'bab-hud-score', bar);
+    const bar = el('div', 'rhs-hud');
+    const scoreEl = el('span', 'rhs-hud-score', bar);
     scoreEl.textContent = '0';
-    const starsEl = el('span', 'bab-hud-stars', bar);
+    const starsEl = el('span', 'rhs-hud-stars', bar);
     starsEl.setAttribute('aria-hidden', 'true');
     const fills = [];
     for (let i = 0; i < STAR_COUNT; i++) {
-        const star = el('span', 'bab-star', starsEl);
+        const star = el('span', 'rhs-star', starsEl);
         star.innerHTML = icon('star', { size: 18 });
-        const fill = el('span', 'bab-star-fill', star);
+        const fill = el('span', 'rhs-star-fill', star);
         fill.innerHTML = icon('star', { size: 18 });
         fill.style.width = '0%';
         fills.push(fill);
     }
-    const songEl = el('span', 'bab-hud-song', bar);
+    const songEl = el('span', 'rhs-hud-song', bar);
     const s = song || {};
     songEl.textContent = [s.title, s.artist].filter((v) => typeof v === 'string' && v).join(' · ');
-    const band = el('div', 'bab-hud-band', bar);
-    const multEl = el('span', 'bab-hud-mult', band);
+    const band = el('div', 'rhs-hud-band', bar);
+    const multEl = el('span', 'rhs-hud-mult', band);
     multEl.textContent = bandMultiplierText(1);
-    const bonusEl = el('span', 'bab-hud-bonus', band);
+    const bonusEl = el('span', 'rhs-hud-bonus', band);
     player.appendChild(bar);
 
     // ── Each part ──
@@ -74,28 +74,28 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
         if (!host || huds.has(part)) continue;
         const ctl = ((prefs && prefs.controllers) || []).find((c) => c && c.id === part);
         const style = playerStyle(part, prefs, { oneLevel, sourceKind: ctl && ctl.sourceKind });
-        const root = el('div', 'bab-part-hud');
+        const root = el('div', 'rhs-part-hud');
         root.setAttribute('data-part', part);
-        if (style.color) root.style.setProperty('--bab-c', style.color);
-        const glow = el('div', 'bab-glow', root);
-        glow.style.setProperty('--bab-glow', String(GLOW_MIN));
-        const lane = el('div', 'bab-lanehud', root);
-        const tag = el('span', 'bab-tag', lane);
+        if (style.color) root.style.setProperty('--rhs-c', style.color);
+        const glow = el('div', 'rhs-glow', root);
+        glow.style.setProperty('--rhs-glow', String(GLOW_MIN));
+        const lane = el('div', 'rhs-lanehud', root);
+        const tag = el('span', 'rhs-tag', lane);
         tag.innerHTML = icon(style.icon, { size: 14 });
-        el('span', 'bab-tag-text', tag).textContent = style.tag;
-        const od = el('span', 'bab-od', lane);
+        el('span', 'rhs-tag-text', tag).textContent = style.tag;
+        const od = el('span', 'rhs-od', lane);
         const odFill = el('i', '', od);
         odFill.style.width = '0%';
-        const mult = el('span', 'bab-mult', lane);
+        const mult = el('span', 'rhs-mult', lane);
         mult.textContent = '×1';
-        const crowd = el('div', 'bab-crowd', root);
+        const crowd = el('div', 'rhs-crowd', root);
         const marker = el('i', '', crowd);
         // R6's starting crowd, so the marker doesn't sit at the floor and slide on the first update.
         marker.style.bottom = pct(CROWD.start);
-        marker.classList.add('bab-crowd-' + crowdZone(CROWD.start));
+        marker.classList.add('rhs-crowd-' + crowdZone(CROWD.start));
         // Guitar only: the glowing band across the lower third while the Noodle it up zone is open.
-        if (part === 'guitar') el('div', 'bab-noodle-zone', root).setAttribute('aria-hidden', 'true');
-        const callout = el('div', 'bab-callout', root);
+        if (part === 'guitar') el('div', 'rhs-noodle-zone', root).setAttribute('aria-hidden', 'true');
+        const callout = el('div', 'rhs-callout', root);
         callout.setAttribute('role', 'status');
         host.appendChild(root);
         huds.set(part, { calloutKind: style.calloutKind, root, host, glow, odFill, mult, marker, callout });
@@ -115,10 +115,10 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
             const share = i < full ? 1 : i === full ? partial : 0;
             put(fill, 'width', pct(share), (v) => { fill.style.width = v; });
         });
-        flag(starsEl, 'bab-gold', gold);
+        flag(starsEl, 'rhs-gold', gold);
         const n = Number.isFinite(snapshot.bandMultiplier) ? snapshot.bandMultiplier : 1;
         text(multEl, bandMultiplierText(n));
-        flag(multEl, 'bab-hot', n >= 2);
+        flag(multEl, 'rhs-hot', n >= 2);
         text(bonusEl, snapshot.bonus > 0 ? '+' + formatScore(snapshot.bonus) + ' bonus' : '');
 
         const sp = snapshot.parts || {};
@@ -129,13 +129,13 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
             const c = Number.isFinite(p.crowd) ? Math.min(1, Math.max(0, p.crowd)) : 0;
             put(h.marker, 'bottom', pct(c), (v) => { h.marker.style.bottom = v; });
             const zone = crowdZone(c);
-            for (const z of ZONES) flag(h.marker, 'bab-crowd-' + z, z === zone);
+            for (const z of ZONES) flag(h.marker, 'rhs-crowd-' + z, z === zone);
             const streak = Number.isFinite(p.streak) ? p.streak : 0;
-            put(h.glow, 'level', glowLevel(streak), (v) => { h.glow.style.setProperty('--bab-glow', String(v)); });
+            put(h.glow, 'level', glowLevel(streak), (v) => { h.glow.style.setProperty('--rhs-glow', String(v)); });
             const before = prev && prev[part];
             if (!before || silent) continue;
             const was = Number.isFinite(before.streak) ? before.streak : 0;
-            if (was > 0 && streak === 0) restart(h.glow, 'bab-glow-miss');
+            if (was > 0 && streak === 0) restart(h.glow, 'rhs-glow-miss');
             const line = streakCallout(h.calloutKind, was, streak);
             if (line) show(h, line);
         }
@@ -147,7 +147,7 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
 
     function show(h, line) {
         h.callout.textContent = line;
-        restart(h.callout, 'bab-show');
+        restart(h.callout, 'rhs-show');
     }
 
     return {
@@ -162,24 +162,24 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
             if (!h) return;
             const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
             put(h.odFill, 'width', pct(f), (v) => { h.odFill.style.width = v; });
-            flag(h.root, 'bab-od-active', !!active);
+            flag(h.root, 'rhs-od-active', !!active);
         },
         // Enough bar to deploy: the bar pulses.
         setReady(part, on) {
             const h = alive && huds.get(part);
-            if (h) flag(h.root, 'bab-od-ready', !!on);
+            if (h) flag(h.root, 'rhs-od-ready', !!on);
         },
         // The Noodle it up zone on the guitar lane.
         setNoodle(on) {
             const h = alive && huds.get('guitar');
-            if (h) flag(h.root, 'bab-noodle', !!on);
+            if (h) flag(h.root, 'rhs-noodle', !!on);
         },
         // Fail mode: the part is out. Greys the lane (or strip) and marks the HUD tag.
         setFailed(part, on) {
             const h = alive && huds.get(part);
             if (!h) return;
-            flag(h.root, 'bab-failed', !!on);
-            flag(h.host, 'bab-failed', !!on);
+            flag(h.root, 'rhs-failed', !!on);
+            flag(h.host, 'rhs-failed', !!on);
         },
         destroy() {
             if (!alive) return;
@@ -187,7 +187,7 @@ export function createBandHud({ doc, player, stage, parts, prefs, song, oneLevel
             bar.remove();
             for (const h of huds.values()) {
                 h.root.remove();
-                h.host.classList.remove('bab-failed');
+                h.host.classList.remove('rhs-failed');
             }
             huds.clear();
             written.clear();

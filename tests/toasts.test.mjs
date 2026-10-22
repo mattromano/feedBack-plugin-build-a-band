@@ -37,11 +37,11 @@ test('stacks different messages', () => {
     stack.show('A');
     stack.show('B');
     assert.deepEqual(stack.texts(), ['A', 'B']);
-    const boxes = player.querySelectorAll('.bab-toasts');
+    const boxes = player.querySelectorAll('.rhs-toasts');
     assert.equal(boxes.length, 1);
     assert.equal(boxes[0].getAttribute('role'), 'status');
     assert.equal(boxes[0].getAttribute('aria-live'), 'polite');
-    assert.equal(boxes[0].querySelectorAll('div.bab-toast').length, 2);
+    assert.equal(boxes[0].querySelectorAll('div.rhs-toast').length, 2);
 });
 
 test('the same message is shown once and its timer restarts', () => {
@@ -65,7 +65,7 @@ test('each toast leaves after 4 s', () => {
     stack.show('A');
     timers.fire(4000);
     assert.deepEqual(stack.texts(), []);
-    assert.equal(player.querySelectorAll('div.bab-toast').length, 0);
+    assert.equal(player.querySelectorAll('div.rhs-toast').length, 0);
     stack.show('B');
     assert.deepEqual(stack.texts(), ['B']);
 });
@@ -86,8 +86,8 @@ test('clear removes everything and cancels timers', () => {
     stack.clear();
     assert.deepEqual(stack.texts(), []);
     assert.equal(timers.count(), 0);
-    assert.equal(player.querySelectorAll('.bab-toasts').length, 0);
+    assert.equal(player.querySelectorAll('.rhs-toasts').length, 0);
     stack.show('C');
     assert.deepEqual(stack.texts(), ['C']);
-    assert.equal(player.querySelectorAll('.bab-toasts').length, 1);
+    assert.equal(player.querySelectorAll('.rhs-toasts').length, 1);
 });

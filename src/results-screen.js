@@ -42,65 +42,65 @@ export function showResultsScreen({ doc, win, host, model, onAgain, onNext }) {
     };
     const m = model || {};
 
-    const root = el('div', 'bab-results');
+    const root = el('div', 'rhs-results');
     root.setAttribute('role', 'dialog');
     root.setAttribute('aria-modal', 'true');
     const label = m.title ? 'Results: ' + m.title : 'Results';
     root.setAttribute('aria-label', m.heading ? m.heading + '. ' + label : label);
-    const inner = el('div', 'bab-results-inner', root);
+    const inner = el('div', 'rhs-results-inner', root);
 
     // Header: the Band failed heading (plan 5 R12), band stars (the HUD's five-star display),
     // band score, song.
-    const head = el('div', 'bab-results-head', inner);
-    if (m.heading) el('h2', 'bab-results-failed', head).textContent = m.heading;
-    const stars = el('div', 'bab-results-stars', head);
+    const head = el('div', 'rhs-results-head', inner);
+    if (m.heading) el('h2', 'rhs-results-failed', head).textContent = m.heading;
+    const stars = el('div', 'rhs-results-stars', head);
     stars.setAttribute('aria-hidden', 'true');
     const sd = m.starDisplay || { full: 0, partial: 0, gold: false };
     for (let i = 0; i < STAR_COUNT; i++) {
-        const star = el('span', 'bab-star', stars);
+        const star = el('span', 'rhs-star', stars);
         star.innerHTML = icon('star', { size: STAR_PX });
-        const fill = el('span', 'bab-star-fill', star);
+        const fill = el('span', 'rhs-star-fill', star);
         fill.innerHTML = icon('star', { size: STAR_PX });
         const share = i < sd.full ? 1 : i === sd.full ? sd.partial || 0 : 0;
         fill.style.width = Math.round(share * 100) + '%';
     }
-    stars.classList.toggle('bab-gold', !!sd.gold);
-    el('div', 'bab-results-score', head).textContent = formatScore(m.score);
-    el('div', 'bab-results-sub', head).textContent = m.subtitle || '';
+    stars.classList.toggle('rhs-gold', !!sd.gold);
+    el('div', 'rhs-results-score', head).textContent = formatScore(m.score);
+    el('div', 'rhs-results-sub', head).textContent = m.subtitle || '';
 
     // One card per part.
-    const grid = el('div', 'bab-cards', inner);
+    const grid = el('div', 'rhs-cards', inner);
     for (const c of Array.isArray(m.cards) ? m.cards : []) {
-        const card = el('div', 'bab-card', grid);
+        const card = el('div', 'rhs-card', grid);
         card.setAttribute('data-part', c.part);
-        if (c.color) card.style.setProperty('--bab-c', c.color);
-        const top = el('div', 'bab-card-top', card);
-        iconIn(top, 'bab-card-icon', c.icon, 28);
-        el('h3', 'bab-card-name', top).textContent = c.name || '';
-        el('span', 'bab-card-diff', top).textContent = c.difficulty || '';
-        if (c.subname) el('div', 'bab-card-sub', card).textContent = c.subname;
-        el('div', 'bab-card-pct', card).textContent = Number.isFinite(c.accuracyPct) ? c.accuracyPct + '%' : '—';
+        if (c.color) card.style.setProperty('--rhs-c', c.color);
+        const top = el('div', 'rhs-card-top', card);
+        iconIn(top, 'rhs-card-icon', c.icon, 28);
+        el('h3', 'rhs-card-name', top).textContent = c.name || '';
+        el('span', 'rhs-card-diff', top).textContent = c.difficulty || '';
+        if (c.subname) el('div', 'rhs-card-sub', card).textContent = c.subname;
+        el('div', 'rhs-card-pct', card).textContent = Number.isFinite(c.accuracyPct) ? c.accuracyPct + '%' : '—';
         for (const [label, value] of Array.isArray(c.stats) ? c.stats : []) {
-            const row = el('div', 'bab-stat', card);
-            el('span', 'bab-stat-label', row).textContent = label;
-            el('span', 'bab-stat-value', row).textContent = value;
+            const row = el('div', 'rhs-stat', card);
+            el('span', 'rhs-stat-label', row).textContent = label;
+            el('span', 'rhs-stat-value', row).textContent = value;
         }
         if (c.award) {
-            const award = el('span', 'bab-award', card);
-            iconIn(award, 'bab-award-icon', 'trophy', 14);
-            el('span', 'bab-award-text', award).textContent = c.award;
+            const award = el('span', 'rhs-award', card);
+            iconIn(award, 'rhs-award-icon', 'trophy', 14);
+            el('span', 'rhs-award-text', award).textContent = c.award;
         }
     }
 
-    const btns = el('div', 'bab-results-btns', inner);
-    const again = el('button', 'bab-again', btns);
+    const btns = el('div', 'rhs-results-btns', inner);
+    const again = el('button', 'rhs-again', btns);
     again.type = 'button';
-    iconIn(again, 'bab-btn-icon', 'rotate-ccw', 18);
-    el('span', 'bab-btn-text', again).textContent = 'Play again';
-    const next = el('button', 'bab-next', btns);
+    iconIn(again, 'rhs-btn-icon', 'rotate-ccw', 18);
+    el('span', 'rhs-btn-text', again).textContent = 'Play again';
+    const next = el('button', 'rhs-next', btns);
     next.type = 'button';
-    el('span', 'bab-btn-text', next).textContent = 'Next song';
-    iconIn(next, 'bab-btn-icon', 'arrow-right', 20);
+    el('span', 'rhs-btn-text', next).textContent = 'Next song';
+    iconIn(next, 'rhs-btn-icon', 'arrow-right', 20);
 
     again.addEventListener('click', () => onAgain());
     next.addEventListener('click', () => onNext());
