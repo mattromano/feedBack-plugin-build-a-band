@@ -347,6 +347,21 @@ test('sound modes greyed without a drum stem', () => {
     assert.deepEqual(dmodel([dctl()], { item: null }).controllers[0].soundModeDisabled, []);
 });
 
+test("with the real drummer on, a drums controller's row says the drummer's sound mode sets the stem", () => {
+    const realOn = (c, item = drumSong) => bandScreenModel({
+        prefs: normalizePrefs({ parts: { guitar: { on: false }, drums: { on: true }, vocals: { on: false } }, controllers: [c] }),
+        item, fiveFretLoaded: true, drumsLoaded: true, controllerStatus: status('kit#1', 'pad#1'),
+    }).controllers[0];
+    const r = realOn(dctl({ soundMode: 'kit' }));
+    assert.equal(r.note, "The drummer's sound mode sets the drum stem");
+    assert.equal(r.unavailable, false, 'it still plays');
+    assert.equal(r.soundMode, 'kit', 'the stored mode stays');
+    // A missing drum stem says so first; a 5-fret row and a real-drummer-less band say nothing.
+    assert.equal(realOn(dctl(), { ...drumSong, stem_ids: ['guitar'] }).note, 'Rock Band and My kit only need a drum stem');
+    assert.equal(realOn(ctl({ key: 'pad#1' })).note, '');
+    assert.equal(dmodel([dctl({ soundMode: 'kit' })]).controllers[0].note, '');
+});
+
 test('no five-fret but drums loaded: controllers available; neither: reason no-controller-plugins', () => {
     const drumsOnly = dmodel([dctl()], { fiveFretLoaded: false });
     assert.equal(drumsOnly.controllers[0].available, true);

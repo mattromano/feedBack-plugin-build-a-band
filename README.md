@@ -32,8 +32,10 @@ Early skeleton: the band screen is a placeholder until plan 2.
   **Always play** keeps it. Part audio is greyed when the song has no stem for the part.
 - **On Confirm, Drums:** the part is Drums ("also:" names the other drummers), then the
   difficulty and the Sound: **Song drums**, **Rock Band** or **My kit only**, as for the
-  real drummer. Rock Band and My kit only are greyed when the song has no drum stem. A song
-  with no drum chart says "No drum chart for this song" and the controller sits out.
+  real drummer. Rock Band and My kit only are greyed when the song has no drum stem. With
+  the real drummer on, the drummer's own sound mode sets the drum stem and the controller's
+  Sound doesn't apply (the row says so). A song with no drum chart says "No drum chart for
+  this song" and the controller sits out.
 - **Start on a joined controller** is the screen's main button: Choose a song on Band
   setup, GO on Confirm. Frets and pads never press GO. **Leave** on the column, or holding
   Back for 1 s, takes the controller out. Joined controllers stay joined across songs; one that is

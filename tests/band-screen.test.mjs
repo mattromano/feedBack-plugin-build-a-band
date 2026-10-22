@@ -1611,6 +1611,12 @@ test("an Xbox pad's column asks plays-as; choosing Drums swaps the lights and th
     assert.equal(col.querySelector('.bab-note').textContent, 'Choose 5-Fret or Drums');
     assert.equal(col.querySelectorAll('[data-light]').length, 0);
     assert.deepEqual(fields(t.confirmRows()[0]), ['difficulty']);
+    // It sits out, but the question it asks (and Leave / Controls) isn't dimmed.
+    assert.ok(col.classList.contains('bab-unavailable'));
+    assert.ok(col.classList.contains('bab-asking'));
+    assert.ok(t.confirmRows()[0].classList.contains('bab-unavailable'));
+    assert.equal(t.confirmRows()[0].classList.contains('bab-asking'), false);
+    assert.ok(col.querySelector('.bab-seg[data-field="playsAs"]').parentNode.classList.contains('bab-playsas'));
 
     segBtn(col, 'playsAs', 'five_fret').click();
     await flush();
@@ -1618,6 +1624,7 @@ test("an Xbox pad's column asks plays-as; choosing Drums swaps the lights and th
     assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['five_fret', 'guitar']);
     assert.deepEqual(t.prefs().controllerKinds, { 'Xbox#1': 'five_fret' });
     assert.equal(segBtn(col, 'playsAs', 'five_fret').getAttribute('aria-pressed'), 'true');
+    assert.equal(col.classList.contains('bab-asking'), false, 'decided: nothing left to ask');
     assert.equal(col.querySelectorAll('.bab-fret').length, 5);
     assert.deepEqual(fields(t.confirmRows()[0]), ['part', 'difficulty', 'lefty', 'partAudio']);
     t.input.send('Xbox#1', BTN.red);
@@ -1692,7 +1699,7 @@ test('drums Confirm row: difficulty and sound mode saved; modes greyed without a
     row = t.confirmRows()[0];
     assert.equal(segBtn(row, 'difficulty', 'expert').getAttribute('aria-pressed'), 'true');
     assert.equal(segBtn(row, 'soundMode', 'kit').getAttribute('aria-pressed'), 'true');
-    assert.equal(row.querySelector('.bab-note').textContent, '');
+    assert.equal(row.querySelector('.bab-note').textContent, "The drummer's sound mode sets the drum stem", 'the real drummer is on');
     // No drum stem: Rock Band and My kit only are greyed, Song drums plays, the stored mode stays.
     t.bs.setSong({ ...drumSong, stem_ids: ['guitar'] });
     row = t.confirmRows()[0];
@@ -1733,4 +1740,10 @@ test('Set up offers guitar and drum kit', async () => {
     assert.deepEqual(t.api.opened, [{ returnTo: SCREEN }]);
     assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
     t.bs.dispose();
+});
+
+test('an asking column keeps Plays as, Leave and Controls at full strength', () => {
+    const css = readFileSync(new URL('../assets/build-a-band.css', import.meta.url), 'utf8');
+    assert.match(css, /\.bab-col\.bab-unavailable\.bab-asking\s*\{[^}]*opacity:\s*1[^}]*filter:\s*none/);
+    assert.match(css, /\.bab-col\.bab-unavailable\.bab-asking > :not\(\.bab-playsas\):not\(\.bab-ctl-actions\)\s*\{[^}]*opacity:\s*0\.35/);
 });

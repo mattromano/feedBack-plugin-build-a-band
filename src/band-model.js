@@ -11,6 +11,8 @@ const UNAVAILABLE_NOTE = {
 };
 const KARAOKE_OFF_NOTE = 'Turn on the Lyrics Karaoke plugin to sing';
 const SOUND_MODES_NOTE = 'Rock Band and My kit only need a drum stem';
+// A real drummer owns the drum stem (Ruling 9): a drums controller's Sound doesn't apply.
+const REAL_DRUMMER_SOUND_NOTE = "The drummer's sound mode sets the drum stem";
 // Guitar scores through note_detect, which the band turns on with an input picked.
 const NOTE_DETECT_OFF_NOTE = 'Turn on Note Detection to score your guitar';
 const PICK_GUITAR_INPUT_NOTE = 'Pick an input to score your guitar';
@@ -157,6 +159,7 @@ function controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerSt
         else if (item && !part) note = isDrums ? CONTROLLER_NOTES.noDrumChart : CONTROLLER_NOTES.noChart;
         else if (partAudioDisabled) note = 'Part audio needs a ' + part + ' stem';
         else if (isDrums && soundModeDisabled.includes(storedMode)) note = SOUND_MODES_NOTE;
+        else if (isDrums && realDrumsOn) note = REAL_DRUMMER_SOUND_NOTE;
         const unavailable = !available || !isConnected || !playsAs || (!!item && !part);
         return {
             key: c.key, id: c.id, name: c.name, on: c.on !== false, available, connected: isConnected, unavailable, note,

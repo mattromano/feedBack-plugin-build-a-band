@@ -20,16 +20,17 @@ export function kindOf(kinds, prefs, c) {
     return kinds && Object.prototype.hasOwnProperty.call(kinds, id) ? kinds[id] : null;
 }
 
-// createControllerLanes({ kinds, getStage, getSession, isLive, displayTime, record, onDeploy, onPause, onBackHold, onJudgment })
+// createControllerLanes({ kinds, getStage, realDrumCanvas, getSession, isLive, displayTime, record, onDeploy, onPause, onBackHold, onJudgment })
 //   getStage(): the mounted stage, or null; getSession(): the current session, or null
+//   realDrumCanvas(s): the canvas the real drummer plays on (a stage lane, or #highway), or null
 //   isLive(s): the session is playing with a ledger (its judgments score)
 //   displayTime(s), record(s, entry): the runtime's clock and ledger
 //   onDeploy(s, id), onPause(s), onBackHold(s): a live lane's sp-activate, Start and held Back
 //   onJudgment(s, id, type): a live lane's judgment, after its ledger entry (part audio)
-// -> { lanePlayer, refreshLanes, laneOwner, laneState, readConnected, teardown, events, onEvent }
+// -> { lanePlayer, refreshLanes, laneOwner, adoptReplaced, laneState, readConnected, teardown, events, onEvent }
 //   events: [{ name, type }], one per bus event name across every kind
 export function createControllerLanes({
-    kinds, getStage, getSession, isLive, displayTime, record, onDeploy, onPause, onBackHold, onJudgment,
+    kinds, getStage, realDrumCanvas, getSession, isLive, displayTime, record, onDeploy, onPause, onBackHold, onJudgment,
 }) {
     const laneCanvasOf = (id) => {
         const stage = getStage();
@@ -73,13 +74,28 @@ export function createControllerLanes({
     // or a stale entry (the stage swapped a canvas without telling us).
     function laneOwner(s, canvas) {
         if (!canvas || !hasLanes()) return null;
-        // The real drum lane's canvas (the hottest drums path) is never a controller's.
+        // The real drummer's canvas (the hottest drums path) is never a controller's:
+        // the stage's drum lane beside a guitar, or #highway for drums alone.
         const stage = getStage();
         if (typeof stage.getDrumCanvas === 'function' && safe(() => stage.getDrumCanvas()) === canvas) return null;
+        if (typeof realDrumCanvas === 'function' && safe(() => realDrumCanvas(s)) === canvas) return null;
         const id = s.ctlCanvas.get(canvas);
         if (id && safe(() => laneCanvasOf(id)) === canvas) return id;
         refreshLanes(s);
         return s.ctlCanvas.get(canvas) || null;
+    }
+
+    // A lane canvas core replaced (highway:canvas-replaced): the clone is the
+    // lane's now, with its score HUD hidden at once (a plugin may not move the
+    // hide, and the next judgment could be far off).
+    function adoptReplaced(s, oldCanvas, newCanvas) {
+        const id = s.ctlCanvas.get(oldCanvas);
+        if (!id || !newCanvas) return;
+        const p = lanePlayer(s, id);
+        s.ctlCanvas.delete(oldCanvas);
+        s.ctlCanvas.set(newCanvas, id);
+        if (p.canvas !== newCanvas) { p.canvas = newCanvas; p.last = null; }
+        hideLaneHud(s, p, newCanvas);
     }
 
     function hideLaneHud(s, p, canvas) {
@@ -202,5 +218,5 @@ export function createControllerLanes({
         }
     }
 
-    return { lanePlayer, refreshLanes, laneOwner, laneState, readConnected, teardown, events, onEvent };
+    return { lanePlayer, refreshLanes, laneOwner, adoptReplaced, laneState, readConnected, teardown, events, onEvent };
 }

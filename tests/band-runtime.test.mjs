@@ -63,7 +63,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         caps: [], audioPause: 0, setMasteryAt: [],
         // Plan 7: full screen, the sidebar's links, core's overlay pause, the loop, note_detect's quiet switch.
         fsRequest: 0, fsExit: 0, nav: [], pause: 0, resume: [], resumeAt: [], loop: [], exitSong: 0, togglePlay: 0,
-        ndQuiet: [], setController: [], clearController: [] };
+        ndQuiet: [], setController: [], clearController: [], inputTarget: [] };
     // Shared sequence counter: orders karaoke calls against playSong and unmount.
     let seq = 0;
     const doc = makeDoc();
@@ -186,6 +186,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
             listControllers: () => Promise.resolve(drumPads.map((key, i) => ({ index: i, controllerKey: key, kind: 'kit', connected: true }))),
             setController: (key, c) => { calls.setController.push([key, c]); return true; },
             clearController: (c) => { calls.clearController.push(c); },
+            setInputTarget: (c) => { calls.inputTarget.push(c); },
         },
         noteDetect: {
             setScoreHudHidden: (v) => { calls.hides.push(['nd', v]); return true; },
@@ -4451,5 +4452,88 @@ test("the real drummer's own sound claim is untouched", async () => {
     assert.equal(rt.snapshot().parts.drums.failed, true);
     assert.equal(capCalls(calls, 'claim', isFailDrums).length, 1);
     assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), []);
+    rt.dispose();
+});
+
+// ---- Plan 6 Part B final review fixes ----
+
+test("drums only: #highway is the drums input target, re-pinned on a replace, cleared at the end and on Play again", async () => {
+    const env = setup();
+    const { rt, fb, doc, calls, loadSong, highwayCanvas } = env;
+    await goCtl(env, padPrefs([KIT1], { guitar: { on: false } }), DRUM_ITEM);
+    assert.deepEqual(calls.inputTarget, [highwayCanvas], "the real drummer's canvas holds the band pin");
+    const fresh = doc.createElement('canvas');
+    fb.emit('highway:canvas-replaced', { oldCanvas: highwayCanvas, newCanvas: fresh });
+    assert.deepEqual(calls.inputTarget, [highwayCanvas, fresh], 'the pin follows the replace');
+    fb.emit('song:ended', {});
+    rt.again();
+    await flush();
+    assert.equal(calls.inputTarget.at(-1), null, 'Play again clears it');
+    loadSong(DRUM_ITEM);
+    assert.equal(calls.inputTarget.at(-1), highwayCanvas, 'the replay pins it again');
+    fb.emit('song:stop', {});
+    assert.equal(calls.inputTarget.at(-1), null, 'leaving clears it');
+    rt.dispose();
+
+    // Beside a guitar the stage pins its own drum lane; the runtime adds nothing.
+    const lead = setup();
+    await goCtl(lead, padPrefs([KIT1]), DRUM_ITEM);
+    lead.fb.emit('song:stop', {});
+    assert.deepEqual(lead.calls.inputTarget, []);
+    lead.rt.dispose();
+});
+
+test("drums only: the real drummer's judgments never rebuild the controller lanes", async () => {
+    const env = setup();
+    const { rt, fb, doc, mounts, highwayCanvas } = env;
+    await goCtl(env, padPrefs([KIT1], { guitar: { on: false } }), DRUM_ITEM);
+    const m = mounts[0];
+    let reads = 0;
+    const get = m.getLaneCanvas;
+    m.getLaneCanvas = (id) => { reads++; return get(id); };
+    for (const type of ['hit', 'miss', 'overhit', 'sp-activate']) fb.emit('drums:' + type, drEv(highwayCanvas, { points: 10 }));
+    const fresh = doc.createElement('canvas');
+    fb.emit('highway:canvas-replaced', { oldCanvas: highwayCanvas, newCanvas: fresh });
+    fb.emit('drums:hit', drEv(fresh, { points: 10 }));
+    assert.equal(reads, 0, 'no lane lookups for the real drummer, before or after a replace');
+    assert.equal(rt.snapshot().parts.drums.hits, 2);
+    fb.emit('drums:hit', drEv(m.ctlCanvas.ctl1, { points: 10 }));
+    assert.equal(rt.snapshot().parts.ctl1.hits, 1, 'the controller lane still scores');
+    rt.dispose();
+});
+
+test("a controller drum lane's replaced canvas has its score HUD hidden at once; teardown shows it", async () => {
+    const env = setup();
+    const { rt, fb, doc, mounts, calls } = env;
+    await goCtl(env, padPrefs([KIT1], noRealDrums), DRUM_ITEM);
+    const m = mounts[0];
+    const lane = m.ctlCanvas.ctl1;
+    const fresh = doc.createElement('canvas');
+    // The stage adopts the clone (its own listener), then the event reaches the runtime.
+    m.ctlCanvas.ctl1 = fresh;
+    fb.emit('highway:canvas-replaced', { oldCanvas: lane, newCanvas: fresh });
+    assert.deepEqual(drumHides(calls, fresh), [true], 'hidden before any judgment');
+    fb.emit('drums:hit', drEv(fresh, { points: 10 }));
+    assert.deepEqual(drumHides(calls, fresh), [true], 'hidden once');
+    assert.equal(rt.snapshot().parts.ctl1.hits, 1);
+    fb.emit('song:stop', {});
+    assert.deepEqual(drumHides(calls, fresh), [true, false]);
+    rt.dispose();
+});
+
+test('My kit only wanted at start, before the stems provider is ready, mutes the drum stem once on provider-ready', async () => {
+    const ids = [];
+    const env = setup({ stems: ids });
+    const { rt, fb, calls, fireWin } = env;
+    await goCtl(env, padPrefs([{ ...KIT1, soundMode: 'kit' }], noRealDrums), DRUM_ITEM);
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), [], 'no stems yet');
+    ids.push('guitar', 'drums');
+    fireWin('stems:state', { event: 'provider-ready', stemIds: ids });
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute']);
+    fb.emit('song:stop', {});
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
     rt.dispose();
 });

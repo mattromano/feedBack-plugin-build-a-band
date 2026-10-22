@@ -65,6 +65,9 @@
 }
 .bab-screen .bab-col.bab-off, .bab-screen .bab-part.bab-off { opacity: 0.35; }
 .bab-screen .bab-col.bab-unavailable, .bab-screen .bab-part.bab-unavailable { opacity: 0.35; filter: grayscale(1); }
+/* An undecided controller: dimmed, apart from the Plays as question and Leave / Controls. */
+.bab-screen .bab-col.bab-unavailable.bab-asking { opacity: 1; filter: none; }
+.bab-screen .bab-col.bab-unavailable.bab-asking > :not(.bab-playsas):not(.bab-ctl-actions) { opacity: 0.35; filter: grayscale(1); }
 .bab-screen .bab-top { display: flex; align-items: center; gap: 10px; }
 .bab-screen .bab-ico { font-size: 34px; line-height: 1; }
 .bab-screen .bab-col .bab-ico, .bab-screen .bab-part .bab-ico { display: inline-flex; color: var(--bab-c); }

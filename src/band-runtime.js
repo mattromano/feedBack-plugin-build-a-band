@@ -315,6 +315,7 @@ export function createBandRuntime({
     const lanes = createControllerLanes({
         kinds,
         getStage: () => stage,
+        realDrumCanvas: (s) => bandDrumCanvas(s),
         getSession: () => session,
         isLive: (s) => scoring() === s,
         displayTime,
@@ -369,6 +370,8 @@ export function createBandRuntime({
             listenCanvas(s);
         }
         lanes.refreshLanes(s);
+        // A controller lane's replaced canvas gets its score HUD hidden again.
+        if (s.ctlCanvas.size) listenCanvas(s);
         const sc = win.feedBackScorecard;
         if (!s.hidden.scorecard && sc && typeof sc.setHudHidden === 'function') {
             s.hidden.scorecard = true;
@@ -801,10 +804,12 @@ export function createBandRuntime({
         // A drum canvas this session hid was replaced: hide the clone too
         // (the stage's lane canvas, or #highway for drums alone).
         if (d.oldCanvas && s.hidden.drums.has(d.oldCanvas)) hideDrumHud(s, d.newCanvas);
+        // A controller lane's clone: its plugin doesn't move the score HUD hide.
+        if (d.oldCanvas) lanes.adoptReplaced(s, d.oldCanvas, d.newCanvas);
         if (!s.drumsOnly) return;
         if (d.oldCanvas && s.drumCanvas && d.oldCanvas !== s.drumCanvas) return;
         s.drumCanvas = d.newCanvas;
-        pinDrumDifficulty(s);
+        pinDrums(s);
         if (s.hidden.drums.size) hideDrumHud(s, s.drumCanvas);
     }
 
@@ -842,10 +847,14 @@ export function createBandRuntime({
         }
     }
 
-    function pinDrumDifficulty(s) {
+    // Drums only: #highway takes kit input and holds the band's drums pin, as
+    // the stage's drum lane does beside a guitar (stage.js pinDrums). Without
+    // it the drums free source would play any unjoined pad as the real drummer.
+    function pinDrums(s) {
         const api = win.feedBackDrums;
-        if (!api || typeof api.setDifficulty !== 'function' || !s.drumCanvas) return;
-        safe(() => api.setDifficulty(drumsDifficultyId(s.prefs.parts.drums.difficulty), s.drumCanvas));
+        if (!api || !s.drumCanvas) return;
+        if (typeof api.setInputTarget === 'function') safe(() => api.setInputTarget(s.drumCanvas));
+        if (typeof api.setDifficulty === 'function') safe(() => api.setDifficulty(drumsDifficultyId(s.prefs.parts.drums.difficulty), s.drumCanvas));
     }
 
     // ---- Plan 7: full mode, the hover chrome, the sidebar and Settings ----
@@ -1194,7 +1203,7 @@ export function createBandRuntime({
             if (s.drumsOnly) {
                 showDrumView(s);
                 s.drumCanvas = doc.getElementById('highway');
-                pinDrumDifficulty(s);
+                pinDrums(s);
                 listenCanvas(s);
             }
             startOverdrive(s);
@@ -1333,9 +1342,10 @@ export function createBandRuntime({
             // went with it; a replay hides its own new lanes).
             unmountStage(s);
             lanes.teardown(s);
-            // 2. Drums-only: the main highway's band difficulty.
+            // 2. Drums-only: the main highway's input target and band difficulty.
             if (s.drumsOnly) {
                 const api = win.feedBackDrums;
+                if (api && typeof api.setInputTarget === 'function') safe(() => api.setInputTarget(null));
                 if (api && typeof api.clearDifficulty === 'function') {
                     const canvases = new Set([doc.getElementById('highway'), s.drumCanvas].filter(Boolean));
                     for (const c of canvases) safe(() => api.clearDifficulty(c));

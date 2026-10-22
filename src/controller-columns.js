@@ -86,6 +86,7 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
         col.setAttribute('data-ctl', key);
         const colTop = top(names, icos);
         const playsAs = seg('Plays as', 'playsAs', PLAYS_AS, (k) => { if (onPlaysAs) onPlaysAs(key, k); });
+        playsAs.field.classList.add('bab-playsas');
         const hint = el('span', 'bab-playsas-hint', PLAYS_AS_HINT);
         playsAs.field.appendChild(hint);
         const lightBox = el('div', 'bab-lights');
@@ -191,6 +192,9 @@ export function createControllerColumns({ doc, setupHost, confirmHost, onChange,
             e.classList.toggle('bab-off', !r.on);
             e.classList.toggle('bab-unavailable', !!r.unavailable);
         }
+        // An undecided column sits out, but the Plays as question it asks stays
+        // at full strength (CSS), with Leave and Controls.
+        c.col.classList.toggle('bab-asking', !kind && kinds.length > 1);
         press(c.segs.playsAs, kind, (k) => !kinds.includes(k));
         c.hint.textContent = r.standard ? PLAYS_AS_HINT : '';
         const parts = r.parts || {};
