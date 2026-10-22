@@ -685,7 +685,53 @@ No new code. Silent unless Matt says otherwise.
 
 ## Review
 
-(Filled in after the build.)
+Built 2026-10-21, subagent-driven: a fresh implementer for each task, then a task review, a fix loop, and a final review of all three branches. Matt was not asked anything; the rulings are below. Every branch is pushed and none is merged. The coordinating session merges them.
+
+| Branch | Worktree | Commits (base → head) | Tests at head |
+|---|---|---|---|
+| core `feature/five-fret-band` (from `feature/five-fret-charts`) | `.worktrees/core-p3` | `daa0cf1` watch + controllerKey, `961712e` five_fret AND list + `five_fret_only`, `5780c93` spec 014 polling doc (d4e7483 → 5780c93) | `npm run test:js` 1474/1474; pytest 3102 passed, 6 skipped |
+| five-fret `feature/band-api` (from `main`) | `.worktrees/fivefret-p3` | `472141c` band API, `15f5355` paused band lane ignores presses, `37a6e47` auto-chart star power, `4575212` `five_fret:*` events (686bb98 → 4575212) | 162/162 |
+| Build-a-Band `feature/band-controllers` (from `feature/build-a-band-stage` c476654) | `.worktrees/bab-controllers` | 12 commits, `1b990c9` … `54a92d8` | 779/779 (baseline 656) |
+
+**Reviews.**
+- Fix rounds: Task 3 had one (a paused pinned lane scored presses). Task 7 had one (a mirrored Start on a claimed slot, a dropped mapper race, and per-event `find`). Every other task passed review first time.
+- Final review: ready to merge with fixes, with 0 Critical and 2 Important findings.
+  - **Fixed** in `54a92d8`: a controller could open the leave prompt but couldn't answer it. Now Start means Stay, and holding Back again means Leave.
+  - **Not fixable here:** the three branches have never run together in the app. The coordinator's combined install needs to check this (silently, paused).
+- Cross-branch contracts all match: event names and fields, Promise returns, claims, `resets`, `showAutoCharts` and the `getInstanceState` fields.
+
+**Real-app check (Task 13): skipped.**
+- Nothing was installed, because the coordinator installs the combined branches. The app wasn't running.
+- GO plays sound, so it needs Matt's yes.
+- The stage, lanes, stem drop-out and results cards are covered by unit tests only.
+
+**Rulings made during the build** (cost if wrong in brackets; full ledger in the shared notes, `5fret-plan3-ledger.md`):
+1. Worktrees `core-p3`, `fivefret-p3` and `bab-controllers` replace the ones this plan names, because Plans 4 and 5 use those. [none]
+2. Ruling 5 (auto star power), Ruling 7's band-pause and back-hold events, and Ruling 12's `resets` went into Task 4. [none]
+3. `five_fret_only` (Ruling 1) replaces the `notes === 0` test. A pack counts as 5-fret only when every manifest arrangement is `type: five_fret` and it has no drum tab. [a pack with one extra arrangement shows a guitar column]
+4. The full `CONTROLLER_KINDS` entry lives in `controller-model.js`. Its accessors are lazy, and it gained `partFor`, `judgments` and `entry` in Task 10. [small refactor for Plan 6]
+5. A paused pinned lane drops presses and whammy but passes releases through. A fret held through a resume has to be pressed again. [minor feel]
+6. A pinned lane lets go of its controller while the 5-Fret controls screen is open, because rebinding needs the pad. [none in a song]
+7. An auto star-power phrase covers the last 2 measures up to the section's last note's measure. It is placed from the expert chart on every difficulty. [phrase placement]
+8. Back-hold is turned off when a binding uses button 8, for example a guitar's Select as star power. Those players leave with the mouse or keyboard. [guitar players lack a pad leave gesture]
+9. Stored controller entries carry `on`, and the runtime works it out again at Go. [none]
+10. The join manager runs only while the band screen shows. Returning from setup restarts it, so the needs-setup list is current. [setup needs a return to the band screen]
+11. Mirrored-Start de-dup relies on core polling slots in ascending order, which is documented and tested. [a mirrored pad could join as its higher slot]
+12. Pause during a band song uses core's `window.togglePlay`. Leave goes to the band screen. [small rewire]
+13. A lane's last score only moves on the four judgments, never on `sp-*` events. [none]
+14. `band-runtime.js`'s controller-lane block was moved into `src/controller-lanes.js` as a pure refactor (`9626bf7`). [review churn]
+15. A rescue brings the rescued player's stem back immediately. No guard for an overstrum while paused is needed, since paused presses are dropped. [a shared stem can return one miss early]
+16. Three minors I had marked must-fix were downgraded to can-wait after the final reviewer's analysis. [see below]
+
+**Open for the coordinator / later:**
+- Reconcile Plan 5's `pickPart(..., showAuto)` boolean with Ruling 2's `opts` object. On a song with both an auto and a real chart for a part, a pinned lane can play the auto one while the band screen tags it *real*.
+- Can wait (from the final triage):
+  - **Brief "Not connected" flash:** on the first show of the band screen.
+  - **Connected-list race at Go:** if the controller list call fails, controllers sit out. Pass the band screen's connected keys to Go synchronously.
+  - **Small backward seeks:** a seek of 0.05–0.25 s leaves the band score below the engine score.
+  - **`five_fret` hard-coding:** `playerStyle`, results, callouts and `joinController` hard-code `five_fret` (Plan 6).
+  - **Stray-canvas map rebuild:** an event from a canvas the band doesn't own rebuilds the canvas map (Plan 6 drums would trigger this on every judgment).
+  - **Smaller items:** test gaps and wording. Full list in `5fret-plan3-final-review.md`.
 
 ## Builder-check rulings (binding; they override the tasks and decisions above where they differ)
 
