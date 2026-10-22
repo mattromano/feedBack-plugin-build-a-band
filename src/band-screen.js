@@ -14,10 +14,7 @@ import { karaokeApi } from './vocals.js';
 import { icon } from './icons.js';
 import { createJoinManager } from './join.js';
 import { createControllerColumns } from './controller-columns.js';
-import { CONTROLLER_KINDS, kindFor, joinController, leaveController, updateController } from './controller-model.js';
-// The join manager lists and joins 5-Fret controllers only (Task B3 adds drums), so an
-// unjoined pad's kind (its mapper, its Set up screen) is 5-Fret's.
-const JOIN_KINDS = Object.freeze(['five_fret']);
+import { CONTROLLER_KINDS, kindFor, joinController, leaveController, setPlaysAs, updateController } from './controller-model.js';
 
 const SCREEN_ID = 'plugin-build_a_band';
 const SOUND_MODES_NEEDING_STEM = ['rockband', 'kit'];
@@ -124,9 +121,15 @@ export function createBandScreen({
     let joinManager = null; // created on each show, stopped on hide
     let columns = null;
     let joinSlotSig = null;
-    const controllerKeys = () => (Array.isArray(prefs.controllers) ? prefs.controllers : []).map((c) => c.key);
+    const controllers = () => (Array.isArray(prefs.controllers) ? prefs.controllers : []);
+    const controllerKeys = () => controllers().map((c) => c.key);
+    // The join manager's view of the band: [{ key, playsAs }].
+    const joinedList = () => controllers().map((c) => ({ key: c.key, playsAs: c.playsAs || null }));
+    // A pad's playable kinds, from the join manager's listings ([] when not listed).
+    const kindsOf = (key) => (joinManager && joinManager.status().kinds.get(key)) || [];
+    const NO_KINDS = new Map();
 
-    // { available, reason (a note, or null), connected, needsSetup } for the model and the join slot.
+    // { available, reason (a note, or null), connected, needsSetup, kinds } for the model and the join slot.
     function controllerStatus() {
         const gi = gamepadInput();
         let reason = null;
@@ -137,6 +140,7 @@ export function createBandScreen({
             available: reason === null, reason,
             connected: (s && s.connected) || new Set(),
             needsSetup: (reason === null && s && s.needsSetup) || [],
+            kinds: (s && s.kinds) || NO_KINDS,
         };
     }
 
@@ -149,6 +153,7 @@ export function createBandScreen({
 
     function save(patch) {
         prefs = savePrefs(patch);
+        if (joinManager) joinManager.setJoined(joinedList());
         render();
     }
 
@@ -271,14 +276,24 @@ export function createBandScreen({
             b.type = 'button';
             b.className = 'bab-setup-link';
             b.textContent = `Set up ${n.name || n.controllerKey}`;
-            b.addEventListener('click', () => openControllerSetup(n.controllerKey));
+            b.addEventListener('click', () => openControllerSetup(n.controllerKey, n.setupWith && n.setupWith[0]));
             slot.appendChild(b);
         }
     }
 
-    // Controls / Set up: the controller kind's own setup screen, which returns here.
-    function openControllerSetup(key) {
-        const kind = CONTROLLER_KINDS[kindFor(prefs, key, JOIN_KINDS)];
+    // Controls / Set up: the controller kind's own setup screen, which returns here. The
+    // kind is the one given, else what the controller plays as, else its remembered
+    // choice when it can still play that, else its first playable kind.
+    function setupKind(key) {
+        const entry = controllers().find((c) => c && c.key === key);
+        if (entry && entry.playsAs) return entry.playsAs;
+        const playable = kindsOf(key);
+        const k = kindFor(prefs, key, playable);
+        return playable.includes(k) ? k : (playable[0] || null);
+    }
+
+    function openControllerSetup(key, kindId) {
+        const kind = CONTROLLER_KINDS[kindId || setupKind(key)];
         try { if (kind && typeof kind.setupHref === 'function') kind.setupHref(); } catch (_) { /* plugin gone */ }
     }
 
@@ -294,15 +309,22 @@ export function createBandScreen({
     function startJoin() {
         stopJoin();
         joinManager = createJoinManager({
-            gamepadInput: gamepadInput(), kinds: CONTROLLER_KINDS, kindFor: (key) => kindFor(prefs, key, JOIN_KINDS),
+            gamepadInput: gamepadInput(), kinds: CONTROLLER_KINDS,
             setTimer: (fn, ms) => setTimeout(fn, ms), clearTimer: (h) => clearTimeout(h),
-            onJoin: (j) => save({ controllers: joinController(prefs.controllers, j) }),
+            // Two kinds join as the remembered choice (prefs.controllerKinds) when it is one
+            // of them, else undecided; joinController drops a remembered kind it can't play.
+            onJoin: (j) => save({ controllers: joinController(prefs.controllers, { ...j, remembered: kindFor(prefs, j.controllerKey, j.kinds) }) }),
             onLeave: (key) => save({ controllers: leaveController(prefs.controllers, key) }),
+            // X / B on an undecided pad: play as that kind, and remember it for this controller.
+            onPlaysAs: (key, kind) => save({
+                controllers: setPlaysAs(prefs.controllers, key, kind),
+                controllerKinds: { ...(prefs.controllerKinds || {}), [key]: kind },
+            }),
             onPrimary: () => primary(),
             onLight: (key, lit) => { if (columns) columns.light(key, lit); },
             onChange: () => render(),
         });
-        joinManager.start(controllerKeys());
+        joinManager.start(joinedList());
     }
 
     function stopJoin() {
@@ -774,7 +796,6 @@ export function createBandScreen({
         onChange: (key, patch) => save({ controllers: updateController(prefs.controllers, key, patch) }),
         onLeave: (key) => {
             save({ controllers: leaveController(prefs.controllers, key) });
-            if (joinManager) joinManager.setJoined(controllerKeys());
         },
         onControls: (key) => openControllerSetup(key),
     });

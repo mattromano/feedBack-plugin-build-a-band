@@ -1246,17 +1246,33 @@ function fakeFiveFretApi(input, { showAuto = false } = {}) {
     };
     return api;
 }
-function ctlSetup({ pads = [gpad(0, 'Xbox', 1)], plugin = true, watch = true, showAuto = false, ...rest } = {}) {
+// window.feedBackDrums' controller half: each pad's drums listing kind is its `drumsKind`.
+function fakeDrumsControllerApi(input) {
+    const api = {
+        opened: [],
+        listControllers: async () => input.pads.map((p) => ({ ...p, kind: p.drumsKind || null })),
+        createMapper: async (key) => {
+            const p = input.pads.find((x) => x.controllerKey === key);
+            if (!p || !p.drumsKind) return null;
+            return { map: (ev) => (ev.index === 9 ? [{ action: 'pause', value: ev.pressed ? 1 : 0 }] : []) };
+        },
+        openControls: (opts) => { api.opened.push(opts); },
+    };
+    return api;
+}
+function ctlSetup({ pads = [gpad(0, 'Xbox', 1)], plugin = true, drums = false, watch = true, showAuto = false, ...rest } = {}) {
     const input = fakeGamepadInput(pads);
     if (!watch) delete input.watch;
     const api = plugin ? fakeFiveFretApi(input, { showAuto }) : null;
+    const drumsApi = drums ? fakeDrumsControllerApi(input) : null;
     const winExtra = { ...(rest.winExtra || {}), feedBack: { gamepadInput: input } };
     if (api) winExtra.feedBackFiveFret = api;
+    if (drumsApi) winExtra.feedBackDrums = { ...(winExtra.feedBackDrums || {}), ...drumsApi };
     const t = setup({ ...rest, winExtra });
     const setupCols = () => t.root.querySelectorAll('.bab-col.bab-ctl');
     const confirmRows = () => t.root.querySelectorAll('.bab-part.bab-ctl');
     const joinslot = () => t.root.querySelector('.bab-joinslot');
-    return { ...t, input, api, setupCols, confirmRows, joinslot };
+    return { ...t, input, api, drumsApi: drumsApi && t.win.feedBackDrums, setupCols, confirmRows, joinslot };
 }
 const ctlPrefs = (controllers, extra = {}) => ({
     controllers: controllers.map((c, i) => ({ id: `ctl${i + 1}`, name: c.key.split('#')[0], playsAs: 'five_fret', ...c })), ...extra,
@@ -1511,5 +1527,60 @@ test('a band of controllers only can Go and open the song pick', async () => {
     assert.equal(t.root.querySelector('.bab-go').disabled, false);
     t.root.querySelector('.bab-go').click();
     assert.equal(t.gos.length, 1);
+    t.bs.dispose();
+});
+
+test('an Xbox pad with both plugins joins undecided; X plays 5-Fret and is remembered', async () => {
+    const t = ctlSetup({ drums: true, pads: [gpad(0, 'Xbox', 1, { drumsKind: 'gamepad' })] });
+    await flush();
+    t.input.press(0, BTN.start);
+    await flush();
+    const c = t.prefs().controllers[0];
+    assert.deepEqual([c.key, c.playsAs, c.part], ['Xbox#1', null, null], 'two kinds, nothing remembered: undecided');
+    t.input.send('Xbox#1', 2); // X
+    await flush();
+    assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['five_fret', 'guitar']);
+    assert.deepEqual(t.prefs().controllerKinds, { 'Xbox#1': 'five_fret' });
+    // The manager now plays it as 5-Fret: X is the yellow fret, B no longer picks.
+    t.input.send('Xbox#1', 1); // B
+    await flush();
+    assert.equal(t.prefs().controllers[0].playsAs, 'five_fret');
+    assert.equal(t.setupCols()[0].querySelector('.bab-fret.bab-lit') !== null, true);
+    // Leave and rejoin: the remembered choice joins at once.
+    t.setupCols()[0].querySelector('.bab-ctl-leave').click();
+    assert.equal(t.prefs().controllers.length, 0);
+    assert.equal(t.input.pads[0].claimedBy, null);
+    t.input.press(0, BTN.start, true, 5);
+    await flush();
+    assert.equal(t.prefs().controllers[0].playsAs, 'five_fret');
+    t.bs.dispose();
+});
+
+test('a remembered kind the pad cannot play is dropped; a kit joins as drums', async () => {
+    const t = ctlSetup({
+        drums: true,
+        pads: [gpad(0, 'Xbox', 1), gpad(1, 'Kit', 1, { kind: null, mapping: '', drumsKind: 'kit' })],
+        stored: { controllerKinds: { 'Xbox#1': 'drums', 'Kit#1': 'five_fret' } },
+    });
+    await flush();
+    t.input.press(0, BTN.start, true, 1);
+    t.input.press(1, BTN.start, true, 2);
+    await flush();
+    assert.deepEqual(t.prefs().controllers.map((c) => [c.key, c.playsAs, c.part]),
+        [['Xbox#1', 'five_fret', 'guitar'], ['Kit#1', 'drums', 'drums']]);
+    // The kit's Controls opens the Drums controls screen.
+    const kitCol = [...t.setupCols()].find((col) => col.getAttribute('data-ctl') === 'Kit#1');
+    kitCol.querySelector('.bab-ctl-controls').click();
+    assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
+    t.bs.dispose();
+});
+
+test('a pad set up nowhere offers setup with the first plugin present', async () => {
+    const t = ctlSetup({ plugin: false, drums: true, pads: [gpad(0, 'Mystery', 1, { kind: null, mapping: '' })] });
+    await flush();
+    const links = t.joinslot().querySelectorAll('.bab-setup-link');
+    assert.equal(links.length, 1);
+    links[0].click();
+    assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
     t.bs.dispose();
 });

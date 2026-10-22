@@ -16,6 +16,8 @@ export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
 //   setupHref()                 opens the plugin's controls screen and returns to this one
 //   laneRenderer()              the plugin's highway renderer, or null
 //   eventPrefix                 bus event prefix: `<prefix>:band-pause` etc.
+//   lights                      join-screen light -> the mapper actions that light it (any held)
+//   pickButton                  the standard-pad raw button that picks this kind for an undecided pad
 //   pin(canvas, key, opts)      pins a lane (opts: part, difficulty, lefty); false when the API is missing
 //   unpin(canvas)               releases the lane
 //   partFor(item, c, opts)      the part this controller plays on the song ({ instrument, kind }), or null
@@ -48,6 +50,11 @@ export const CONTROLLER_KINDS = {
         },
         laneRenderer: () => globalThis.window?.feedBackViz_five_fret || null,
         eventPrefix: 'five_fret',
+        lights: Object.freeze({
+            green: ['green'], red: ['red'], yellow: ['yellow'], blue: ['blue'], orange: ['orange'],
+            strum: ['strum_up', 'strum_down'],
+        }),
+        pickButton: 2, // X
         pin(laneCanvas, controllerKey, opts) {
             const api = fiveFretApi();
             if (!api || typeof api.setLane !== 'function') return false;
@@ -74,6 +81,11 @@ export const CONTROLLER_KINDS = {
         },
         laneRenderer: () => globalThis.window?.feedBackViz_drums || null,
         eventPrefix: 'drums',
+        lights: Object.freeze({
+            red: ['red_pad'], yellow: ['yellow_pad', 'yellow_cymbal'], blue: ['blue_pad', 'blue_cymbal'],
+            green: ['green_pad', 'green_cymbal'], kick: ['kick'],
+        }),
+        pickButton: 1, // B
         pin(laneCanvas, controllerKey, opts) {
             const api = drumsApi();
             if (!api || typeof api.setController !== 'function') return false;
@@ -144,8 +156,8 @@ export function kindFor(prefs, controllerKey, playable = Object.keys(CONTROLLER_
 }
 
 // kinds: the playable kinds (playableKinds); one plays as that, two as the remembered
-// choice (the caller passes prefs.controllerKinds[key]) else undecided (null). The join
-// manager lists 5-Fret controllers only until Task B3, hence the default.
+// choice (the caller passes prefs.controllerKinds[key]) else undecided (null). The
+// join manager's onJoin gives `kinds`; the default suits a 5-Fret-only caller.
 export function joinController(controllers, { controllerKey, name, kinds = ['five_fret'], remembered } = {}) {
     const list = Array.isArray(controllers) ? controllers : [];
     if (typeof controllerKey !== 'string' || !controllerKey) return list.slice();
