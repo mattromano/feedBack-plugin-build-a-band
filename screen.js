@@ -6,6 +6,7 @@ import { mountStage } from './src/stage.js';
 import { createBandRuntime } from './src/band-runtime.js';
 import { createBandScreen } from './src/band-screen.js';
 import { registerMainMode } from './src/main-mode.js';
+import { createSoloPlay } from './src/solo.js';
 
 export { loadPrefs, savePrefs };
 
@@ -63,6 +64,18 @@ function init() {
         getScreen: () => window.__rockherosmithScreen,
         getRuntime: () => window.__rockherosmithRuntime,
         showScreen: (id) => window.showScreen && window.showScreen(id),
+    });
+
+    // Public API (version 1): solo play for the 5-Fret and Drums plugins' "Play as" entries —
+    // one controller player on this stage. See src/solo.js.
+    window.rockHeroSmith = Object.freeze({
+        version: 1,
+        playSolo: createSoloPlay({
+            getRuntime: () => window.__rockherosmithRuntime,
+            getScreen: () => window.__rockherosmithScreen,
+            loadPrefs,
+            showScreen: (id) => window.showScreen && window.showScreen(id),
+        }),
     });
 }
 
