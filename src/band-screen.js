@@ -13,6 +13,7 @@ import { openPadLight } from './pad-light.js';
 import { karaokeApi } from './vocals.js';
 import { icon } from './icons.js';
 import { createJoinManager } from './join.js';
+import { bandIsSetUp } from './main-mode.js';
 import { createControllerColumns } from './controller-columns.js';
 import { CONTROLLER_KINDS, kindFor, joinController, leaveController, setPlaysAs, updateController } from './controller-model.js';
 
@@ -64,7 +65,8 @@ function songRef(item) {
 }
 
 // createBandScreen({ root, win, doc, loadPrefs, savePrefs, onGo, fetchJson?, storage?, library? })
-//   -> { dispose(), setSong(item | null), getSong(), isVisible(), view(), openLibrary(), nextSong() }
+//   -> { dispose(), setSong(item | null), getSong(), isVisible(), view(), openLibrary(), nextSong(),
+//        openSetup(), openWithSong(item) -> 'confirm' | 'setup' | null, joinPad(pad) }
 // Two views: 'setup' (the parts' devices and checks, then Choose a song) and
 // 'confirm' (the song, each part's difficulty and sound, then GO).
 // storage (default win.localStorage) receives karaoke's mic pick.
@@ -94,6 +96,7 @@ export function createBandScreen({
     let view = 'setup';
     let pickGen = 0; // a late result from an older library pick is ignored
     let pendingPick = false; // nextSong while hidden: pick on the next show
+    let pendingJoinPad = null; // joinPad while hidden: join that slot on the next show
     let lastResolved = false; // lastSong resolved to a library row: offer Continue with
     let artFile; // the file the art <img> shows (undefined: not rendered yet, so the first render hides it)
     // Go fires once per showing: a burst of pad hits or Space + pad must not
@@ -473,18 +476,49 @@ export function createBandScreen({
             if (song && r.item.filename === song.filename) { setView('confirm'); return; }
             setSong(r.item);
             setView('confirm');
-            // The grid row may be grouped: re-fetch the flat row for chips and
-            // greying. The search matches titles, so a title-less item keeps its row.
-            if (song.title) {
-                resolveRecent({ filename: song.filename, title: song.title }, getJson).then((it) => {
-                    if (!live() || !it || !song || it.filename !== song.filename) return;
-                    song = it;
-                    lastResolved = true;
-                    render();
-                });
-            }
+            reResolve(gen);
         }).catch(failed);
         return true;
+    }
+
+    // The grid row may be grouped: re-fetch the flat row for chips and greying, unless
+    // a newer pick (gen) took over. The search matches titles, so a title-less item
+    // keeps its row.
+    function reResolve(gen) {
+        if (!song || !song.title) return;
+        resolveRecent({ filename: song.filename, title: song.title }, getJson).then((it) => {
+            if (gen !== pickGen || disposed || !it || !song || it.filename !== song.filename) return;
+            song = it;
+            lastResolved = true;
+            render();
+        });
+    }
+
+    // Play RockHeroSmith / Press Start: the Setup view.
+    function openSetup() {
+        pendingPick = false;
+        setView('setup');
+    }
+
+    // A library card's song: Confirm when a band is set up (R12), else Setup with the
+    // song preselected (Continue with …). -> the view, or null when nothing happened.
+    function openWithSong(item) {
+        if (disposed || !item || typeof item.filename !== 'string' || !item.filename) return null;
+        pendingPick = false;
+        const gen = ++pickGen;
+        setSong(item);
+        lastResolved = true;
+        setView(bandIsSetUp(prefs) ? 'confirm' : 'setup');
+        reResolve(gen);
+        return view;
+    }
+
+    // Press Start on a pad (core's gamepad:start-pressed): join it now when shown,
+    // else on the next show.
+    function joinPad(pad) {
+        if (!Number.isInteger(pad)) return;
+        if (shown() && joinManager) joinManager.requestJoin(pad);
+        else pendingJoinPad = pad;
     }
 
     // Next song (from the results): Confirm is where Back from the library
@@ -686,6 +720,10 @@ export function createBandScreen({
         if (shown()) {
             loadDevices(showGen);
             startJoin();
+            if (pendingJoinPad !== null) {
+                joinManager.requestJoin(pendingJoinPad);
+                pendingJoinPad = null;
+            }
         }
     }
 
@@ -695,7 +733,10 @@ export function createBandScreen({
         // Next song's own screen switch emits events for other screens while the
         // band screen is already (or still) active: only a hide that finds the band
         // screen inactive means the user really went elsewhere.
-        if (!isActive()) pendingPick = false;
+        if (!isActive()) {
+            pendingPick = false;
+            pendingJoinPad = null;
+        }
         showGen++;
         stopLights();
         stopJoin();
@@ -842,5 +883,8 @@ export function createBandScreen({
         view: () => view,
         openLibrary,
         nextSong,
+        openSetup,
+        openWithSong,
+        joinPad,
     };
 }

@@ -1747,3 +1747,121 @@ test('an asking column keeps Plays as, Leave and Controls at full strength', () 
     assert.match(css, /\.rhs-col\.rhs-unavailable\.rhs-asking\s*\{[^}]*opacity:\s*1[^}]*filter:\s*none/);
     assert.match(css, /\.rhs-col\.rhs-unavailable\.rhs-asking > :not\(\.rhs-playsas\):not\(\.rhs-ctl-actions\)\s*\{[^}]*opacity:\s*0\.35/);
 });
+
+// ── Entry points: openWithSong, openSetup, joinPad ─────────────────────────
+const searchUrls = (t) => t.urls.filter((u) => u.startsWith('/api/library?q='));
+
+test('openWithSong goes to Confirm when a band is set up', async () => {
+    const t = setup({ stored: { parts: { guitar: { deviceKey: 'g' } } }, library: [holiday] });
+    const row = { ...holiday, arrangements: undefined }; // a grouped grid row
+    assert.equal(t.bs.openWithSong(row), 'confirm');
+    assert.equal(t.bs.view(), 'confirm');
+    assert.equal(t.root.querySelector('.rhs-title').textContent, 'Holiday');
+    assert.equal(t.prefs().lastSong.filename, holiday.filename);
+    await flush();
+    assert.deepEqual(searchUrls(t), ['/api/library?q=Holiday&size=30']);
+    assert.equal(t.bs.getSong(), holiday, 're-resolved to the flat row');
+    t.bs.dispose();
+});
+
+test('openWithSong goes to Setup on first run, with Continue', () => {
+    const t = setup();
+    assert.equal(t.bs.openWithSong(holiday), 'setup');
+    assert.equal(t.bs.view(), 'setup');
+    const cont = t.root.querySelector('.rhs-continue');
+    assert.equal(cont.hidden, false);
+    assert.equal(cont.textContent, 'Continue with Holiday');
+    cont.click();
+    assert.equal(t.bs.view(), 'confirm');
+    t.bs.dispose();
+});
+
+test('openWithSong ignores a bad item and does nothing once disposed', () => {
+    const t = setup();
+    assert.equal(t.bs.openWithSong(null), null);
+    assert.equal(t.bs.openWithSong({ title: 'x' }), null);
+    assert.equal(t.bs.openWithSong({ filename: '' }), null);
+    assert.equal(t.bs.getSong(), null);
+    t.bs.dispose();
+    assert.equal(t.bs.openWithSong(holiday), null);
+});
+
+test('openWithSong drops a pending Next song pick', async () => {
+    const t = setup({ active: false });
+    t.bs.nextSong();
+    assert.equal(t.bs.openWithSong(holiday), 'setup');
+    t.screen.classList.add('active');
+    t.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'home' });
+    assert.equal(t.picker.calls.length, 0, 'no pick on show');
+    t.bs.dispose();
+    // A pick already open: its late result no longer replaces the song.
+    const u = setup();
+    u.bs.nextSong();
+    assert.equal(u.picker.calls.length, 1);
+    u.bs.openWithSong(holiday);
+    u.picker.resolveLast({ item: { ...holiday, filename: 'other.sloppak', title: 'Other' } });
+    await flush();
+    assert.equal(u.bs.getSong().filename, holiday.filename);
+    u.bs.dispose();
+});
+
+test('openSetup returns to Setup from Confirm', () => {
+    const t = setup();
+    onConfirm(t, holiday);
+    assert.equal(t.bs.view(), 'confirm');
+    t.bs.openSetup();
+    assert.equal(t.bs.view(), 'setup');
+    t.bs.dispose();
+});
+
+test('openSetup drops a pending Next song pick', () => {
+    const t = setup({ active: false });
+    t.bs.nextSong();
+    t.bs.openSetup();
+    t.screen.classList.add('active');
+    t.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'home' });
+    assert.equal(t.picker.calls.length, 0);
+    assert.equal(t.bs.view(), 'setup');
+    t.bs.dispose();
+});
+
+test('joinPad while hidden joins on the next show', async () => {
+    const t = ctlSetup({ active: false });
+    t.bs.joinPad(0);
+    await flush();
+    assert.equal(t.prefs().controllers.length, 0, 'hidden: waits');
+    t.screen.classList.add('active');
+    t.fb.emit('screen:changed', { id: SCREEN, from: 'home' });
+    await flush();
+    assert.deepEqual(t.prefs().controllers.map((c) => c.key), ['Xbox#1']);
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
+    t.bs.dispose();
+});
+
+test('joinPad while shown joins now', async () => {
+    const t = ctlSetup();
+    await flush();
+    t.bs.joinPad(0);
+    assert.deepEqual(t.prefs().controllers.map((c) => c.key), ['Xbox#1']);
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
+    t.bs.dispose();
+});
+
+test('joinPad ignores a non-integer pad; leaving drops a pending join', async () => {
+    const t = ctlSetup({ active: false });
+    t.bs.joinPad('0');
+    t.bs.joinPad(0.5);
+    t.screen.classList.add('active');
+    t.fb.emit('screen:changed', { id: SCREEN, from: 'home' });
+    await flush();
+    assert.equal(t.prefs().controllers.length, 0);
+    t.bs.dispose();
+    const u = ctlSetup({ active: false });
+    u.bs.joinPad(0);
+    u.fb.emit('screen:changed', { id: 'home', from: 'library' }); // the user went elsewhere
+    u.screen.classList.add('active');
+    u.fb.emit('screen:changed', { id: SCREEN, from: 'home' });
+    await flush();
+    assert.equal(u.prefs().controllers.length, 0);
+    u.bs.dispose();
+});

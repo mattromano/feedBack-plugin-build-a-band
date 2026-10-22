@@ -83,6 +83,7 @@ export function createJoinManager({
     const claims = new Map();          // key -> { handle, listener }
     const holds = new Map();           // key -> timer handle
     const recentStart = new Map();     // controller id -> { pad, t }
+    let wantPad = null;                // requestJoin's pad, until a listing answers it
 
     const apiOf = (kind) => {
         const k = registry[kind];
@@ -269,7 +270,31 @@ export function createJoinManager({
             }
         }
         syncClaims();
+        tryWanted(true);
         emit.change();
+    }
+
+    // Joins a listed pad: a joined one is (re)claimed, a new one joins (onJoin) and is claimed.
+    function joinEntry(e) {
+        const key = e.controllerKey;
+        if (joined.has(key)) { claimKey(key); return; }
+        joined.set(key, null);
+        emit.join({ controllerKey: key, name: e.name, kinds: kindsOf(key) });
+        claimKey(key);
+        ensureMapper(key);
+    }
+
+    // requestJoin's pad, once listed and connected: joins it when a kind lists it (R9: else
+    // nothing). final (after a listing): an unlisted pad's request is dropped.
+    function tryWanted(final) {
+        if (wantPad === null) return;
+        const e = byPad.get(wantPad);
+        if (e && e.connected) {
+            wantPad = null;
+            if (kindsOf(e.controllerKey).length > 0) joinEntry(e);
+        } else if (final) {
+            wantPad = null;
+        }
     }
 
     function watched(ev) {
@@ -289,11 +314,7 @@ export function createJoinManager({
             // arrives first and wins.
             if (prev && prev.pad !== ev.pad && ev.t - prev.t >= 0 && ev.t - prev.t <= MIRROR_WINDOW_S) return;
             recentStart.set(e.id, { pad: ev.pad, t: ev.t });
-            if (joined.has(key)) { claimKey(key); return; }
-            joined.set(key, null);
-            emit.join({ controllerKey: key, name: e.name, kinds: ks });
-            claimKey(key);
-            ensureMapper(key);
+            joinEntry(e);
             return;
         }
     }
@@ -322,6 +343,7 @@ export function createJoinManager({
         for (const m of mappers.values()) m.clear();
         for (const p of pending.values()) p.clear();
         recentStart.clear();
+        wantPad = null;
     }
 
     return {
@@ -338,6 +360,13 @@ export function createJoinManager({
             refresh();
         },
         stop() { if (running) stopRunning(); },
+        // Joins the controller in this slot as if Start were pressed on it (core's Press
+        // Start); before the first listing it waits for that listing.
+        requestJoin(pad) {
+            if (!running) return;
+            wantPad = pad;
+            tryWanted();
+        },
         setJoined(joinedList) {
             joined = joinedMap(joinedList);
             if (running) syncClaims();

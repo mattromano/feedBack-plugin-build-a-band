@@ -476,3 +476,86 @@ test('status().kinds is rebuilt on refresh, not per event', async () => {
     assert.notEqual(t.m.status().kinds, k1);
     assert.deepEqual(t.m.status().kinds.get('Xbox#1'), ['drums']);
 });
+
+test('requestJoin before the first listing joins once it lands', async () => {
+    const t = setup([pad(0, 'Xbox', 1)]);
+    t.m.start([]);
+    t.m.requestJoin(0);
+    assert.equal(t.log.join.length, 0, 'not listed yet');
+    await flush();
+    assert.deepEqual(t.log.join, [{ controllerKey: 'Xbox#1', name: 'Xbox', kinds: ['five_fret'] }]);
+    assert.deepEqual(t.input.claimCalls, [{ index: 0, owner: 'rockherosmith' }]);
+    t.input.change();
+    await flush();
+    assert.equal(t.log.join.length, 1, 'once');
+});
+
+test('requestJoin on a pad no kind lists joins nothing, and a later listing does not join it', async () => {
+    const t = setup([pad(0, 'Mystery', 1, { kind: null, mapping: '' })]);
+    t.m.start([]);
+    await flush();
+    t.m.requestJoin(0);
+    assert.equal(t.log.join.length, 0);
+    assert.deepEqual(t.input.claimCalls, []);
+    t.input.pads[0].kind = 'gamepad';   // set up in 5-Fret afterwards
+    t.input.change();
+    await flush();
+    assert.equal(t.log.join.length, 0);
+    assert.deepEqual(t.input.claimCalls, []);
+});
+
+test('requestJoin on a joined pad claims without a second onJoin', async () => {
+    const t = setup([pad(0, 'Xbox', 1)]);
+    // The first claim fails (core refused it), so the joined pad is unclaimed.
+    const claim = t.input.claim;
+    let refuse = true;
+    t.input.claim = (index, owner) => {
+        if (refuse) { refuse = false; t.input.claimCalls.push({ index, owner }); return null; }
+        return claim(index, owner);
+    };
+    t.m.start(joinedAs('five_fret', 'Xbox#1'));
+    await flush();
+    assert.equal(t.input.pads[0].claimedBy, null);
+    t.m.requestJoin(0);
+    assert.equal(t.log.join.length, 0);
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
+    assert.equal(t.input.claimCalls.length, 2);
+});
+
+test('requestJoin while stopped does nothing', async () => {
+    const t = setup([pad(0, 'Xbox', 1)]);
+    t.m.requestJoin(0);
+    t.m.start([]);
+    await flush();
+    assert.equal(t.log.join.length, 0, 'not remembered from before start');
+    t.m.requestJoin(0);
+    t.m.stop();
+    t.m.start([]);
+    await flush();
+    assert.equal(t.log.join.length, 1, 'joined while running');
+    t.m.stop();
+    t.m.requestJoin(0);
+    assert.equal(t.log.join.length, 1);
+    assert.deepEqual(t.input.claimCalls.length, 1);
+});
+
+test('a request pending at stop is dropped', async () => {
+    const t = setup([pad(0, 'Xbox', 1)]);
+    t.m.start([]);
+    t.m.requestJoin(0);
+    t.m.stop();
+    t.m.start([]);
+    await flush();
+    assert.equal(t.log.join.length, 0);
+});
+
+test('a Start still held at claim time is not a primary press', async () => {
+    const t = setup([pad(0, 'Xbox', 1)]);
+    t.m.start([]);
+    await flush();
+    t.m.requestJoin(0);
+    await flush();
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
+    t.input.send('Xbox#1', BTN.start, false);
+    assert.equal(t.log.primary.length, 0);
+});
