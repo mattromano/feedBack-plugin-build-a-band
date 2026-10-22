@@ -1,6 +1,6 @@
 // Band screen view model and the Go key test. Pure, no DOM: band-screen.js
 // renders whatever this returns.
-import { PART_TYPES, hasChart, songFacts, fiveFretPartFor } from './parts.js';
+import { PART_TYPES, hasChart, songFacts, controllerPartFor } from './parts.js';
 import { stemIdFor } from './stem-claims.js';
 import { guitarArrIndex } from './mappings.js';
 
@@ -28,7 +28,7 @@ const GUITAR_ARRANGEMENTS = ['Lead', 'Rhythm', 'Bass'];
 // Confirm shows goHint.
 export function bandScreenModel({
     prefs, item, vocalsSupported = true, noteDetectLoaded = true, pickAvailable = true,
-    fiveFretLoaded = false, controllerStatus = { available: false, reason: null, connected: new Set() }, showAuto = false,
+    fiveFretLoaded = false, drumsLoaded = false, controllerStatus = { available: false, reason: null, connected: new Set() }, showAuto = false,
 }) {
     const parts = (prefs && prefs.parts) || {};
     const columns = {};
@@ -59,7 +59,7 @@ export function bandScreenModel({
         }
         columns[part.id] = col;
     }
-    const controllers = controllerRows({ prefs, item, fiveFretLoaded, controllerStatus, showAuto });
+    const controllers = controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerStatus, showAuto, realDrumsOn: !!(parts.drums && parts.drums.on) });
     const playable = (c) => c.on && !c.unavailable;
     const controllerPlays = (c) => c.on && !c.unavailable;
     const goEnabled = !!item && (['guitar', 'drums', 'vocals'].some((id) => playable(columns[id]))
@@ -69,7 +69,7 @@ export function bandScreenModel({
     else if (!goEnabled) goHint = 'Turn on a part';
     const anyOn = ['guitar', 'drums', 'vocals'].some((id) => !!(parts[id] && parts[id].on) && (id !== 'vocals' || vocalsSupported));
     // A controller counts for the pick once it is on, connected and its plugin is there.
-    const anyController = controllers.some((c) => c.on && c.connected && c.available);
+    const anyController = controllers.some((c) => c.on && c.connected && c.available && c.playsAs);
     const pickEnabled = !!pickAvailable && (anyOn || anyController);
     let setupHint = '';
     if (!pickAvailable) setupHint = 'Update feedBack to pick songs here';
@@ -77,51 +77,89 @@ export function bandScreenModel({
     return { goEnabled, goHint, pickEnabled, setupHint, columns, controllers };
 }
 
-const FIVE_FRET_NOTES = {
+const CONTROLLER_NOTES = {
     disconnected: 'Not connected',
     noChart: 'No 5-fret chart for this song',
-    noPlugin: 'Install the 5-Fret plugin to play on a controller',
+    noDrumChart: UNAVAILABLE_NOTE.drums,
+    chooseKind: 'Choose 5-Fret or Drums',
+    noFiveFret: 'Install the 5-Fret plugin to play on a controller',
+    noDrums: 'Install the Drums plugin to play on a controller',
+    noPlugins: 'Install the 5-Fret or Drums plugin to play on a controller',
 };
 const FIVE_FRET_INSTRUMENTS = ['guitar', 'rhythm', 'bass'];
+const NO_STEM_SOUND_MODES = ['rockband', 'kit'];
 
-// One row per joined controller, in join order. `parts[p]` is what the song has for p
-// (a real chart beats an auto one; auto counts only with showAuto) and who else holds p;
-// `part` is the one that will play (the stored part when the song has it, else a fallback).
-function controllerRows({ prefs, item, fiveFretLoaded, controllerStatus, showAuto }) {
+// One row per joined controller, in join order. `playsAs` is the kind it plays (null =
+// undecided: it sits out, its part fields are null and it never counts for Go or the pick).
+// `kinds` is what it could play, from controllerStatus.kinds (a Map of key -> kinds; the
+// default is the row's own playsAs, or none while undecided). `parts[p]` is what the song
+// has for p (a real chart beats an auto one; auto counts only with showAuto) and who else
+// holds p; `part` is the one that will play (the stored part when the song has it, else a
+// fallback). A drums row's `soundMode` is the one that will play: a song without a drum
+// stem plays Song drums, and soundModeDisabled lists the modes that need the stem.
+function controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerStatus, showAuto, realDrumsOn }) {
     const list = ((prefs && prefs.controllers) || []).filter(Boolean);
     const status = controllerStatus || {};
     const connected = status.connected instanceof Set ? status.connected : new Set(status.connected || []);
-    const available = !!fiveFretLoaded && status.available !== false;
+    const kindsByKey = status.kinds instanceof Map ? status.kinds : new Map();
+    const loaded = { five_fret: !!fiveFretLoaded, drums: !!drumsLoaded };
+    const anyLoaded = loaded.five_fret || loaded.drums;
     const facts = item ? songFacts(item).fiveFret.filter((p) => showAuto || p.kind !== 'auto') : null;
+    const hasStem = !item || songFacts(item).stemIds.includes('drums');
     const effective = (c) => {
+        if (!c.playsAs) return null;
         if (!item) return c.part;
-        const hit = fiveFretPartFor(item, c, { showAuto });
+        const hit = controllerPartFor(item, c, { showAuto });
         return hit ? hit.instrument : null;
     };
+    const sits = (o) => o.on !== false && !!o.playsAs;
     return list.map((c) => {
-        const part = effective(c);
+        const playsAs = c.playsAs || null;
         const isConnected = connected.has(c.key);
-        const parts = {};
-        for (const inst of FIVE_FRET_INSTRUMENTS) {
-            const mine = facts ? facts.filter((p) => p.instrument === inst) : null;
-            const kind = !mine || !mine.length ? null : (mine.some((p) => p.kind !== 'auto') ? 'chart' : 'auto');
-            parts[inst] = {
-                has: !mine || mine.length > 0,
-                kind,
-                takenBy: list.filter((o) => o !== c && o.on !== false && effective(o) === inst).map((o) => o.name),
+        const kinds = kindsByKey.has(c.key) ? kindsByKey.get(c.key) : (playsAs ? [playsAs] : []);
+        const available = (playsAs ? loaded[playsAs] : anyLoaded) && status.available !== false;
+        const part = effective(c);
+        let parts = null;
+        if (playsAs) {
+            parts = {};
+            for (const inst of FIVE_FRET_INSTRUMENTS) {
+                const mine = facts ? facts.filter((p) => p.instrument === inst) : null;
+                const kind = !mine || !mine.length ? null : (mine.some((p) => p.kind !== 'auto') ? 'chart' : 'auto');
+                parts[inst] = {
+                    has: !mine || mine.length > 0, kind,
+                    takenBy: list.filter((o) => o !== c && sits(o) && o.playsAs === 'five_fret' && effective(o) === inst).map((o) => o.name),
+                };
+            }
+            const chart = item ? !!controllerPartFor(item, { playsAs: 'drums' }) : true;
+            parts.drums = {
+                has: chart, kind: item ? (chart ? 'chart' : null) : null,
+                takenBy: [
+                    ...list.filter((o) => o !== c && sits(o) && o.playsAs === 'drums').map((o) => o.name),
+                    ...(realDrumsOn ? ['Drums'] : []),
+                ],
             };
         }
-        const stemId = item && part ? stemIdFor('five_fret', { part }, songFacts(item).stemIds) : null;
-        const partAudioDisabled = !!item && !!part && !stemId;
+        const isDrums = playsAs === 'drums';
+        const stemId = !isDrums && item && part ? stemIdFor('five_fret', { part }, songFacts(item).stemIds) : null;
+        const partAudioDisabled = !isDrums && !!item && !!part && !stemId;
+        const soundModeDisabled = isDrums && !hasStem ? NO_STEM_SOUND_MODES.slice() : [];
+        const storedMode = c.soundMode || 'rockband';
+        const soundMode = soundModeDisabled.includes(storedMode) ? 'song' : storedMode;
         let note = '';
-        if (!available) note = (!fiveFretLoaded ? '' : status.reason) || FIVE_FRET_NOTES.noPlugin;
-        else if (!isConnected) note = FIVE_FRET_NOTES.disconnected;
-        else if (item && !part) note = FIVE_FRET_NOTES.noChart;
+        if (!available) {
+            if (!anyLoaded) note = CONTROLLER_NOTES.noPlugins;
+            else if (playsAs && !loaded[playsAs]) note = isDrums ? CONTROLLER_NOTES.noDrums : CONTROLLER_NOTES.noFiveFret;
+            else note = status.reason || CONTROLLER_NOTES.noPlugins;
+        } else if (!isConnected) note = CONTROLLER_NOTES.disconnected;
+        else if (!playsAs) note = CONTROLLER_NOTES.chooseKind;
+        else if (item && !part) note = isDrums ? CONTROLLER_NOTES.noDrumChart : CONTROLLER_NOTES.noChart;
         else if (partAudioDisabled) note = 'Part audio needs a ' + part + ' stem';
-        const unavailable = !available || !isConnected || (!!item && !part);
+        else if (isDrums && soundModeDisabled.includes(storedMode)) note = SOUND_MODES_NOTE;
+        const unavailable = !available || !isConnected || !playsAs || (!!item && !part);
         return {
             key: c.key, id: c.id, name: c.name, on: c.on !== false, available, connected: isConnected, unavailable, note,
-            part: part || c.part, parts, partAudio: c.partAudio, partAudioDisabled,
+            kinds, playsAs, part: playsAs ? (part || c.part) : null, parts, partAudio: c.partAudio, partAudioDisabled,
+            soundMode, soundModeDisabled,
             difficulty: c.difficulty, lefty: !!c.lefty,
         };
     });

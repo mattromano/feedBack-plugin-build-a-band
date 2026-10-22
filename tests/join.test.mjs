@@ -204,11 +204,11 @@ test('a joined pad that disconnects is not connected; reconnecting re-claims it'
     assert.equal(t.log.light.at(-1)[1].yellow, true);
 });
 
-test('no watch or no five-fret API: status says why, nothing throws', async () => {
+test('no watch or no controller plugin: status says why, nothing throws', async () => {
     const a = setup([pad(0, 'Xbox', 1)], { kinds: { five_fret: { api: () => null } } });
     a.m.start([]);
     await flush();
-    assert.deepEqual([a.m.status().available, a.m.status().reason], [false, 'no-five-fret']);
+    assert.deepEqual([a.m.status().available, a.m.status().reason], [false, 'no-controller-plugins']);
     a.m.stop();
 
     const input = fakeInput();

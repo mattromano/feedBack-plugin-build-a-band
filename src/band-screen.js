@@ -47,7 +47,7 @@ const NO_DEVICE = 'none picked';
 const DEVICE_NOT_FOUND = 'Saved device (not found)';
 // The join slot (controller players).
 const JOIN_HINT = 'Press Start on a controller to join';
-const NO_FIVE_FRET = 'Install the 5-Fret plugin to play on a controller';
+const NO_CONTROLLER_PLUGINS = 'Install the 5-Fret or Drums plugin to play on a controller';
 const NO_WATCH = 'Update feedBack to join with a controller';
 const LIGHTS_OFF = Object.freeze({ green: false, red: false, yellow: false, blue: false, orange: false });
 const TEXT_TAGS = ['INPUT', 'TEXTAREA', 'SELECT'];
@@ -116,6 +116,7 @@ export function createBandScreen({
     // Controller players. Plugin globals are read at call time: a late or missing
     // 5-Fret plugin (or an older core) only degrades the join slot.
     const fiveFretApi = () => (win && win.feedBackFiveFret) || null;
+    const drumsApi = () => (win && win.feedBackDrums) || null;
     const gamepadInput = () => (win && win.feedBack && win.feedBack.gamepadInput) || null;
     const showAuto = () => {
         try { return fiveFretApi()?.showAutoCharts?.() === true; } catch (_) { return false; }
@@ -129,7 +130,7 @@ export function createBandScreen({
     function controllerStatus() {
         const gi = gamepadInput();
         let reason = null;
-        if (!fiveFretApi()) reason = NO_FIVE_FRET;
+        if (!fiveFretApi() && !drumsApi()) reason = NO_CONTROLLER_PLUGINS;
         else if (!gi || typeof gi.watch !== 'function') reason = NO_WATCH;
         const s = joinManager ? joinManager.status() : null;
         return {
@@ -142,7 +143,7 @@ export function createBandScreen({
     function model(status = controllerStatus()) {
         return bandScreenModel({
             prefs, item: song, vocalsSupported: !!karaokeApi(win), noteDetectLoaded: !!win.noteDetect, pickAvailable,
-            fiveFretLoaded: !!fiveFretApi(), controllerStatus: status, showAuto: showAuto(),
+            fiveFretLoaded: !!fiveFretApi(), drumsLoaded: !!drumsApi(), controllerStatus: status, showAuto: showAuto(),
         });
     }
 

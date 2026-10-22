@@ -24,7 +24,8 @@ const CHIP_PARAMS = Object.freeze({
 // pickFilters({ parts, on, controllers, showAuto }) -> [{ id, label, params, on }] for
 // feedBack.library.pick. `playable` sends the params of every part with on === true (the
 // caller drops vocals when Lyrics Karaoke isn't loaded) and the instruments of the
-// controllers that are on and not known to be disconnected; `on` is the stored chip flags.
+// controllers that are on and not known to be disconnected (a drums controller asks for
+// has_drums, an undecided one for nothing); `on` is the stored chip flags.
 // Auto charts match only with showAuto (the 5-Fret plugin's setting): without it the
 // 5-fret chip and the controllers' instruments ask for real (`:chart`) parts.
 export function pickFilters({ parts = {}, on = {}, controllers = [], showAuto = false } = {}) {
@@ -39,7 +40,9 @@ export function pickFilters({ parts = {}, on = {}, controllers = [], showAuto = 
             }
             const insts = [];
             for (const c of (Array.isArray(controllers) ? controllers : [])) {
-                if (c && c.on !== false && c.connected !== false && c.part && !insts.includes(c.part)) insts.push(c.part);
+                if (!c || c.on === false || c.connected === false || !c.part || c.playsAs === null) continue;
+                if (c.playsAs === 'drums') params.has_drums = '1';
+                else if (!insts.includes(c.part)) insts.push(c.part);
             }
             if (insts.length) params.five_fret = insts.map((i) => (showAuto ? i : i + ':chart')).join(',');
         } else if (id === 'fiveFret') {

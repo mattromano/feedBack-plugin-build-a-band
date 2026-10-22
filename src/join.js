@@ -55,6 +55,9 @@ export function createJoinManager({
         const k = kinds && kinds.five_fret;
         try { return (k && k.api && k.api()) || null; } catch (_) { return null; }
     };
+    const anyApi = () => Object.values(kinds || {}).some((k) => {
+        try { return !!(k && k.api && k.api()); } catch (_) { return false; }
+    });
     const entryByKey = (key) => byKey.get(key) || null;
     const entryByPad = (index) => byPad.get(index) || null;
 
@@ -220,7 +223,7 @@ export function createJoinManager({
     }
 
     function available() {
-        return !!(gamepadInput && typeof gamepadInput.watch === 'function') && !!fiveFretApi();
+        return !!(gamepadInput && typeof gamepadInput.watch === 'function') && !!anyApi();
     }
 
     function stopRunning() {
@@ -256,7 +259,7 @@ export function createJoinManager({
         status() {
             let reason = null;
             if (!gamepadInput || typeof gamepadInput.watch !== 'function') reason = 'no-watch';
-            else if (!fiveFretApi()) reason = 'no-five-fret';
+            else if (!anyApi()) reason = 'no-controller-plugins';
             return { available: reason === null, reason, needsSetup, connected };
         },
     };

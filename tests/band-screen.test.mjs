@@ -1484,12 +1484,12 @@ test('returning from the controls screen refreshes the Set up list', async () =>
 test('no five-fret plugin: the join slot says so and nothing is watched', async () => {
     const t = ctlSetup({ plugin: false, stored: ctlPrefs([{ key: 'Xbox#1' }]) });
     await flush();
-    assert.equal(t.joinslot().textContent, 'Install the 5-Fret plugin to play on a controller');
+    assert.equal(t.joinslot().textContent, 'Install the 5-Fret or Drums plugin to play on a controller');
     assert.equal(t.input.watchers.length, 0);
     assert.equal(t.input.pads[0].claimedBy, null);
     t.input.press(0, BTN.start);
     assert.equal(t.prefs().controllers.length, 1);
-    assert.equal(t.setupCols()[0].querySelector('.bab-note').textContent, 'Install the 5-Fret plugin to play on a controller');
+    assert.equal(t.setupCols()[0].querySelector('.bab-note').textContent, 'Install the 5-Fret or Drums plugin to play on a controller');
     t.bs.dispose();
     const old = ctlSetup({ watch: false });
     await flush();

@@ -109,3 +109,16 @@ test('resolveRecent finds the song by filename, or null', async () => {
     assert.equal(await resolveRecent({ filename: 'nope', title: 't' }, fetchJson), null);
     assert.equal(await resolveRecent({ filename: 'y', title: 't' }, async () => { throw new Error('x'); }), null);
 });
+
+test('playable adds has_drums for a connected, decided drums controller', () => {
+    const parts = ALL_OFF;
+    const kit = (extra) => CTL('drums', { playsAs: 'drums', ...extra });
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [kit()] })).playable.params, { has_drums: '1' });
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [kit(), CTL('guitar', { playsAs: 'five_fret' })] })).playable.params,
+        { has_drums: '1', five_fret: 'guitar:chart' });
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [kit({ connected: false })] })).playable.params, {});
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [kit({ on: false })] })).playable.params, {});
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [CTL(null, { playsAs: null })] })).playable.params, {});
+    const withReal = { guitar: { on: false }, drums: { on: true }, vocals: { on: false } };
+    assert.deepEqual(byId(pickFilters({ parts: withReal, controllers: [kit()] })).playable.params, { has_drums: '1' });
+});
