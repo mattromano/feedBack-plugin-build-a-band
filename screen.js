@@ -5,6 +5,7 @@ import { loadPrefs, savePrefs } from './src/prefs.js';
 import { mountStage } from './src/stage.js';
 import { createBandRuntime } from './src/band-runtime.js';
 import { createBandScreen } from './src/band-screen.js';
+import { registerMainMode } from './src/main-mode.js';
 
 export { loadPrefs, savePrefs };
 
@@ -52,6 +53,17 @@ function init() {
     // Deprecated alias (one release, remove after 0.2.x): stale peers may still read the old name.
         window.__buildABandScreen = window.__rockherosmithScreen;
     }
+
+    // Home hero, library card and Press Start (core play modes); re-runs replace the old registration.
+    if (typeof window.__rockherosmithMainMode === 'function') {
+        try { window.__rockherosmithMainMode(); } catch (_) { /* ignore */ }
+    }
+    window.__rockherosmithMainMode = registerMainMode({
+        win: window,
+        getScreen: () => window.__rockherosmithScreen,
+        getRuntime: () => window.__rockherosmithRuntime,
+        showScreen: (id) => window.showScreen && window.showScreen(id),
+    });
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') init();

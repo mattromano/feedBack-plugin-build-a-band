@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { MODE_ID, isBandReady, bandIsSetUp } from '../src/main-mode.js';
+import { MODE_ID, isBandReady, bandIsSetUp, registerMainMode } from '../src/main-mode.js';
+import { renderHeroArt } from '../src/hero-art.js';
 import { normalizePrefs } from '../src/prefs.js';
 
 test('MODE_ID is the plugin id', () => {
@@ -44,4 +45,128 @@ test('bandIsSetUp: missing or partial prefs do not throw', () => {
     assert.equal(bandIsSetUp(null), false);
     assert.equal(bandIsSetUp({}), false);
     assert.equal(bandIsSetUp({ controllers: [{ key: 'a' }] }), true, 'on !== false');
+});
+
+// ---- registerMainMode (Task 11) ----
+
+function fakeWin({ phase = 'idle', onScreen = false, noRegister = false } = {}) {
+    const calls = [];
+    const specs = [];
+    const listeners = [];
+    let unregisters = 0;
+    const screenEl = { classList: { contains: (c) => c === 'active' && onScreen } };
+    const win = {
+        document: { getElementById: (id) => (id === 'plugin-rockherosmith' ? screenEl : null) },
+        feedBack: {
+            ui: noRegister ? {} : { registerPlayMode(spec) { specs.push(spec); return () => { unregisters++; }; } },
+            on(t, f) { listeners.push([t, f]); calls.push(['on', t]); },
+            off(t, f) { calls.push(['off', t, listeners.some((l) => l[0] === t && l[1] === f)]); },
+        },
+    };
+    const screen = {
+        openSetup() { calls.push(['openSetup']); },
+        openWithSong(item) { calls.push(['openWithSong', item]); return 'setup'; },
+        joinPad(pad) { calls.push(['joinPad', pad]); },
+    };
+    const runtime = { phase: () => phase };
+    const dispose = registerMainMode({
+        win, getScreen: () => screen, getRuntime: () => runtime,
+        showScreen: (id) => calls.push(['showScreen', id]),
+    });
+    const fire = (detail) => { for (const [t, f] of listeners) if (t === 'gamepad:start-pressed') f({ detail }); };
+    return { win, calls, specs, listeners, dispose, fire, unregisters: () => unregisters };
+}
+
+test('registerMainMode registers one mode with the spec values', () => {
+    const { specs, listeners } = fakeWin();
+    assert.equal(specs.length, 1);
+    const s = specs[0];
+    assert.equal(s.id, 'rockherosmith');
+    assert.equal(s.label, 'RockHeroSmith');
+    assert.equal(s.startLabel, 'Play RockHeroSmith');
+    assert.equal(s.order, 10);
+    assert.equal(s.startPress, true);
+    assert.equal(s.renderHero, renderHeroArt);
+    assert.equal(typeof s.start, 'function');
+    assert.deepEqual(s.tour, {
+        title: 'Play RockHeroSmith',
+        content: 'Plug in your guitar, hand a friend a Guitar Hero or Rock Band controller, and press Start. You play the song together on one stage.',
+    });
+    assert.equal(s.cardAction.label, 'RockHeroSmith');
+    assert.equal(s.cardAction.title, 'Play with RockHeroSmith');
+    assert.equal(s.cardAction.isAvailable, isBandReady);
+    assert.equal(typeof s.cardAction.run, 'function');
+    assert.equal(listeners.length, 1);
+    assert.equal(listeners[0][0], 'gamepad:start-pressed');
+});
+
+test('registerMainMode: start opens Setup then shows the screen', () => {
+    const { specs, calls } = fakeWin();
+    calls.length = 0;
+    specs[0].start();
+    assert.deepEqual(calls, [['openSetup'], ['showScreen', 'plugin-rockherosmith']]);
+});
+
+test('registerMainMode: the card opens the song', () => {
+    const { specs, calls } = fakeWin();
+    calls.length = 0;
+    const item = { filename: 'a.psarc' };
+    specs[0].cardAction.run(item);
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0][0], 'openWithSong');
+    assert.equal(calls[0][1], item);
+    assert.deepEqual(calls[1], ['showScreen', 'plugin-rockherosmith']);
+});
+
+test('registerMainMode: gamepad:start-pressed joins the pad', () => {
+    const { fire, calls } = fakeWin();
+    calls.length = 0;
+    fire({ pad: 2, id: 'x', controllerKey: 'k' });
+    assert.deepEqual(calls, [['openSetup'], ['joinPad', 2], ['showScreen', 'plugin-rockherosmith']]);
+});
+
+test('registerMainMode: a non-integer pad is ignored', () => {
+    const { fire, listeners, calls } = fakeWin();
+    calls.length = 0;
+    fire({ pad: 1.5 });
+    fire({ pad: '2' });
+    fire({});
+    listeners[0][1](null);
+    assert.deepEqual(calls, []);
+});
+
+test('registerMainMode: not idle, start, card and Start all do nothing', () => {
+    const { specs, fire, calls } = fakeWin({ phase: 'playing' });
+    calls.length = 0;
+    specs[0].start();
+    specs[0].cardAction.run({ filename: 'a.psarc' });
+    fire({ pad: 0 });
+    assert.deepEqual(calls, []);
+});
+
+test('registerMainMode: Start while already on the screen does not open Setup', () => {
+    const { fire, calls } = fakeWin({ onScreen: true });
+    calls.length = 0;
+    fire({ pad: 0 });
+    assert.deepEqual(calls, []);
+});
+
+test('registerMainMode: no registerPlayMode (older core) is a no-op', () => {
+    let r;
+    assert.doesNotThrow(() => { r = fakeWin({ noRegister: true }); });
+    assert.deepEqual(r.calls, []);
+    assert.equal(typeof r.dispose, 'function');
+    assert.doesNotThrow(() => r.dispose());
+    assert.deepEqual(r.calls, []);
+});
+
+test('registerMainMode: dispose unregisters and offs once; a second dispose does nothing', () => {
+    const { dispose, calls, unregisters } = fakeWin();
+    calls.length = 0;
+    dispose();
+    assert.equal(unregisters(), 1);
+    assert.deepEqual(calls, [['off', 'gamepad:start-pressed', true]]);
+    dispose();
+    assert.equal(unregisters(), 1);
+    assert.equal(calls.length, 1);
 });

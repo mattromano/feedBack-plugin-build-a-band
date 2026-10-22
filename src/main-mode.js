@@ -1,6 +1,8 @@
-// RockHeroSmith as a core play mode: which songs the band can play and whether a band
-// is set up. Pure helpers; everything about songs comes from parts.js.
+// RockHeroSmith as a core play mode: which songs the band can play, whether a band is
+// set up, and the registration with core (Home hero, library card, Press Start, tour).
+// Everything about songs comes from parts.js.
 import { songFacts, hasChart, getPart, drumsControllerPartFor } from './parts.js';
+import { renderHeroArt } from './hero-art.js';
 
 export const MODE_ID = 'rockherosmith';
 
@@ -24,4 +26,67 @@ export function bandIsSetUp(prefs) {
         const part = parts[id];
         return !!part && part.on === true && typeof part[DEVICE_FIELD[id]] === 'string' && part[DEVICE_FIELD[id]] !== '';
     });
+}
+
+const SCREEN_ID = 'plugin-rockherosmith';
+const TOUR_CONTENT = 'Plug in your guitar, hand a friend a Guitar Hero or Rock Band controller, and press Start.'
+    + ' You play the song together on one stage.';
+
+// Register RockHeroSmith with core's play-mode registry and subscribe to Press Start.
+// -> dispose(): unregisters and unsubscribes, once. Older core (no registerPlayMode): a no-op.
+export function registerMainMode({ win, getScreen, getRuntime, showScreen }) {
+    const fb = win && win.feedBack;
+    if (!fb || !fb.ui || typeof fb.ui.registerPlayMode !== 'function') return () => {};
+
+    // R14: no entry point while a session runs.
+    function idle() {
+        const rt = getRuntime();
+        return !rt || typeof rt.phase !== 'function' || rt.phase() === 'idle';
+    }
+    function onScreen() {
+        const el = win.document && win.document.getElementById(SCREEN_ID);
+        return !!(el && el.classList.contains('active'));
+    }
+
+    // R13: Play RockHeroSmith opens Setup.
+    function openSetupEntry() {
+        if (!idle()) return false;
+        getScreen()?.openSetup();
+        showScreen(SCREEN_ID);
+        return true;
+    }
+    // R13: the card opens Confirm or Setup with the song (band-screen decides).
+    function openSongEntry(item) {
+        if (!idle()) return false;
+        getScreen()?.openWithSong(item);
+        showScreen(SCREEN_ID);
+        return true;
+    }
+    // Press Start: Setup with that pad joined. Core never emits on plugin screens;
+    // the on-screen check is a backstop.
+    function onStart(e) {
+        const pad = e && e.detail && e.detail.pad;
+        if (!Number.isInteger(pad) || !idle() || onScreen()) return;
+        const screen = getScreen();
+        screen?.openSetup();
+        screen?.joinPad(pad);
+        showScreen(SCREEN_ID);
+    }
+
+    const unregister = fb.ui.registerPlayMode({
+        id: MODE_ID, label: 'RockHeroSmith', startLabel: 'Play RockHeroSmith', order: 10,
+        startPress: true, renderHero: renderHeroArt, start: openSetupEntry,
+        tour: { title: 'Play RockHeroSmith', content: TOUR_CONTENT },
+        cardAction: { label: 'RockHeroSmith', title: 'Play with RockHeroSmith', isAvailable: isBandReady, run: openSongEntry },
+    });
+    const hasBus = typeof fb.on === 'function';
+    if (hasBus) fb.on('gamepad:start-pressed', onStart);
+
+    let disposed = false;
+    return function dispose() {
+        if (disposed) return;
+        disposed = true;
+        if (typeof unregister === 'function') unregister();
+        if (hasBus && typeof fb.off === 'function') fb.off('gamepad:start-pressed', onStart);
+    };
 }

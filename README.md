@@ -3,6 +3,17 @@
 A Rock Band-style band mode plugin for [feedBack](https://github.com/got-feedback/feedBack).
 Early skeleton: the band screen is a placeholder until plan 2.
 
+## Ways in
+
+- **Play RockHeroSmith** on Home opens band Setup.
+- **Start** on any free controller from Home, the Song Library or Settings opens Setup with
+  that controller joined.
+- The **RockHeroSmith** button on band-ready Song Library cards (a real guitar part plus a
+  charted 5-fret part or a drum chart) opens that song: Confirm when a band is set up, else
+  Setup with the song picked.
+
+None of these does anything while a band song is playing.
+
 ## Picking a song
 
 - **Picking a song.** Band setup → **Choose a song** opens the Song Library in pick mode
