@@ -334,7 +334,11 @@ export function createBandRuntime({
             if (s.overlay && typeof s.overlay.answer === 'function') { s.overlay.answer(true); return; }
             confirmLeave(s, () => { if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN)); });
         },
-        onJudgment: (s, id, type) => { if (s.stemSound) syncStemSound(s, s.stemSound.judge(id, type)); },
+        // An overhit while paused is a stray pad tap on a pinned drum lane (R10).
+        onJudgment: (s, id, type) => {
+            if (!s.stemSound || (type === 'overhit' && songPaused(s))) return;
+            syncStemSound(s, s.stemSound.judge(id, type));
+        },
     });
 
     // A controller player's name for toasts: its part, then the controller's name.
@@ -597,11 +601,16 @@ export function createBandRuntime({
         const members = s.scoreParts.map((id) => {
             if (!isControllerId(id)) return { id, stemId: stemIdFor(id, s.prefs.parts[id], ids), controller: false };
             const c = s.prefs.controllers.find((x) => x.id === id);
-            return c ? { id, stemId: stemIdFor(kindFor(s.prefs, c.key), c, ids), controller: true, mode: c.partAudio } : null;
+            if (!c) return null;
+            const kind = kindOf(kinds, s.prefs, c);
+            const mode = kind && typeof kind.stemMode === 'function' ? kind.stemMode(c) : c.partAudio;
+            return { id, stemId: stemIdFor(kindFor(s.prefs, c.key), c, ids), controller: true, mode };
         }).filter(Boolean);
         s.stemSound = createStemSound({ members });
         s.stemSoundEmpty = ids.length === 0;
-        syncStemSound(s, s.stemSound.setFailed([...s.failed]));
+        s.stemSound.setFailed([...s.failed]);
+        // Every stem: a My kit only stem is muted from the start.
+        syncStemSound(s, s.stemSound.stems());
     }
 
     // Each changed stem becomes one queued claim op under its own claim. force:
@@ -1596,7 +1605,7 @@ export function createBandRuntime({
             releaseStemSound(s);
             startStemSound(s);
         } else if (s.stemSound) {
-            syncStemSound(s, [], { force: true });
+            syncStemSound(s, s.stemSound.stems(), { force: true });
         }
     }
     const winHandlers = {

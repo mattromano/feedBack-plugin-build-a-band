@@ -113,3 +113,64 @@ test('no stem: nothing changes', () => {
     assert.deepEqual(createStemSound({}).stems(), []);
     assert.deepEqual(createStemSound({ members: [ctl('ctl1', 'bass')] }).judge('nobody', 'miss'), []);
 });
+
+// ---- Plan 6 Task B7: drum sound modes for controller drummers (Decision 14, Ruling 9) ----
+
+test('all-kit controllers: muted from the start, judgments ignored, seek keeps it muted', () => {
+    const s = createStemSound({ members: [ctl('ctl1', 'drums', 'kit'), ctl('ctl2', 'drums', 'kit')] });
+    assert.deepEqual(s.stems(), ['drums']);
+    assert.equal(s.muted('drums'), true, 'My kit only: the stem is muted all song');
+    assert.deepEqual(s.judge('ctl1', 'hit'), [], "a hit doesn't bring it back");
+    assert.deepEqual(s.judge('ctl2', 'miss'), []);
+    assert.deepEqual(s.judge('ctl2', 'overhit'), []);
+    assert.equal(s.muted('drums'), true);
+    assert.deepEqual(s.seek(), [], 'seek keeps it muted');
+    assert.equal(s.muted('drums'), true);
+    // The fail rules are unchanged: out and rescued, it stays muted.
+    assert.deepEqual(s.setFailed(['ctl1', 'ctl2']), []);
+    assert.deepEqual(s.setFailed([]), []);
+    assert.equal(s.muted('drums'), true);
+});
+
+test('rockband and kit controllers share drop-outs', () => {
+    const s = createStemSound({ members: [ctl('ctl1', 'drums', 'rockband'), ctl('ctl2', 'drums', 'kit')] });
+    assert.equal(s.muted('drums'), false, 'not every member is on My kit only');
+    assert.deepEqual(s.judge('ctl2', 'miss'), ['drums'], "the kit player's miss drops it");
+    assert.deepEqual(s.judge('ctl1', 'hit'), ['drums'], "the Rock Band player's hit brings it back");
+    assert.deepEqual(s.judge('ctl1', 'overhit'), ['drums'], 'an overhit drops like a miss');
+    assert.deepEqual(s.judge('ctl2', 'hit'), ['drums'], "the kit player's hit brings it back too");
+    s.judge('ctl2', 'overhit');
+    assert.deepEqual(s.seek(), ['drums'], 'seek restores');
+    assert.equal(s.muted('drums'), false);
+    // Failed players' judgments still never move it.
+    s.setFailed(['ctl2']);
+    assert.deepEqual(s.judge('ctl2', 'miss'), []);
+    assert.deepEqual(s.judge('ctl1', 'miss'), ['drums']);
+});
+
+test('a Song drums controller keeps the stem', () => {
+    const rb = createStemSound({ members: [ctl('ctl1', 'drums', 'rockband'), ctl('ctl2', 'drums', 'always')] });
+    assert.deepEqual(rb.judge('ctl1', 'miss'), []);
+    assert.deepEqual(rb.judge('ctl2', 'overhit'), []);
+    assert.equal(rb.muted('drums'), false);
+    const kit = createStemSound({ members: [ctl('ctl1', 'drums', 'kit'), ctl('ctl2', 'drums', 'always')] });
+    assert.equal(kit.muted('drums'), false, "My kit only beside a Song drummer doesn't mute the stem");
+    assert.deepEqual(kit.judge('ctl1', 'miss'), []);
+    assert.equal(kit.muted('drums'), false);
+});
+
+test('a real drummer on the drums stem: stem-sound does nothing to it (no kit mute, no drops, no fail mute)', () => {
+    const s = createStemSound({ members: [real('drums', 'drums'), ctl('ctl1', 'drums', 'kit'), ctl('ctl2', 'drums', 'rockband')] });
+    assert.equal(s.muted('drums'), false, 'no kit mute');
+    assert.deepEqual(s.judge('ctl1', 'miss'), []);
+    assert.deepEqual(s.judge('ctl2', 'overhit'), []);
+    assert.deepEqual(s.judge('drums', 'miss'), []);
+    assert.equal(s.muted('drums'), false, 'no drops');
+    assert.deepEqual(s.setFailed(['ctl1', 'ctl2']), []);
+    assert.deepEqual(s.setFailed(['drums', 'ctl1', 'ctl2']), [], "the real drummer's own fail claim mutes it, not this");
+    assert.equal(s.muted('drums'), false, 'no fail mute');
+    assert.deepEqual(s.seek(), []);
+    // Only the drums stem: a real guitarist beside a failed 5-fret controller keeps Plan 3's fail rule.
+    const g = createStemSound({ members: [real('drums', 'drums'), real('guitar', 'guitar'), ctl('ctl3', 'guitar')] });
+    assert.deepEqual(g.setFailed(['guitar', 'ctl3', 'drums']), ['guitar']);
+});

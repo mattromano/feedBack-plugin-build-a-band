@@ -4335,3 +4335,121 @@ test('every drums controller lane is unpinned at the end, Play again included', 
         drumHides(calls, h[1]).at(-1) === false), 'every hidden drum HUD came back');
     rt.dispose();
 });
+
+// ---- Plan 6 Task B7: drum sound modes for controller drummers ----
+
+const DRUMS_STEM = 'build_a_band:sound:stem:drums';
+const noRealDrums = { drums: { on: false } };
+
+test('a drums controller miss in Rock Band mutes the drums stem under build_a_band:sound:stem:drums; a hit restores', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls } = env;
+    await goCtl(env, padPrefs([KIT1], noRealDrums), DRUM_ITEM);
+    const lane = mounts[0].ctlCanvas.ctl1;
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), [], 'nothing at load');
+    fb.emit('drums:miss', drEv(lane, { combo: 0 }));
+    assert.deepEqual(capCalls(calls, 'claim', isStemSound(DRUMS_STEM)), [{ capability: 'stems', claimId: DRUMS_STEM, requester: 'build_a_band' }]);
+    assert.deepEqual(stemsCommand(calls, 'mute').filter(isStemSound(DRUMS_STEM)).map((r) => r.args), [{ id: 'drums', claimId: DRUMS_STEM }]);
+    fb.emit('drums:overhit', drEv(lane));
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute'], 'already dropped');
+    fb.emit('drums:hit', drEv(lane, { points: 50 }));
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    // An overhit drops it too, and any seek brings it back.
+    fb.emit('drums:overhit', drEv(lane));
+    fb.emit('song:seek', { from: 10, to: 4 });
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM).slice(4), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    assert.deepEqual(soundCaps(calls), [], "the real drummer's sound claim is never used");
+    rt.dispose();
+});
+
+test('a paused overhit is ignored', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls } = env;
+    await goCtl(env, padPrefs([KIT1], noRealDrums), DRUM_ITEM);
+    const lane = mounts[0].ctlCanvas.ctl1;
+    fb.isPlaying = false;
+    fb.emit('drums:overhit', drEv(lane));
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), [], 'a stray pad tap while paused');
+    fb.isPlaying = true;
+    fb.emit('drums:overhit', drEv(lane));
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute']);
+    rt.dispose();
+});
+
+test('My kit only on drums controllers mutes the drums stem all song; teardown restores', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls } = env;
+    const kit = (c) => ({ ...c, soundMode: 'kit' });
+    await goCtl(env, padPrefs([kit(KIT1), kit(KIT2)], noRealDrums), DRUM_ITEM);
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute'], 'muted from the start');
+    const { ctl1, ctl2 } = mounts[0].ctlCanvas;
+    fb.emit('drums:hit', drEv(ctl1, { points: 50 }));
+    fb.emit('drums:miss', drEv(ctl2, { combo: 0 }));
+    fb.emit('song:seek', { from: 10, to: 4 });
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute'], 'judgments and seeks keep it muted');
+    fb.emit('song:stop', {});
+    await flush();
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    rt.dispose();
+});
+
+test('a Song drums controller, or a song with no drum stem, sends nothing', async () => {
+    const env = setup();
+    await goCtl(env, padPrefs([{ ...KIT1, soundMode: 'song' }], noRealDrums), DRUM_ITEM);
+    env.fb.emit('drums:miss', drEv(env.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    await flush();
+    assert.deepEqual(stemSoundKinds(env.calls, DRUMS_STEM), []);
+    env.rt.dispose();
+    // No drum stem: My kit only and Rock Band play as Song.
+    for (const soundMode of ['kit', 'rockband']) {
+        const e = setup({ stems: ['guitar'] });
+        await goCtl(e, padPrefs([{ ...KIT1, soundMode }], noRealDrums), DRUM_ITEM);
+        e.fb.emit('drums:miss', drEv(e.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+        await flush();
+        assert.deepEqual(capCalls(e.calls, 'claim'), [], soundMode);
+        e.rt.dispose();
+    }
+});
+
+test("the real drummer's own sound claim is untouched", async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls, clock } = env;
+    await goCtl(env, { ...padPrefs([{ ...KIT1, soundMode: 'kit' }, KIT2], { drums: { soundMode: 'rockband' } }), failMode: 'fail' }, STEM_ITEM);
+    await flush();
+    const { drumCanvas } = mounts[0];
+    const { ctl1, ctl2 } = mounts[0].ctlCanvas;
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), [], 'no kit mute with a real drummer');
+    // Controller misses (and both controllers dropping out) never touch the drum stem.
+    for (let i = 0; i < 14; i++) {
+        clock.t = 20 + i;
+        fb.emit('drums:miss', drEv(ctl1, { combo: 0 }));
+        fb.emit('drums:overhit', drEv(ctl2));
+        fb.emit('drums:miss', drEv(ctl2, { combo: 0 }));
+    }
+    await flush();
+    assert.deepEqual([rt.snapshot().parts.ctl1.failed, rt.snapshot().parts.ctl2.failed], [true, true]);
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), [], 'no drops, no fail mute');
+    assert.deepEqual(soundCaps(calls), [], "the real drummer's Rock Band stem stays");
+    assert.equal(rt.drumSound().muted, false);
+    // The real drummer's own v1 rules still run, under its own claim.
+    fb.emit('drums:miss', drEv(drumCanvas, { combo: 0 }));
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute']);
+    fb.emit('drums:hit', drEv(drumCanvas, { points: 50 }));
+    await flush();
+    assert.deepEqual(soundKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
+    // Everyone on the drum stem out: the real drummer's fail claim mutes it, stem-sound doesn't.
+    dropDrums(env, 40);
+    await flush();
+    assert.equal(rt.snapshot().parts.drums.failed, true);
+    assert.equal(capCalls(calls, 'claim', isFailDrums).length, 1);
+    assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), []);
+    rt.dispose();
+});

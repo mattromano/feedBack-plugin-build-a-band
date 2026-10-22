@@ -7,6 +7,8 @@ import { fiveFretEntry, drumsEntry } from './part-events.js';
 
 export const FIVE_FRET_PART_LABELS = Object.freeze({ guitar: 'Lead', rhythm: 'Rhythm', bass: 'Bass' });
 export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
+// A drums controller's sound mode as a stem-sound mode (Decision 14).
+const DRUM_STEM_MODES = Object.freeze({ song: 'always', rockband: 'rockband', kit: 'kit' });
 
 // Everything a controller kind needs from its plugin, behind one entry per kind (the
 // Plan 6 seam: it adds `drums`). Every accessor reads the plugin's global when it is
@@ -27,6 +29,8 @@ export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
 //   entry(type, detail, t, id, last)  a judgment's band score entry (part-events.js)
 //   thresholds                  optional: 'largest' re-reads the lane's star thresholds on every
 //                               judgment and keeps the full chart's (M6); default: the first set
+//   stemMode(c)                 optional: the controller's stem-sound mode ('rockband'|'always'|'kit');
+//                               default: its partAudio
 const fiveFretApi = () => globalThis.window?.feedBackFiveFret || null;
 const drumsApi = () => globalThis.window?.feedBackDrums || null;
 
@@ -114,6 +118,9 @@ export const CONTROLLER_KINDS = {
         entry: (type, detail, t, id) => drumsEntry(type, detail, t, detail && detail.canvas, id),
         // Its engine rebuilds from a seek with the rest of the chart's thresholds (M6).
         thresholds: 'largest',
+        // Its sound mode, not partAudio, decides the drum stem. With no drum stem it
+        // has no stem, so it plays as Song.
+        stemMode: (c) => DRUM_STEM_MODES[c && c.soundMode],
     },
 };
 

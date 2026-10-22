@@ -8,26 +8,39 @@
 //     of them is a controller (real parts alone keep their own fail claims). A
 //     rescue clears that, and the stem's drop-out with it.
 //   - Failed players' judgments never move a stem.
+// Drummers (Plan 6 Decision 14, Ruling 9):
+//   - A drums controller set to My kit only is a `kit` member. A stem whose players
+//     are all `kit` controllers is muted all song, and ignores judgments and seeks.
+//     Rock Band and My kit only controllers share drop-outs: any one's miss or
+//     overhit drops the stem, any one's hit brings it back.
+//   - A real drummer on the drums stem owns it: its v1 sound mode and fail claim
+//     govern the stem, and this machine never mutes it.
 import { dropoutStep } from './drum-sound.js';
 
-// createStemSound({ members: [{ id, stemId, controller, mode: 'rockband'|'always' }] })
+// createStemSound({ members: [{ id, stemId, controller, mode: 'rockband'|'always'|'kit' }] })
 // Members with no stemId are ignored. judge, setFailed and seek return the stem
 // ids whose muted() changed.
 export function createStemSound({ members } = {}) {
-    // stemId -> { players: member[], rockband: bool, dropped: bool }
+    // stemId -> { players: member[], rockband: bool (drops), kit: bool (muted all song), dropped: bool }
     const stems = new Map();
     const stemOf = new Map();
     for (const m of Array.isArray(members) ? members : []) {
         if (!m || typeof m.stemId !== 'string' || !m.stemId) continue;
-        if (!stems.has(m.stemId)) stems.set(m.stemId, { players: [], rockband: true, dropped: false });
+        if (!stems.has(m.stemId)) stems.set(m.stemId, { players: [], rockband: true, kit: true, dropped: false });
         const st = stems.get(m.stemId);
         st.players.push(m);
-        if (!(m.controller === true && m.mode === 'rockband')) st.rockband = false;
-        if (m.controller === true) stemOf.set(m.id, m.stemId);
+        const ctl = m.controller === true;
+        if (!(ctl && (m.mode === 'rockband' || m.mode === 'kit'))) st.rockband = false;
+        if (!(ctl && m.mode === 'kit')) st.kit = false;
+        if (ctl) stemOf.set(m.id, m.stemId);
+    }
+    // The real drummer's stem is left alone (Ruling 9).
+    for (const [stemId, st] of stems) {
+        if (stemId === 'drums' && st.players.some((m) => m.controller !== true)) stems.delete(stemId);
     }
     let failed = new Set();
     const failMuted = (st) => st.players.every((m) => failed.has(m.id)) && st.players.some((m) => m.controller === true);
-    const isMuted = (st) => failMuted(st) || (st.rockband && st.dropped);
+    const isMuted = (st) => st.kit || failMuted(st) || (st.rockband && st.dropped);
     // Runs `change` and returns the stems whose muted() moved.
     const changes = (change) => {
         const before = new Map([...stems].map(([id, st]) => [id, isMuted(st)]));
@@ -39,7 +52,7 @@ export function createStemSound({ members } = {}) {
         muted: (stemId) => { const st = stems.get(stemId); return !!st && isMuted(st); },
         judge(id, kind) {
             const st = stems.get(stemOf.get(id));
-            if (!st || failed.has(id) || !st.rockband) return [];
+            if (!st || failed.has(id) || !st.rockband || st.kit) return [];
             return changes(() => { st.dropped = dropoutStep(st.dropped, kind); });
         },
         setFailed(ids) {
