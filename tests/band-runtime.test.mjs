@@ -6,6 +6,7 @@ import { createBandRuntime } from '../src/band-runtime.js';
 import { readFileSync } from 'node:fs';
 import { createBandScreen } from '../src/band-screen.js';
 import { makeDoc, parseHtml, flush } from './fake-dom.mjs';
+import { makeFakeContext } from './fake-audio.mjs';
 import { starsFromScore } from '../src/yarg-rules.js';
 import { CONTROLLER_KINDS } from '../src/controller-model.js';
 
@@ -4536,4 +4537,225 @@ test('My kit only wanted at start, before the stems provider is ready, mutes the
     await flush();
     assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
     rt.dispose();
+});
+
+// ---- Rock Band audio feedback: the miss clunk and the full-mix muffle ----
+
+// A fake AudioContext on the window and a manual clock for the clunk's rate
+// limit: each clunk is one oscillator. Nothing plays.
+function withClunks(env) {
+    const made = [];
+    const t = { ms: 10000 };
+    env.win.performance = { now: () => t.ms };
+    env.win.AudioContext = function FakeCtx() { const c = makeFakeContext(); made.push(c); return c; };
+    const count = () => made.reduce((n, c) => n + c.nodes.filter((x) => x.kind === 'osc').length, 0);
+    // Moves the clock past the rate limit.
+    const later = () => { t.ms += 200; };
+    return { made, count, later, t };
+}
+
+test('a Rock Band controller miss, overstrum or overhit plays the clunk; a hit does not', async () => {
+    const env = setup({ stems: BASS_STEMS });
+    const a = withClunks(env);
+    await goCtl(env);
+    const canvas = env.mounts[0].ctlCanvas.ctl1;
+    assert.equal(a.made.length, 0, 'no AudioContext before the first clunk');
+    env.fb.emit('five_fret:hit', ffEv(canvas, { score: 50 }));
+    assert.equal(a.count(), 0);
+    env.fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    assert.equal(a.count(), 1);
+    a.later();
+    env.fb.emit('five_fret:overstrum', ffEv(canvas, { combo: 0 }));
+    assert.equal(a.count(), 2);
+    a.later();
+    env.fb.emit('five_fret:sustain-end', ffEv(canvas));
+    assert.equal(a.count(), 2, 'a sustain end is not a miss');
+    assert.equal(a.made.length, 1, 'one AudioContext');
+    env.rt.dispose();
+    // A drums controller's overhit (while the song plays) clunks too.
+    const d = setup();
+    const b = withClunks(d);
+    await goCtl(d, padPrefs([KIT1], noRealDrums), DRUM_ITEM);
+    const lane = d.mounts[0].ctlCanvas.ctl1;
+    d.fb.isPlaying = false;
+    d.fb.emit('drums:overhit', drEv(lane));
+    assert.equal(b.count(), 0, 'a stray pad tap while paused');
+    d.fb.isPlaying = true;
+    d.fb.emit('drums:overhit', drEv(lane));
+    assert.equal(b.count(), 1);
+    b.later();
+    d.fb.emit('drums:miss', drEv(lane, { combo: 0 }));
+    assert.equal(b.count(), 2);
+    d.rt.dispose();
+});
+
+test('the clunk is rate-limited: a burst of misses plays one', async () => {
+    const env = setup({ stems: BASS_STEMS });
+    const a = withClunks(env);
+    await goCtl(env, ctlPrefs([PAD1, PAD2]));
+    const { ctl1, ctl2 } = env.mounts[0].ctlCanvas;
+    env.fb.emit('five_fret:miss', ffEv(ctl1, { combo: 0 }));
+    a.t.ms += 20;
+    env.fb.emit('five_fret:miss', ffEv(ctl2, { combo: 0, controllerKey: 'Xbox#2' }));
+    a.t.ms += 20;
+    env.fb.emit('five_fret:overstrum', ffEv(ctl1, { combo: 0 }));
+    assert.equal(a.count(), 1);
+    a.t.ms += 100;
+    env.fb.emit('five_fret:miss', ffEv(ctl1, { combo: 0 }));
+    assert.equal(a.count(), 2);
+    env.rt.dispose();
+});
+
+test('no clunk with the miss sound off, for Always play or Song drums, or for a real part', async () => {
+    const off = setup({ stems: BASS_STEMS });
+    const a = withClunks(off);
+    await goCtl(off, { ...ctlPrefs(), missSound: false });
+    off.fb.emit('five_fret:miss', ffEv(off.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    assert.equal(a.count(), 0);
+    assert.equal(a.made.length, 0, 'no AudioContext either');
+    off.rt.dispose();
+    const always = setup({ stems: BASS_STEMS });
+    const b = withClunks(always);
+    await goCtl(always, ctlPrefs([{ ...PAD1, partAudio: 'always' }]));
+    always.fb.emit('five_fret:miss', ffEv(always.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    assert.equal(b.count(), 0);
+    always.rt.dispose();
+    const song = setup();
+    const c = withClunks(song);
+    await goCtl(song, padPrefs([{ ...KIT1, soundMode: 'song' }], noRealDrums), DRUM_ITEM);
+    song.fb.emit('drums:miss', drEv(song.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    assert.equal(c.count(), 0);
+    song.rt.dispose();
+    // A real guitarist's miss: note_detect's judgment never clunks.
+    const real = setup();
+    const r = withClunks(real);
+    real.rt.startSession({ song: DRUM_ITEM, prefs: prefsWith() });
+    real.loadSong(DRUM_ITEM);
+    real.fireWin('notedetect:miss', { t: 1, s: 0, f: 3 });
+    assert.equal(r.count(), 0);
+    real.rt.dispose();
+});
+
+test('no WebAudio: a miss is still judged, nothing throws', async () => {
+    const env = setup({ stems: BASS_STEMS });
+    await goCtl(env);
+    env.fb.emit('five_fret:miss', ffEv(env.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    assert.deepEqual(stemSoundKinds(env.calls, BASS_STEM), ['claim', 'dispatch:mute'], 'the drop-out still happens');
+    env.rt.dispose();
+});
+
+// An unsplit song (no stems listed, no stem_ids): core's <audio> at the Song fader's 80%.
+function unsplit(opts = {}) {
+    const env = setup({ stems: [], ...opts });
+    env.audio.volume = 0.8;
+    const applied = [];
+    env.fb.audio = {
+        readSongVolume: () => 80,
+        applySongVolume: () => { applied.push(env.audio.volume); env.audio.volume = 0.8; return Promise.resolve(80); },
+    };
+    return { env, applied };
+}
+const dipped = (env) => Math.abs(env.audio.volume - 0.32) < 1e-9;
+// The controller plays alone (a real part would share the full mix and keep it).
+const NO_REAL = { guitar: { on: false }, drums: { on: false } };
+const soloCtl = (c = PAD1) => ctlPrefs([c], NO_REAL);
+
+test('unsplit song: a controller miss dips the full mix, a hit brings it back; no stem claim', async () => {
+    const { env, applied } = unsplit();
+    await goCtl(env, soloCtl());
+    const canvas = env.mounts[0].ctlCanvas.ctl1;
+    env.fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    assert.ok(dipped(env), `dipped to 40% (${env.audio.volume})`);
+    env.fb.emit('five_fret:overstrum', ffEv(canvas, { combo: 0 }));
+    env.fb.emit('five_fret:hit', ffEv(canvas, { score: 50 }));
+    await flush();
+    assert.equal(env.audio.volume, 0.8);
+    assert.equal(applied.length, 1, "restored once, through core's Song fader");
+    // A seek brings it back too.
+    env.fb.emit('five_fret:miss', ffEv(canvas, { combo: 0, score: 50 }));
+    assert.ok(dipped(env));
+    env.fb.emit('song:seek', { from: 10, to: 4 });
+    await flush();
+    assert.equal(env.audio.volume, 0.8);
+    assert.deepEqual(capCalls(env.calls, 'claim'), [], 'the full mix takes no stems claim');
+    env.rt.dispose();
+});
+
+test("unsplit song: a 'full'-only sloppak under JUCE dips the engine's backing gain", async () => {
+    const { env, applied } = unsplit({ stems: ['full'] });
+    const gains = [];
+    env.win._juceMode = true;
+    env.win.feedBackDesktop = { audio: { setGain: (bus, v) => { gains.push([bus, v]); return Promise.resolve(); } } };
+    await goCtl(env, soloCtl());
+    const canvas = env.mounts[0].ctlCanvas.ctl1;
+    env.fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    assert.equal(gains.length, 1);
+    assert.equal(gains[0][0], 'backing');
+    assert.ok(Math.abs(gains[0][1] - 0.32) < 1e-9);
+    env.fb.emit('five_fret:hit', ffEv(canvas, { score: 50 }));
+    await flush();
+    assert.equal(applied.length, 1, 'the Song fader re-applied');
+    assert.deepEqual(capCalls(env.calls, 'claim'), []);
+    env.rt.dispose();
+});
+
+test('unsplit song: every exit path brings the full mix back', async () => {
+    const exits = {
+        'Next song': (e) => { e.fb.emit('song:ended', {}); e.rt.next(); },
+        'Play again': (e) => { e.fb.emit('song:ended', {}); e.rt.again(); },
+        'song:stop': (e) => e.fb.emit('song:stop', {}),
+        'screen:changing away': (e) => e.fb.emit('screen:changing', { id: 'v3-songs', from: 'player' }),
+        dispose: (e) => e.rt.dispose(),
+    };
+    for (const [name, exit] of Object.entries(exits)) {
+        const { env } = unsplit();
+        await goCtl(env, soloCtl());
+        env.fb.emit('five_fret:miss', ffEv(env.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+        assert.ok(dipped(env), name);
+        exit(env);
+        await flush();
+        assert.equal(env.audio.volume, 0.8, name);
+        env.rt.dispose();
+    }
+});
+
+test('unsplit song: a failed-out band muffles the mix until the session ends', async () => {
+    const { env } = unsplit();
+    const { rt, fb, mounts, clock } = env;
+    await goCtl(env, { ...ctlPrefs([{ ...PAD1, partAudio: 'always' }], NO_REAL), failMode: 'fail' });
+    const canvas = mounts[0].ctlCanvas.ctl1;
+    for (let i = 0; i < 13; i++) {
+        clock.t = 20 + i;
+        fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    }
+    assert.equal(env.audio.volume, 0.8, 'Always play: misses keep the mix');
+    clock.t = 40;
+    fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
+    assert.equal(rt.snapshot().parts.ctl1.failed, true);
+    assert.ok(dipped(env), 'out: muffled');
+    fb.emit('song:stop', {});
+    await flush();
+    assert.equal(env.audio.volume, 0.8);
+    rt.dispose();
+});
+
+test('a split song without the controller part stem leaves the mix alone', async () => {
+    const env = setup({ stems: ['guitar', 'drums'] });
+    env.audio.volume = 0.8;
+    await goCtl(env, soloCtl());
+    env.fb.emit('five_fret:miss', ffEv(env.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    await flush();
+    assert.equal(env.audio.volume, 0.8);
+    assert.deepEqual(capCalls(env.calls, 'claim'), []);
+    env.rt.dispose();
+});
+
+test('a real part beside the controller on an unsplit song keeps the mix', async () => {
+    const { env } = unsplit();
+    await goCtl(env, ctlPrefs([PAD1], { drums: { on: false } }));
+    assert.equal(env.mounts[0].prefs.parts.guitar.on, true);
+    env.fb.emit('five_fret:miss', ffEv(env.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
+    await flush();
+    assert.equal(env.audio.volume, 0.8);
+    env.rt.dispose();
 });

@@ -79,3 +79,9 @@ test('playSolo does nothing mid-session or without a file; a refused start goes 
     const refused = harness({ start: () => false });
     assert.equal(await refused.play({ filename: 'a' }, { kind: 'five_fret' }), 'setup');
 });
+
+test('soloPrefs keeps the saved miss sound', () => {
+    const off = soloPrefs(normalizePrefs({ missSound: false }), { kind: 'five_fret', controllerKey: KEY });
+    assert.equal(off.missSound, false);
+    assert.equal(soloPrefs({}, { kind: 'drums', controllerKey: KEY }).missSound, true);
+});

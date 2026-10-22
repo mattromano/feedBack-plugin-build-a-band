@@ -132,6 +132,8 @@ test('every control writes through savePrefs immediately', () => {
     btn(col('vocals'), 'hearMyself', 'on').click();
     col('vocals').querySelector('.rhs-toggle').click();
     btn(root, 'failMode', 'fail').click();
+    assert.equal(btn(root, 'missSound', 'on').getAttribute('aria-pressed'), 'true', 'the miss sound starts on');
+    btn(root, 'missSound', 'off').click();
     const fs = root.querySelector('input.rhs-fullscreen');
     fs.checked = false;
     fs.fire('change');
@@ -142,6 +144,8 @@ test('every control writes through savePrefs immediately', () => {
     assert.equal(p.parts.vocals.hearMyself, true);
     assert.equal(p.parts.vocals.on, false);
     assert.equal(p.failMode, 'fail');
+    assert.equal(p.missSound, false);
+    assert.equal(btn(root, 'missSound', 'off').getAttribute('aria-pressed'), 'true');
     assert.equal(p.fullScreenStage, false);
     assert.equal(btn(part('guitar'), 'difficulty', 'expert').getAttribute('aria-pressed'), 'true');
     assert.ok(col('vocals').classList.contains('rhs-off'));
@@ -1398,7 +1402,8 @@ test('Confirm part segment: missing parts greyed, real/auto tags, also: names', 
 test('part audio greyed without the stem', async () => {
     const t = ctlSetup({ stored: ctlPrefs([{ key: 'Xbox#1', part: 'guitar' }]) });
     await flush();
-    onConfirm(t, { ...ffSong, stem_ids: [] });
+    // A split song without the part's stem (an unsplit one keeps Rock Band: it muffles the mix).
+    onConfirm(t, { ...ffSong, stem_ids: ['drums'] });
     let row = t.confirmRows()[0];
     assert.equal(segBtn(row, 'partAudio', 'rockband').disabled, true);
     assert.equal(segBtn(row, 'partAudio', 'always').disabled, true);

@@ -56,9 +56,10 @@ function defaultStorage(win) {
     try { return win && win.localStorage; } catch (_) { return undefined; }
 }
 
-// Segment values are strings in the DOM; hearMyself is stored as a boolean.
-const fromDom = (field, v) => (field === 'hearMyself' ? v === 'on' : v);
-const toDom = (field, v) => (field === 'hearMyself' ? (v ? 'on' : 'off') : String(v));
+// Segment values are strings in the DOM; hearMyself and missSound are stored as booleans.
+const BOOL_FIELDS = ['hearMyself', 'missSound'];
+const fromDom = (field, v) => (BOOL_FIELDS.includes(field) ? v === 'on' : v);
+const toDom = (field, v) => (BOOL_FIELDS.includes(field) ? (v ? 'on' : 'off') : String(v));
 
 function songRef(item) {
     return { filename: item.filename, title: item.title || '', artist: item.artist || '' };
@@ -249,6 +250,7 @@ export function createBandScreen({
         renderJoinSlot(status);
         renderMicHit();
         renderSeg($('.rhs-seg[data-field="failMode"]'), prefs.failMode);
+        renderSeg($('.rhs-seg[data-field="missSound"]'), toDom('missSound', prefs.missSound));
         $('input.rhs-fullscreen').checked = !!prefs.fullScreenStage;
         $('.rhs-choose').disabled = !m.pickEnabled;
         $('.rhs-change').disabled = !m.pickEnabled;
@@ -426,6 +428,9 @@ export function createBandScreen({
     }
     for (const b of $$('button[data-value]', $('.rhs-seg[data-field="failMode"]'))) {
         listen(b, 'click', () => save({ failMode: b.getAttribute('data-value') }));
+    }
+    for (const b of $$('button[data-value]', $('.rhs-seg[data-field="missSound"]'))) {
+        listen(b, 'click', () => save({ missSound: fromDom('missSound', b.getAttribute('data-value')) }));
     }
     const fsBox = $('input.rhs-fullscreen');
     listen(fsBox, 'change', () => save({ fullScreenStage: !!fsBox.checked }));

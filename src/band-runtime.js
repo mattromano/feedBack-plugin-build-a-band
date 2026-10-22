@@ -18,7 +18,9 @@ import { chartPhrases } from './guitar-od.js';
 import { createOverdriveSession } from './overdrive-session.js';
 import { stemIdFor, muteStem, restoreStem, SOUND_CLAIM_ID, STEM_SOUND_CLAIM_PREFIX } from './stem-claims.js';
 import { createDrumSound } from './drum-sound.js';
-import { createStemSound } from './stem-sound.js';
+import { createStemSound, FULL_MIX, isUnsplit } from './stem-sound.js';
+import { createMissSound } from './miss-sound.js';
+import { createMixMuffle } from './mix-muffle.js';
 import { OD_CALLOUT } from './hud-model.js';
 import { guitarStarThresholds, fullChartThresholds } from './stars.js';
 import { createBandHud } from './hud.js';
@@ -52,6 +54,8 @@ const SPLIT_POLL_MAX = 100;
 const REWIND_MIN_S = 0.05;
 const BAND_SONG_CLASS = 'rhs-band-song';
 const DRUM_JUDGMENTS = ['hit', 'miss', 'overhit'];
+// A controller judgment that plays the Rock Band miss clunk.
+const CLUNK_JUDGMENTS = ['miss', 'overstrum', 'overhit'];
 // The overdrive tick while the song plays (plan 5 R16).
 const OD_TICK_MS = 100;
 // note_detect's input failure while it stays quiet in a band song (plan 7 R16).
@@ -117,8 +121,9 @@ function withoutVocals(prefs) {
     return { ...prefs, parts: { ...prefs.parts, vocals: { ...vocals, on: false } } };
 }
 
-// createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer, deviceMemo, onShowBandScreen, kinds })
+// createBandRuntime({ win, doc, mountStage, loadPrefs, storage, fetchJson, setTimer, clearTimer, deviceMemo, onShowBandScreen, kinds, audioFactory })
 //   kinds: the controller kinds registry (CONTROLLER_KINDS), also handed to mountStage.
+//   audioFactory: optional; makes the miss clunk's AudioContext (default: win.AudioContext).
 //   onShowBandScreen: optional; called after Next song returns to the band screen
 //   (never for Play again or leaving), so the band screen can open its song pick.
 //   deviceMemo: the inputs last handed to note_detect / drums (devices.js),
@@ -134,7 +139,7 @@ function withoutVocals(prefs) {
 export function createBandRuntime({
     win, doc, mountStage, loadPrefs, storage = win.localStorage, fetchJson,
     setTimer = win.setTimeout, clearTimer = win.clearTimeout, deviceMemo = {}, onShowBandScreen,
-    kinds = CONTROLLER_KINDS,
+    kinds = CONTROLLER_KINDS, audioFactory,
 }) {
     const fb = win.feedBack;
     const getJson = fetchJson || ((url) => win.fetch(url).then((r) => r.json()));
@@ -166,6 +171,10 @@ export function createBandRuntime({
     const offFullScreen = fullScreen.onChange(onFullScreenChange);
     // notedetect:input-error arrives twice with one detail, as its judgments do.
     const seenInputError = new WeakSet();
+    // Rock Band part audio's miss clunk (one AudioContext, made on the first
+    // clunk) and the whole-song muffle for players with no stem of their own.
+    const missSound = createMissSound({ win, audioFactory });
+    const mixMuffle = createMixMuffle({ win, doc });
 
     function sliderMastery() {
         const slider = doc.getElementById('mastery-slider');
@@ -337,7 +346,10 @@ export function createBandRuntime({
         },
         // An overhit while paused is a stray pad tap on a pinned drum lane (R10).
         onJudgment: (s, id, type) => {
-            if (!s.stemSound || (type === 'overhit' && songPaused(s))) return;
+            if (type === 'overhit' && songPaused(s)) return;
+            if (CLUNK_JUDGMENTS.includes(type) && s.prefs.missSound !== false && !s.failed.has(id)
+                && controllerStemMode(s, id) === 'rockband') safe(() => missSound.play());
+            if (!s.stemSound) return;
             syncStemSound(s, s.stemSound.judge(id, type));
         },
     });
@@ -595,9 +607,19 @@ export function createBandRuntime({
         syncDrumSound(s);
     }
 
+    // A controller player's part audio mode ('rockband' | 'always' | 'kit'), or null.
+    function controllerStemMode(s, id) {
+        const c = isControllerId(id) ? s.prefs.controllers.find((x) => x.id === id) : null;
+        if (!c) return null;
+        const kind = kindOf(kinds, s.prefs, c);
+        return kind && typeof kind.stemMode === 'function' ? safe(() => kind.stemMode(c)) : c.partAudio;
+    }
+
     // Controller part audio (Plan 3 Decision 10), once the ledger exists: every
     // playing player on the stem it plays, a controller through its kind's
-    // stemIdFor. Idempotent.
+    // stemIdFor. On an unsplit song (no stems, or only `full`; the library's
+    // stem list until stems lists its own) players with no stem share the full
+    // mix. Idempotent.
     function startStemSound(s) {
         if (s.stemSound || !s.score) return;
         const ids = songStemIds();
@@ -605,11 +627,10 @@ export function createBandRuntime({
             if (!isControllerId(id)) return { id, stemId: stemIdFor(id, s.prefs.parts[id], ids), controller: false };
             const c = s.prefs.controllers.find((x) => x.id === id);
             if (!c) return null;
-            const kind = kindOf(kinds, s.prefs, c);
-            const mode = kind && typeof kind.stemMode === 'function' ? kind.stemMode(c) : c.partAudio;
-            return { id, stemId: stemIdFor(kindFor(s.prefs, c.key), c, ids), controller: true, mode };
+            return { id, stemId: stemIdFor(kindFor(s.prefs, c.key), c, ids), controller: true, mode: controllerStemMode(s, id) };
         }).filter(Boolean);
-        s.stemSound = createStemSound({ members });
+        const fullMix = isUnsplit(ids.length ? ids : songFacts(s.item).stemIds);
+        s.stemSound = createStemSound({ members, fullMix });
         s.stemSoundEmpty = ids.length === 0;
         s.stemSound.setFailed([...s.failed]);
         // Every stem: a My kit only stem is muted from the start.
@@ -618,9 +639,14 @@ export function createBandRuntime({
 
     // Each changed stem becomes one queued claim op under its own claim. force:
     // every held mute is sent again (stems rebuilt its graph).
+    // The full mix has no claim: its op muffles or restores the whole song.
     function syncStemSound(s, changed, { force = false } = {}) {
         const caps = fb.capabilities;
         const op = (stemId, mute) => {
+            if (stemId === FULL_MIX) {
+                safe(() => queueStemOp('sound:mix', () => (mute ? mixMuffle.duck() : mixMuffle.restore())));
+                return;
+            }
             const claimId = STEM_SOUND_CLAIM_PREFIX + stemId;
             safe(() => queueStemOp('sound:stem:' + stemId, () => (mute
                 ? muteStem({ caps, part: stemId, stemId, claimId })
@@ -629,17 +655,19 @@ export function createBandRuntime({
         if (force) for (const stemId of s.stemSoundClaims) op(stemId, true);
         for (const stemId of changed) {
             const want = !!(s.stemSound && s.stemSound.muted(stemId));
-            if (want === s.stemSoundClaims.has(stemId) || (want && !caps)) continue;
+            if (want === s.stemSoundClaims.has(stemId) || (want && !caps && stemId !== FULL_MIX)) continue;
             if (want) s.stemSoundClaims.add(stemId); else s.stemSoundClaims.delete(stemId);
             op(stemId, want);
         }
     }
 
-    // The session ends: every held stem mute is restored and released.
+    // The session ends: every held stem mute is restored and released, and the
+    // full mix's filter comes out (after any restore still queued).
     function releaseStemSound(s) {
         const held = [...s.stemSoundClaims];
         s.stemSound = null;
         syncStemSound(s, held);
+        safe(() => queueStemOp('sound:mix', () => mixMuffle.release()));
     }
 
     // Fail mode (R12, R13): brings the lanes and stem claims in line with the

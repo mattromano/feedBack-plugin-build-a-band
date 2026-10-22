@@ -2,6 +2,7 @@
 // renders whatever this returns.
 import { PART_TYPES, hasChart, songFacts, controllerPartFor } from './parts.js';
 import { stemIdFor } from './stem-claims.js';
+import { isUnsplit } from './stem-sound.js';
 import { guitarArrIndex } from './mappings.js';
 
 const UNAVAILABLE_NOTE = {
@@ -11,6 +12,8 @@ const UNAVAILABLE_NOTE = {
 };
 const KARAOKE_OFF_NOTE = 'Turn on the Lyrics Karaoke plugin to sing';
 const SOUND_MODES_NOTE = 'Rock Band and My kit only need a drum stem';
+// An unsplit song: a controller's Rock Band muffles the whole song, My kit only has no stem.
+const KIT_NOTE = 'My kit only needs a drum stem';
 // A real drummer owns the drum stem (Ruling 9): a drums controller's Sound doesn't apply.
 const REAL_DRUMMER_SOUND_NOTE = "The drummer's sound mode sets the drum stem";
 // Guitar scores through note_detect, which the band turns on with an input picked.
@@ -110,6 +113,8 @@ function controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerSt
     const anyLoaded = loaded.five_fret || loaded.drums;
     const facts = item ? songFacts(item).fiveFret.filter((p) => showAuto || p.kind !== 'auto') : null;
     const hasStem = !item || songFacts(item).stemIds.includes('drums');
+    // An unsplit song (no stems, or only `full`): Rock Band part audio muffles the whole mix.
+    const unsplit = !!item && isUnsplit(songFacts(item).stemIds);
     const effective = (c) => {
         if (!c.playsAs) return null;
         if (!item) return c.part;
@@ -145,8 +150,8 @@ function controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerSt
         }
         const isDrums = playsAs === 'drums';
         const stemId = !isDrums && item && part ? stemIdFor('five_fret', { part }, songFacts(item).stemIds) : null;
-        const partAudioDisabled = !isDrums && !!item && !!part && !stemId;
-        const soundModeDisabled = isDrums && !hasStem ? NO_STEM_SOUND_MODES.slice() : [];
+        const partAudioDisabled = !isDrums && !!item && !!part && !stemId && !unsplit;
+        const soundModeDisabled = isDrums && !hasStem ? (unsplit ? ['kit'] : NO_STEM_SOUND_MODES.slice()) : [];
         const storedMode = c.soundMode || 'rockband';
         const soundMode = soundModeDisabled.includes(storedMode) ? 'song' : storedMode;
         let note = '';
@@ -158,7 +163,7 @@ function controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerSt
         else if (!playsAs) note = CONTROLLER_NOTES.chooseKind;
         else if (item && !part) note = isDrums ? CONTROLLER_NOTES.noDrumChart : CONTROLLER_NOTES.noChart;
         else if (partAudioDisabled) note = 'Part audio needs a ' + part + ' stem';
-        else if (isDrums && soundModeDisabled.includes(storedMode)) note = SOUND_MODES_NOTE;
+        else if (isDrums && soundModeDisabled.includes(storedMode)) note = unsplit ? KIT_NOTE : SOUND_MODES_NOTE;
         else if (isDrums && realDrumsOn) note = REAL_DRUMMER_SOUND_NOTE;
         const unavailable = !available || !isConnected || !playsAs || (!!item && !part);
         return {
