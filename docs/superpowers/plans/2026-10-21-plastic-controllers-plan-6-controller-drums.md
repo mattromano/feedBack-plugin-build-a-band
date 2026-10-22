@@ -782,6 +782,62 @@ No new code. Silent unless Matt says otherwise.
   - Back goes to `returnTo` once;
   - the free source reclaims after you leave the card.
 
+### Part B review (2026-10-21)
+
+**Branch:** `feature/band-controller-drums` in Build-a-Band (`.worktrees/bab-controllers`), pushed. Base `54a92d8` (Plan 3's finished `feature/band-controllers`), head `5ed786d`. Not merged; the coordinating session merges.
+
+| Task | Commits | Tests |
+|---|---|---|
+| B0 | branch | baseline 779/779 |
+| B1 | `730e1bc` drums as a controller kind | 789 |
+| B2 | `05ac365` band-screen model | 795 |
+| B3 | `b69dfb3` join manager, two kinds, X/B plays-as | 804 |
+| B4 | `e8f8341` drums columns and plays-as choice | 810 |
+| B5 | `76db64a` drums controller lanes | 818 |
+| B6 | `bd1f74f`, then fix `3f88cfe` (full-chart star thresholds; real drum canvas skips lane lookups) | 832 |
+| B7 | `c6e0d23` drum sound modes (My kit only) | 841 |
+| B8 | `98106c7` HUD tags and results cards | 846 |
+| Final | `5ed786d` drums-only band pins the drummer's input target, plus small fixes | 852/852 |
+
+**How it was reviewed:**
+- Each task had a spec and quality review. B6 needed one fix round.
+- The final whole-branch review found no Critical issues and 1 Important one, which `5ed786d` fixed. In a drums-only band, nothing called `setInputTarget`, so Part A's free source played an unjoined pad as the band drummer.
+- The final review checked every call into the drums plugin against `faea382` and found they all match. With the drums plugin absent, the 5-Fret path behaves as at `54a92d8`.
+- All 20 deferred minors can wait.
+
+**Task B9: not run.** Nothing was installed (the coordinator does the combined install), and GO and pad hits make sound. The stage, scoring and sound are covered by unit tests only.
+
+The combined real-app check should add these:
+- A drums-only band with an idle Xbox pad connected: the pad must not drive the drummer.
+- An Xbox pad's Start asks plays-as, B picks Drums, and the choice is remembered after leave and rejoin.
+- `claimCount()` is 0 during the library pick.
+
+**Where the built code differs from the steps above** (Plan 3 is built; its code wins):
+- **Choice memory:** the plays-as choice is stored in `prefs.controllerKinds` (Ruling 3). There is no `prefs.playsAs` map.
+- **Registry:** there is no `LANE_DRIVERS` and no join-manager `fiveFret`/`drums` args (Ruling 2).
+  - Each `CONTROLLER_KINDS` entry carries `laneArrangement`, `lights`, `pickButton`, `canPin`, `judgments`, `entry`, `stemMode` and `thresholds`.
+  - The entries' `laneRenderer` is a function, as in Plan 3's built `five_fret` entry.
+- **Stem id:** `stemIdFor('drums')` serves both drummer kinds (Ruling 16).
+- **Decision 14, as built (Ruling 9):** with a real drummer on the drum stem, the per-stem machine leaves that stem alone. There is no kit mute, no drop-out and no fail mute; the drummer's v1 sound mode governs. A drums controller's Sound setting then has no effect, and its column says so. With only controller drummers on the stem, the per-stem machine applies, including My kit only.
+
+**Rulings made while building:**
+1. **R-B1.** Follow Plan 3's built code where it differs from these steps. [none]
+2. **R-B2.** B1 defines the complete drums registry entry, in the style of the built five_fret entry. [small refactor]
+3. **R-B3.** Each kind's lane WS arrangement comes from its registry entry: drums → `plan.laneArrangement`. [small refactor]
+4. **R-B4.** Rule (b) above: a real drummer on the drums stem means the per-stem machine takes no action there. [none found]
+5. **R-B5.** B9 was skipped, as stated above. [integration bugs found at install]
+6. **Undecided Start.** Start on a joined but undecided pad doesn't act as the primary button; the player must choose X or B first. [one extra press]
+7. **Stars.** Drums controller stars keep the full-chart thresholds, the real drummer's M6 rule (the reported set with the largest final value). The rule lives in one helper, `fullChartThresholds`. [none]
+8. **Paused input.** A paused controller drum hit still restores the stem. Only a paused overhit is ignored (R10 parity). [none]
+9. **Name.** A drums controller's `playerStyle` name is "Drums (Controller)", so the results card and toasts match Decision 13. [one label]
+
+**Deferred** (none block a merge; full list in the shared notes, `5fret-plan6B-ledger.md` and `5fret-plan6B-final-review.md`):
+- Drum pads bound to an axis don't light on the band screen.
+- Held lights survive a stop and start.
+- An undecided pad has no fallback to another mapper.
+- Some test gaps.
+- `stemMode` has no default for a missing `soundMode` (unreachable after normalising).
+
 ## Builder-check rulings (binding; they override the tasks and decisions above where they differ)
 
 A builder check (2026-10-21) found these; each is decided here. Plan 3's "Builder-check rulings" **and its amendments** are binding on Part B.
