@@ -52,3 +52,37 @@
 - **Merging:**
   - the feedpak-spec branch into `custom`;
   - Build-a-Band `feature/band-controller-drums` and drums `feature/drums-gamepad` with the Build-a-Band session's `feature/build-a-band-stage`.
+
+## Sound test (2026-10-22, with Matt's OK)
+
+No physical controller was connected, so the tests used a **fake standard Xbox pad**: `navigator.getGamepads()` was overridden over CDP, and an in-page bot pressed each note's frets on time. Everything after the fake pad is the real chain: core `gamepad-input` → five-fret mapper → engine → HUD, and the Build-a-Band and drums plugins.
+
+1. **Normal player, "Misery Business (5-fret test)", Bass, Expert, 5-Fret viz:**
+   - the renderer claimed the pad while playing;
+   - the bot hit 98 in a row: combo 98, ×6 (bass max), score 22,150, half a star-power bar earned;
+   - Y activated star power (×12);
+   - Start paused the song and released the pad, A then resumed it through core's menus and the renderer re-claimed, and Start paused again.
+   - Screenshot `img/2026-10-22-normal-player-5fret-before-hud-fix.png`, taken before the HUD fix below.
+2. **Band song:**
+   - Start on the band screen joined the pad; "Plays as 5-Fret / Drums" asked, and X picked 5-Fret;
+   - the song picker's "5-fret part" filter found the test song, and Confirm showed the controller column (Lead/Bass marked REAL, Rhythm disabled);
+   - Start = GO, and the pinned lane took the pad;
+   - 126 notes in a row gave band score 36,370, BAND ×4 plus bonus, and the lane at ×6 with its star-power bar and crowd meter (`img/2026-10-22-band-song-controller-lane.png`);
+   - Start paused and resumed the band song; holding Back for 1 s opened "Leave the song?", and Leave returned to the band screen.
+   - **Part audio (Lead, guitar stem):** the stem played while hitting (gain 0.99), dropped on misses (gain 0) and came back on the next hit (0.99).
+   - **Fail on:** a run that missed everything dropped the controller player out (its stem muted), and the band failed with a correct results card.
+3. **Controller drums (normal player):** the drums plugin claimed the pad while the drum part played, pad taps reached the engine (hits and overhits, `drums:*` events) with kit sounds, and Start paused.
+4. **Calibration:** the 5-Fret controls screen claimed the pad, and Calibrate played its 12 clicks. A bot strumming about 50 ms late measured 70 ms (the bot's own start-up jitter accounts for the difference).
+
+**Bugs found and fixed** (five-fret 0.2.1, `491959d`):
+- in the normal player the 5-Fret HUD drew over the player's title and time; the HUD now sits in the bottom corners;
+- in band lanes the plugin's header duplicated Build-a-Band's lane tag; it's now hidden there.
+Both rechecked silently in the app.
+
+**Cleanup:**
+- the fake pad was removed and the viz picker set back to Auto;
+- Build-a-Band prefs restored (Vocals on, Fail on, the 5-fret pick filter off, and no remembered controller kind for the Xbox id);
+- `five_fret.settings.v1` cleared (it held the 70 ms test offset under the real Xbox controller key);
+- the player is paused and no input device is in use.
+
+**Still needs real hardware:** plastic guitars and kits (profiles unverified), and how a real Xbox pad feels to play.
