@@ -24,10 +24,12 @@ export function onsetTime(detail) {
     return detail.t;
 }
 
-export function drumsEntry(type, detail, t, bandCanvas) {
+// A drums lane's judgment on `bandCanvas`, for player `id` (the real drummer, or a
+// drums controller's ctl<N>).
+export function drumsEntry(type, detail, t, bandCanvas, id = 'drums') {
     if (!(bandCanvas && detail && detail.canvas === bandCanvas && DRUM_JUDGMENTS.includes(type))) return null;
     return {
-        part: 'drums', t, kind: type,
+        part: id, t, kind: type,
         points: type === 'hit' ? or(detail.points, 0) : 0,
         // Star power doubles the drums multiplier; the band multiplier leaves overdrive out (R4).
         multiplier: (or(detail.multiplier, 0) || 1) / (detail.spActive ? 2 : 1),

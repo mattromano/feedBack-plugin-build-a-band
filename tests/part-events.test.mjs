@@ -37,6 +37,16 @@ test("drums: only the band's canvas, only judgments", () => {
     assert.deepEqual(miss, { part: 'drums', t: 3, kind: 'miss', points: 0, multiplier: 1, streak: 0, stars: null });
 });
 
+test('drumsEntry with an id records that part; default stays drums', () => {
+    const lane = {};
+    const d = { canvas: lane, points: 40, multiplier: 2, combo: 3, stars: 2.5 };
+    assert.deepEqual(drumsEntry('hit', d, 4, lane, 'ctl2'),
+        { part: 'ctl2', t: 4, kind: 'hit', points: 40, multiplier: 2, streak: 3, stars: 2.5 });
+    assert.equal(drumsEntry('miss', { canvas: lane }, 4, lane, 'ctl2').part, 'ctl2');
+    assert.equal(drumsEntry('hit', d, 4, lane).part, 'drums');
+    assert.equal(drumsEntry('hit', d, 4, {}, 'ctl2'), null, 'another canvas is not that lane');
+});
+
 test("drums: star power doesn't lift the band multiplier", () => {
     const band = {};
     assert.equal(drumsEntry('hit', { canvas: band, multiplier: 8, spActive: true }, 0, band).multiplier, 4);

@@ -77,8 +77,9 @@ const isOn = (prefs, id) => !!(prefs && prefs.parts && prefs.parts[id] && prefs.
 // The parts this session plays, decided once at Go: a part plays only when it
 // is on AND the song has its chart (the band screen's rule for greying a
 // column); vocals also needs the Lyrics Karaoke API. A controller plays when
-// it is on, its kind's plugin API and lane renderer are loaded and the song
-// has a part for it; `part` becomes that part's instrument and `sourceKind`
+// it is on and decided (playsAs not null), its kind's plugin API (able to pin
+// a lane, canPin) and lane renderer are loaded and the song has a part for
+// it; `part` becomes that part's instrument and `sourceKind`
 // its chart kind. Whether it is connected is settled at mount
 // (settleControllers). Every later step reads these `on` flags.
 function effectivePrefs(prefs, item, win, kinds) {
@@ -93,11 +94,12 @@ function effectivePrefs(prefs, item, win, kinds) {
     const controllers = joined.filter((c) => c && typeof c === 'object').map((c) => {
         const kind = kindOf(kinds, prefs, c);
         const api = kind && typeof kind.api === 'function' ? safe(() => kind.api()) : null;
-        const renderer = api && typeof kind.laneRenderer === 'function' ? safe(() => kind.laneRenderer()) : null;
+        const pinnable = !!api && (typeof kind.canPin !== 'function' || safe(() => kind.canPin(api)) === true);
+        const renderer = pinnable && typeof kind.laneRenderer === 'function' ? safe(() => kind.laneRenderer()) : null;
         const showAuto = !!api && typeof api.showAutoCharts === 'function' && safe(() => api.showAutoCharts()) === true;
         const plays = typeof renderer === 'function' && typeof kind.partFor === 'function'
             ? safe(() => kind.partFor(item, c, { showAuto })) : null;
-        return { ...c, on: c.on !== false && !!plays, part: plays ? plays.instrument : c.part, sourceKind: plays ? plays.kind : null };
+        return { ...c, on: c.on !== false && c.playsAs !== null && !!plays, part: plays ? plays.instrument : c.part, sourceKind: plays ? plays.kind : null };
     });
     return { ...prefs, parts, controllers };
 }

@@ -3,7 +3,7 @@
 // ids. No DOM, and nothing here reads `window` at import time.
 import { DIFFICULTIES, drumsDifficultyId } from './mappings.js';
 import { fiveFretPartFor, drumsControllerPartFor } from './parts.js';
-import { fiveFretEntry } from './part-events.js';
+import { fiveFretEntry, drumsEntry } from './part-events.js';
 
 export const FIVE_FRET_PART_LABELS = Object.freeze({ guitar: 'Lead', rhythm: 'Rhythm', bass: 'Bass' });
 export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
@@ -19,6 +19,7 @@ export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
 //   eventPrefix                 bus event prefix: `<prefix>:band-pause` etc.
 //   lights                      join-screen light -> the mapper actions that light it (any held)
 //   pickButton                  the standard-pad raw button that picks this kind for an undecided pad
+//   canPin(api)                 optional: whether the API can pin a lane (else the controller sits out at Go)
 //   pin(canvas, key, opts)      pins a lane (opts: part, difficulty, lefty); false when the API is missing
 //   unpin(canvas)               releases the lane
 //   partFor(item, c, opts)      the part this controller plays on the song ({ instrument, kind }), or null
@@ -72,7 +73,8 @@ export const CONTROLLER_KINDS = {
         entry: fiveFretEntry,
     },
     // Plan 6: a game controller or plastic kit on its own drum lane (feedBackDrums
-    // setController). Its judgments and score entry arrive with Task B6.
+    // setController). It scores like the real drummer (Decision 15): drumsEntry
+    // with its player id, on the lane canvas the event came from.
     drums: {
         label: 'Drums',
         parts: ['drums'],
@@ -91,6 +93,7 @@ export const CONTROLLER_KINDS = {
             green: ['green_pad', 'green_cymbal'], kick: ['kick'],
         }),
         pickButton: 1, // B
+        canPin: (api) => !!api && typeof api.setController === 'function',
         pin(laneCanvas, controllerKey, opts) {
             const api = drumsApi();
             if (!api || typeof api.setController !== 'function') return false;
@@ -105,6 +108,8 @@ export const CONTROLLER_KINDS = {
             if (typeof api.clearDifficulty === 'function') api.clearDifficulty(laneCanvas);
         },
         partFor: drumsControllerPartFor,
+        judgments: Object.freeze(['hit', 'miss', 'overhit']),
+        entry: (type, detail, t, id) => drumsEntry(type, detail, t, detail && detail.canvas, id),
     },
 };
 

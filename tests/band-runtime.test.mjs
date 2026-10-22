@@ -55,7 +55,7 @@ const DRUM_ITEM = { filename: 'Beat.sloppak', arrangements: [{ index: 0, name: '
 function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, settings = { master_difficulty: 60 },
     karaoke = true, karaokePitch = true, mountFails = false, drumLane = true,
     stems = ['guitar', 'drums'], caps = true, pauseStatus = 'paused', overlayApi = true, confirmDialog = true,
-    onShowBandScreen, fiveFret = true, pads = ['Xbox#1', 'Xbox#2'] } = {}) {
+    onShowBandScreen, fiveFret = true, pads = ['Xbox#1', 'Xbox#2'], drumPads = ['Kit#1', 'Kit#2'] } = {}) {
     const bus = new EventTarget();
     const calls = { playSong: [], showScreen: [], setReturnScreen: [], hold: 0, release: 0, setMastery: [],
         setDifficulty: [], clearDifficulty: [], splitStart: 0, fetch: [], setViz: [],
@@ -63,7 +63,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         caps: [], audioPause: 0, setMasteryAt: [],
         // Plan 7: full screen, the sidebar's links, core's overlay pause, the loop, note_detect's quiet switch.
         fsRequest: 0, fsExit: 0, nav: [], pause: 0, resume: [], resumeAt: [], loop: [], exitSong: 0, togglePlay: 0,
-        ndQuiet: [] };
+        ndQuiet: [], setController: [], clearController: [] };
     // Shared sequence counter: orders karaoke calls against playSong and unmount.
     let seq = 0;
     const doc = makeDoc();
@@ -182,6 +182,10 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
             clearDifficulty: (c) => calls.clearDifficulty.push(c),
             setScoreHudHidden: (c, v) => { calls.hides.push(['drums', c, v]); return true; },
             getInstanceState: (c) => (typeof od.drums === 'function' ? od.drums(c) : od.drums),
+            // Plan 6 Part A: `drumPads` are the connected controllerKeys; the pins only record.
+            listControllers: () => Promise.resolve(drumPads.map((key, i) => ({ index: i, controllerKey: key, kind: 'kit', connected: true }))),
+            setController: (key, c) => { calls.setController.push([key, c]); return true; },
+            clearController: (c) => { calls.clearController.push(c); },
         },
         noteDetect: {
             setScoreHudHidden: (v) => { calls.hides.push(['nd', v]); return true; },
@@ -254,8 +258,12 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
         win.feedBackViz_five_fret = () => ({ draw() {} });
     }
     // CONTROLLER_KINDS with its plugin globals read from this fake window.
-    const kinds = { five_fret: { ...CONTROLLER_KINDS.five_fret,
-        api: () => win.feedBackFiveFret || null, laneRenderer: () => win.feedBackViz_five_fret || null } };
+    const kinds = {
+        five_fret: { ...CONTROLLER_KINDS.five_fret,
+            api: () => win.feedBackFiveFret || null, laneRenderer: () => win.feedBackViz_five_fret || null },
+        drums: { ...CONTROLLER_KINDS.drums,
+            api: () => win.feedBackDrums || null, laneRenderer: () => win.feedBackViz_drums || null },
+    };
     // Controller lanes that fail to start on the next mounts (getLaneCanvas reports null).
     const failLanes = new Set();
     const mounts = [];
@@ -4037,5 +4045,250 @@ test('provider-ready re-mutes', async () => {
     fb.emit('five_fret:hit', ffEv(canvas, { score: 10 }));
     await flush();
     assert.deepEqual(stemSoundKinds(calls, BASS_STEM).slice(4), ['dispatch:restore', 'release']);
+    rt.dispose();
+});
+
+// ---- Plan 6 Task B6: drums controllers score, deploy and fail in the band ----
+
+const KIT1 = { key: 'Kit#1', id: 'ctl1', name: 'Kit', playsAs: 'drums', part: 'drums', difficulty: 'expert',
+    lefty: false, partAudio: 'rockband', soundMode: 'rockband', on: true };
+const KIT2 = { ...KIT1, key: 'Kit#2', id: 'ctl2', name: 'Kit 2' };
+const padPrefs = (controllers = [KIT1], opts) => ctlPrefs(controllers, opts);
+// A drums bus event's detail on a lane canvas.
+const drEv = (canvas, extra = {}) => ({ canvas, points: 0, multiplier: 1, combo: 1, spActive: false, ...extra });
+const drumHides = (calls, canvas) => calls.hides.filter((h) => h[0] === 'drums' && h[1] === canvas).map((h) => h[2]);
+
+test('Go with a drums controller: ctl1 in the ledger and HUD, its drum HUD hidden', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls, player } = env;
+    await goCtl(env, padPrefs(), DRUM_ITEM);
+    const m = mounts[0];
+    const [c] = m.prefs.controllers;
+    assert.deepEqual([c.on, c.part, c.sourceKind, c.key], [true, 'drums', 'chart', 'Kit#1']);
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar', 'drums', 'ctl1']);
+    const hud = partHud(player, 'ctl1');
+    assert.ok(hud && hud.parentNode === m.lanes.ctl1, "ctl1's HUD sits in its lane");
+    assert.deepEqual(drumHides(calls, m.ctlCanvas.ctl1), [true]);
+    assert.deepEqual(drumHides(calls, m.drumCanvas), [true], "the real drummer's HUD is hidden too");
+    fb.emit('song:stop', {});
+    assert.deepEqual(drumHides(calls, m.ctlCanvas.ctl1), [true, false], 'teardown shows it again');
+    rt.dispose();
+});
+
+test('a MIDI drummer and a controller drummer score only their own canvases', async () => {
+    const env = setup();
+    const { rt, fb, mounts } = env;
+    await goCtl(env, padPrefs([KIT1], { drums: { soundMode: 'rockband' } }), STEM_ITEM);
+    const { drumCanvas } = mounts[0];
+    const lane = mounts[0].ctlCanvas.ctl1;
+    // The real drummer's canvas: only drums.
+    fb.emit('drums:hit', drEv(drumCanvas, { points: 50, combo: 1 }));
+    fb.emit('drums:overhit', drEv(drumCanvas));
+    assert.equal(rt.drumSound().muted, true, "the real drummer's overhit drops its stem");
+    fb.emit('drums:hit', drEv(drumCanvas, { points: 50, combo: 1 }));
+    assert.equal(rt.drumSound().muted, false, 'its next hit brings it back');
+    let parts = rt.snapshot().parts;
+    assert.deepEqual([parts.drums.score, parts.drums.hits, parts.drums.overhits], [100, 2, 1]);
+    assert.deepEqual([parts.ctl1.score, parts.ctl1.hits, parts.ctl1.overhits, parts.ctl1.misses], [0, 0, 0, 0]);
+    // The controller's canvas: only ctl1, and the real drummer's Rock Band stem doesn't drop.
+    fb.emit('drums:hit', drEv(lane, { points: 30, combo: 1 }));
+    fb.emit('drums:miss', drEv(lane, { combo: 0 }));
+    fb.emit('drums:overhit', drEv(lane));
+    parts = rt.snapshot().parts;
+    assert.deepEqual([parts.ctl1.score, parts.ctl1.hits, parts.ctl1.misses, parts.ctl1.overhits], [30, 1, 1, 1]);
+    assert.deepEqual([parts.drums.score, parts.drums.hits, parts.drums.misses, parts.drums.overhits], [100, 2, 0, 1]);
+    assert.equal(rt.drumSound().muted, false, "a controller miss never drops the real drummer's stem");
+    fb.emit('drums:miss', drEv(drumCanvas, { combo: 0 }));
+    assert.equal(rt.drumSound().muted, true, "the real drummer's own miss still does");
+    assert.equal(rt.snapshot().parts.ctl1.misses, 1);
+    // Deploys: each canvas its own player.
+    fb.emit('drums:sp-activate', drEv(lane, { spActive: true }));
+    parts = rt.snapshot().parts;
+    assert.deepEqual([parts.ctl1.deploys, parts.drums.deploys], [1, 0]);
+    fb.emit('drums:sp-activate', drEv(drumCanvas, { spActive: true }));
+    parts = rt.snapshot().parts;
+    assert.deepEqual([parts.ctl1.deploys, parts.drums.deploys], [1, 1]);
+    rt.dispose();
+});
+
+test('two drums controllers score separately', async () => {
+    const env = setup();
+    const { rt, fb, mounts, doc } = env;
+    await goCtl(env, padPrefs([KIT1, KIT2], { drums: { on: false } }), DRUM_ITEM);
+    const { ctl1, ctl2 } = mounts[0].ctlCanvas;
+    assert.notEqual(ctl1, ctl2);
+    fb.emit('drums:hit', drEv(ctl1, { points: 40, multiplier: 4, spActive: true, combo: 9 }));
+    fb.emit('drums:hit', drEv(ctl2, { points: 25 }));
+    fb.emit('drums:miss', drEv(ctl2, { combo: 0 }));
+    fb.emit('drums:hit', drEv(doc.createElement('canvas'), { points: 999 }));
+    const parts = rt.snapshot().parts;
+    assert.deepEqual(Object.keys(parts), ['guitar', 'ctl1', 'ctl2']);
+    assert.deepEqual([parts.ctl1.score, parts.ctl1.hits, parts.ctl1.misses], [40, 1, 0]);
+    assert.deepEqual([parts.ctl2.score, parts.ctl2.hits, parts.ctl2.misses], [25, 1, 1]);
+    assert.equal(parts.guitar.score, 0);
+    rt.dispose();
+});
+
+test('sp-activate on the controller lane rescues a failed bandmate', async () => {
+    const env = setup();
+    const { rt, fb, mounts, player, clock } = env;
+    await goCtl(env, { ...padPrefs([KIT1, KIT2]), failMode: 'fail' }, DRUM_ITEM);
+    const { ctl1, ctl2 } = mounts[0].ctlCanvas;
+    dropGuitar(env);
+    assert.equal(rt.snapshot().parts.guitar.failed, true);
+    fb.emit('drums:sp-activate', drEv(ctl1, { spActive: true }));
+    let parts = rt.snapshot().parts;
+    assert.equal(parts.guitar.failed, false, 'the guitarist is back');
+    assert.equal(parts.ctl1.deploys, 1);
+    assert.equal(parts.drums.deploys, 0);
+    assert.equal(partCallout(player, 'guitar'), 'SAVED!');
+    // A drums controller drops out on its misses, and the real drummer's deploy rescues it.
+    for (let i = 0; i < 14; i++) {
+        clock.t = 20 + i;
+        fb.emit('drums:miss', drEv(ctl2, { combo: 0 }));
+    }
+    assert.equal(rt.snapshot().parts.ctl2.failed, true);
+    assert.ok(mounts[0].lanes.ctl2.classList.contains('bab-failed'));
+    fb.emit('drums:sp-activate', drEv(ctl2, { spActive: true }));
+    assert.equal(rt.snapshot().parts.ctl2.failed, true, "its own deploy rescues nobody");
+    fb.emit('drums:sp-activate', drEv(mounts[0].drumCanvas, { spActive: true }));
+    parts = rt.snapshot().parts;
+    assert.equal(parts.ctl2.failed, false);
+    assert.equal(parts.ctl2.saves, 1);
+    rt.dispose();
+});
+
+test('controller drum meter mirrored from getInstanceState', async () => {
+    const env = odSetup();
+    const { rt, mounts, player, timers, od } = env;
+    const asked = new Set();
+    let lane = null;
+    od.drums = (c) => { asked.add(c); return { starPower: { amount: c === lane ? 0.75 : 0.25, active: false } }; };
+    await goCtl(env, padPrefs(), DRUM_ITEM);
+    lane = mounts[0].ctlCanvas.ctl1;
+    timers.fire(100);
+    assert.equal(odHud(player, 'ctl1').style.width, '75%');
+    assert.equal(odHud(player, 'drums').style.width, '25%');
+    assert.ok(asked.has(lane) && asked.has(mounts[0].drumCanvas), 'each read from its own canvas');
+    assert.deepEqual(rt.overdrive().controllers.ctl1, { fill: 0.75, active: false });
+    rt.dispose();
+});
+
+test("a drums controller's stars follow the real drummer's rule", async () => {
+    const env = setup();
+    const { rt, fb, mounts, od } = env;
+    await goCtl(env, padPrefs(), DRUM_ITEM);
+    const lane = mounts[0].ctlCanvas.ctl1;
+    // No thresholds reported yet: the engine's own stars.
+    fb.emit('drums:hit', drEv(lane, { points: 100, stars: 2.5 }));
+    assert.equal(rt.snapshot().parts.ctl1.stars, 2.5);
+    // Once the lane reports its full-chart thresholds, they measure the band's score.
+    const full = [60, 120, 200, 450, 750, 1090];
+    od.drums = (c) => (c === lane ? { starPower: { amount: 0, active: false }, starThresholds: full } : null);
+    fb.emit('drums:hit', drEv(lane, { points: 200, stars: 1 }));
+    assert.equal(rt.snapshot().parts.ctl1.stars, starsFromScore(300, full));
+    rt.dispose();
+});
+
+test('a drums controller disconnected at Go sits out', async () => {
+    const env = setup({ drumPads: ['Kit#1'] });
+    await goCtl(env, padPrefs([KIT1, KIT2]), DRUM_ITEM);
+    const m = env.mounts[0];
+    assert.deepEqual(m.prefs.controllers.map((c) => [c.id, c.on]), [['ctl1', true], ['ctl2', false]]);
+    assert.equal(m.ctlCanvas.ctl2, undefined, 'no dead lane');
+    assert.deepEqual(Object.keys(env.rt.snapshot().parts), ['guitar', 'drums', 'ctl1']);
+    env.rt.dispose();
+
+    // Without setController, without the renderer, on a song with no drum chart,
+    // or undecided (playsAs null, even with a remembered kind): it sits out too.
+    const noPin = setup();
+    delete noPin.win.feedBackDrums.setController;
+    const noViz = setup();
+    delete noViz.win.feedBackViz_drums;
+    const cases = [
+        [noPin, padPrefs(), DRUM_ITEM],
+        [noViz, padPrefs(), DRUM_ITEM],
+        [setup(), padPrefs(), ITEM],
+        [setup(), { ...padPrefs([{ ...KIT1, playsAs: null }]), controllerKinds: { 'Kit#1': 'drums' } }, DRUM_ITEM],
+    ];
+    for (const [env2, prefs, item] of cases) {
+        await goCtl(env2, prefs, item);
+        assert.equal(env2.mounts.length, 1);
+        assert.equal(env2.mounts[0].prefs.controllers[0].on, false);
+        assert.ok(!Object.keys(env2.rt.snapshot().parts).includes('ctl1'));
+        env2.rt.dispose();
+    }
+});
+
+test('a drums controller lane that failed to start leaves the band', async () => {
+    const env = setup();
+    const { rt, fb, failLanes, player } = env;
+    failLanes.add('ctl1');
+    await goCtl(env, padPrefs([KIT1, KIT2]), DRUM_ITEM);
+    assert.deepEqual(Object.keys(rt.snapshot().parts), ['guitar', 'drums', 'ctl2']);
+    assert.equal(partHud(player, 'ctl1'), null);
+    fb.emit('drums:hit', drEv(env.doc.createElement('canvas'), { points: 100 }));
+    assert.equal(rt.snapshot().score, 0);
+    rt.dispose();
+});
+
+test('a backward seek drops later drums-controller entries', async () => {
+    const env = setup();
+    const { rt, fb, mounts, clock } = env;
+    await goCtl(env, padPrefs(), DRUM_ITEM);
+    const lane = mounts[0].ctlCanvas.ctl1;
+    for (const t of [1, 2, 3]) {
+        clock.t = t;
+        fb.emit('drums:hit', drEv(lane, { points: 100 }));
+    }
+    assert.equal(rt.snapshot().parts.ctl1.score, 300);
+    fb.emit('song:seek', { from: 3, to: 1.5 });
+    assert.equal(rt.snapshot().parts.ctl1.score, 100, 'the entries after 1.5 are gone');
+    clock.t = 1.6;
+    fb.emit('drums:hit', drEv(lane, { points: 40 }));
+    assert.equal(rt.snapshot().parts.ctl1.score, 140, 'drums points are per hit, not a running score');
+    rt.dispose();
+});
+
+test('Start on a drums controller lane toggles band pause; a held Back opens the leave prompt', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls, prompts } = env;
+    await goCtl(env, padPrefs(), DRUM_ITEM);
+    const canvas = mounts[0].ctlCanvas.ctl1;
+    fb.emit('drums:band-pause', { controllerKey: 'Kit#1', canvas });
+    assert.equal(calls.togglePlay, 1);
+    fb.emit('drums:band-pause', { controllerKey: 'Kit#1', canvas: mounts[0].drumCanvas });
+    assert.equal(calls.togglePlay, 1, "the real drum lane's canvas does nothing");
+    fb.emit('drums:band-back-hold', { controllerKey: 'Kit#1', canvas });
+    assert.equal(prompts.length, 1);
+    // Under the prompt, Start is Stay.
+    fb.emit('drums:band-pause', { controllerKey: 'Kit#1', canvas });
+    assert.equal(calls.togglePlay, 1, 'Start answers the prompt, it does not toggle');
+    assert.equal(prompts[0].settled, true);
+    assert.equal(calls.resume.length, 1, 'Stay resumes');
+    // Hold Back, then hold it again: Leave.
+    fb.emit('drums:band-back-hold', { controllerKey: 'Kit#1', canvas });
+    fb.emit('drums:band-back-hold', { controllerKey: 'Kit#1', canvas });
+    assert.equal(prompts.length, 2);
+    assert.equal(prompts[1].settled, true);
+    assert.deepEqual(calls.showScreen, ['plugin-build_a_band'], 'Leave goes back to the band screen');
+    rt.dispose();
+});
+
+test('every drums controller lane is unpinned at the end, Play again included', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls, loadSong } = env;
+    await goCtl(env, padPrefs([KIT1, KIT2]), DRUM_ITEM);
+    const first = mounts[0];
+    // The fake stage records unmounts; the real stage's unmount unpins (Task B5).
+    fb.emit('song:ended', {});
+    rt.again();
+    await flush();
+    assert.equal(first.unmounted, 1, 'Play again unmounts the old lanes');
+    loadSong(DRUM_ITEM);
+    fb.emit('song:stop', {});
+    assert.equal(mounts[1].unmounted, 1, 'leaving unmounts the new ones');
+    assert.ok(calls.hides.filter((h) => h[0] === 'drums' && h[2] === true).every((h) =>
+        drumHides(calls, h[1]).at(-1) === false), 'every hidden drum HUD came back');
     rt.dispose();
 });
