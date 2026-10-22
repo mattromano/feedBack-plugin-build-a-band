@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mountStage } from '../src/stage.js';
+import { CONTROLLER_KINDS } from '../src/controller-model.js';
 
 function makeListeners() {
     const map = new Map();
@@ -816,4 +817,130 @@ test('a lane pinned while the band screen still claims its pad gets it once the 
     assert.ok(!log.includes('unpin'), 'the pin was never dropped');
     s.unmount();
     assert.equal(changeFns.size, 0);
+});
+
+// ---- Drums controller lanes (Plan 6 B5) ----
+// The real CONTROLLER_KINDS.drums entry against a fake window.feedBackDrums whose
+// pins live per canvas, as the drums plugin's do. It never moves a pin on a canvas
+// replacement, so a stale pin on the old canvas shows up at unmount.
+function withDrumsKit(env, fn) {
+    const log = env.log;
+    const api = {
+        controllers: new Map(), difficulty: new Map(),
+        setController(key, canvas) {
+            if (typeof key !== 'string' || !key || !canvas) return false;
+            log.push('setController ' + key);
+            api.controllers.set(canvas, key);
+            return true;
+        },
+        clearController(canvas) { log.push('clearController ' + api.controllers.get(canvas)); api.controllers.delete(canvas); },
+        setDifficulty(id, canvas) { log.push('setDifficulty ' + id); api.difficulty.set(canvas, id); },
+        clearDifficulty(canvas) { log.push('clearDifficulty'); api.difficulty.delete(canvas); },
+    };
+    const drumRenderer = { drums: true };
+    const prev = globalThis.window;
+    globalThis.window = { feedBackDrums: api, feedBackViz_drums: () => drumRenderer };
+    env.deps.kinds.drums = CONTROLLER_KINDS.drums;
+    try { return fn(api, drumRenderer); } finally {
+        if (prev === undefined) delete globalThis.window; else globalThis.window = prev;
+    }
+}
+const drummer = (id, key, extra = {}) => ctl(id, key, 'drums', { playsAs: 'drums', soundMode: 'rockband', ...extra });
+
+test('a drums controller gets a drum-renderer lane on the drum arrangement, pinned to its key and difficulty', () => {
+    const env = setup();
+    const { player, deps, drumHws, pins } = env;
+    withDrumsKit(env, (api, drumRenderer) => {
+        const prefs = { controllers: [ctl('ctl1', 'pad#1', 'bass'), drummer('ctl2', 'pad#2', { difficulty: 'expert' })] };
+        const s = mountStage({ player, song: ctlSong, prefs, deps });
+        assert.deepEqual(laneParts(player), ['guitar', '|', 'drums', 'ctl1', 'ctl2']);
+        const fretHw = laneHw(drumHws, s.laneSlot('ctl1'));
+        const drumHw = laneHw(drumHws, s.laneSlot('ctl2'));
+        assert.ok(drumHw && drumHw !== fretHw, 'own highway');
+        assert.deepEqual(drumHw.renderer, drumRenderer);
+        assert.equal(drumHw.connectOpts.secondary, true);
+        assert.equal(drumHw.initArgs[1].style.width, '100%', 'unzoomed box, like every controller lane');
+        // The real drum lane's arrangement (1), while the 5-fret lane stays on the song's (0).
+        assert.ok(env.log.includes('drum.connect ws://x/a.psarc?arrangement=1'));
+        assert.equal(env.log.filter((l) => l === 'drum.connect ws://x/a.psarc?arrangement=1').length, 2, 'real drums + controller drums');
+        const canvas = s.getLaneCanvas('ctl2');
+        assert.equal(canvas, drumHw.initArgs[0]);
+        assert.equal(api.controllers.get(canvas), 'pad#2');
+        assert.equal(api.difficulty.get(canvas), 'expert');
+        assert.equal(pins.get(s.getLaneCanvas('ctl1')).controllerKey, 'pad#1');
+        assert.ok(!api.controllers.has(s.getDrumCanvas()), 'the real drum lane is never controller-pinned');
+        s.unmount();
+    });
+});
+
+test('no drum chart: no lane for the drums controller', () => {
+    const env = setup();
+    const { player, deps } = env;
+    withDrumsKit(env, (api) => {
+        const prefs = { controllers: [ctl('ctl1', 'pad#1', 'bass'), drummer('ctl2', 'pad#2')] };
+        const s = mountStage({ player, song: { ...noDrums, arrangementIndex: 0 }, prefs, deps });
+        assert.deepEqual(laneParts(player), ['guitar', 'ctl1']);
+        assert.equal(s.laneSlot('ctl2'), null);
+        assert.equal(s.getLaneCanvas('ctl2'), null);
+        assert.ok(s.getLaneCanvas('ctl1'));
+        assert.equal(api.controllers.size, 0);
+        assert.ok(!env.log.some((l) => l.startsWith('setController')));
+        s.unmount();
+    });
+});
+
+test('canvas replacement re-pins setController; unmount clears the old and new canvases', () => {
+    const env = setup();
+    const { player, doc, deps, bus } = env;
+    withDrumsKit(env, (api) => {
+        const prefs = { controllers: [drummer('ctl1', 'kit#1', { difficulty: 'hard' })] };
+        const s = mountStage({ player, song: ctlSong, prefs, deps });
+        const old = s.getLaneCanvas('ctl1');
+        const fresh = doc.createElement('canvas');
+        bus.emit('highway:canvas-replaced', { oldCanvas: old, newCanvas: fresh });
+        assert.equal(s.getLaneCanvas('ctl1'), fresh);
+        assert.equal(api.controllers.get(fresh), 'kit#1');
+        assert.equal(api.difficulty.get(fresh), 'hard');
+        s.unmount();
+        assert.equal(api.controllers.size, 0, 'no pin left on any canvas the lane had');
+        assert.equal(api.difficulty.size, 0);
+        assert.equal(fresh.parentNode, null);
+    });
+});
+
+test('unmount clears the controller and difficulty pins', () => {
+    const env = setup();
+    const { player, deps, log } = env;
+    withDrumsKit(env, (api) => {
+        const prefs = { controllers: [drummer('ctl1', 'kit#1'), drummer('ctl2', 'pad#2')] };
+        const s = mountStage({ player, song: ctlSong, prefs, deps });
+        assert.equal(api.controllers.size, 2);
+        log.length = 0;
+        s.unmount();
+        assert.equal(api.controllers.size, 0);
+        assert.equal(api.difficulty.size, 0);
+        // Each lane's highway stops before its pins are cleared.
+        assert.deepEqual(log.filter((l) => l === 'drum.stop' || /^clear/.test(l)), [
+            'drum.stop',
+            'drum.stop', 'clearController kit#1', 'clearDifficulty',
+            'drum.stop', 'clearController pad#2', 'clearDifficulty',
+        ]);
+        assert.equal(s.getLaneCanvas('ctl1'), null);
+    });
+});
+
+test('a missing setController drops only that lane', () => {
+    const env = setup();
+    const { player, deps } = env;
+    withDrumsKit(env, (api) => {
+        delete api.setController;
+        const prefs = { controllers: [drummer('ctl1', 'kit#1'), ctl('ctl2', 'pad#2', 'guitar')] };
+        const [s, errors] = quietErrors(() => mountStage({ player, song: ctlSong, prefs, deps }));
+        assert.match(String(errors[0] && errors[0][0]), /controller lane failed to start/);
+        assert.deepEqual(laneParts(player), ['guitar', '|', 'drums', 'ctl2']);
+        assert.equal(s.getLaneCanvas('ctl1'), null);
+        assert.ok(s.getLaneCanvas('ctl2'));
+        assert.equal(api.difficulty.size, 0);
+        s.unmount();
+    });
 });

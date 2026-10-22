@@ -10,6 +10,7 @@
 import { drumArrIndex } from './arrangements.js';
 import { clampSplit, computeStageLayout, computeStageRows, splitFromPointer } from './layout.js';
 import { CONTROLLER_KINDS, isControllerId, kindFor } from './controller-model.js';
+import { drumsControllerPartFor } from './parts.js';
 import { createLaneClock } from './lane-clock.js';
 import { clampLabelScale, clampZoom, savePrefs, ZOOM_STEP } from './prefs.js';
 import { drumsDifficultyId } from './mappings.js';
@@ -32,6 +33,8 @@ const LABEL_STEP = 0.25;
 // highway); null otherwise (no playable lane: vocals alone, or nothing).
 // `controllers` (prefs.controllers): each one with `on === true` adds a lane
 // after the real ones, in join order; a band of controllers alone has no main part.
+// An undecided one (playsAs null) gets none, nor does a drums one on a song
+// without a drum chart (its lane would have nothing to play).
 export function planStage(song, parts = { guitar: { on: true }, drums: { on: true } }, controllers = []) {
     const hasDrumTab = !!(song && (song.hasDrumTab || song.has_drum_tab));
     const drumIndex = drumArrIndex(song && song.arrangements, { hasDrumTab });
@@ -39,7 +42,7 @@ export function planStage(song, parts = { guitar: { on: true }, drums: { on: tru
     const laneArrangement = drumIndex >= 0 ? drumIndex
         : (hasDrumTab && Number.isInteger(current) && current >= 0 ? current : undefined);
     const strip = !!(parts && parts.vocals && parts.vocals.on === true);
-    const ctlLanes = controllerLanes(controllers).map((c) => c.id);
+    const ctlLanes = controllerLanes(controllers, song).map((c) => c.id);
     const plan = (mainPart, lanes) => ({ strip, mainPart, lanes: lanes.concat(ctlLanes), drumIndex, laneArrangement });
     const on = (id) => !(parts && parts[id] && parts[id].on === false);
     const drumChart = on('drums') && (drumIndex >= 0 || hasDrumTab);
@@ -48,11 +51,15 @@ export function planStage(song, parts = { guitar: { on: true }, drums: { on: tru
     return plan(null, []);
 }
 
-// The controllers that get a lane: switched on, with a player id, once each.
-function controllerLanes(controllers) {
+// The controllers that get a lane: switched on, with a player id, decided, once
+// each; a drums controller only on a song with a drum chart.
+function controllerLanes(controllers, song) {
     const seen = new Set();
+    const drumChart = !!drumsControllerPartFor(song);
     return (Array.isArray(controllers) ? controllers : []).filter((c) => {
         if (!c || c.on !== true || !isControllerId(c.id) || seen.has(c.id)) return false;
+        if (c.playsAs === null) return false;
+        if (c.playsAs === 'drums' && !drumChart) return false;
         seen.add(c.id);
         return true;
     });
@@ -101,7 +108,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     const parts = (prefs && prefs.parts) || undefined;
     const controllers = prefs && prefs.controllers;
     const plan = planStage(song, parts, controllers);
-    const ctlById = new Map(controllerLanes(controllers).map((c) => [c.id, c]));
+    const ctlById = new Map(controllerLanes(controllers, song).map((c) => [c.id, c]));
     // The band drum difficulty, pinned to whichever canvas takes kit input.
     const drumsDiff = drumsDifficultyId(parts && parts.drums && parts.drums.difficulty);
     function pinDrums(canvas) {
@@ -323,8 +330,13 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         c.style.left = '0px';
         c.style.top = '0px';
     }
+    // A pinned canvas that was replaced is remembered, so unmount clears its pin
+    // too: a plugin that doesn't move the pin with the canvas would otherwise
+    // keep a pin alive (a leftover drums pin disables the normal player's free
+    // source). It isn't cleared now, while the lane still plays on it.
     function adoptLaneCanvas(lane, next) {
         if (!next || next === lane.canvas) return;
+        if (lane.pinned) lane.replaced.push(lane.canvas);
         lane.canvas = next;
         placeLaneCanvas(next);
         if (lane.pinned) safe(() => lane.kind.pin(next, lane.key, lane.opts));
@@ -392,14 +404,15 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     }
 
     // Controller lanes: the drum lane's pattern, with the kind's renderer, on
-    // the song's current arrangement (core streams every 5-fret part on any
-    // arrangement), then pinned to the controller. One that fails to start
+    // the kind's arrangement (laneArrangement(plan, song): 5-Fret the song's
+    // current one, since core streams every 5-fret part on any arrangement;
+    // Drums the real drum lane's), then pinned to the controller. One that fails to start
     // leaves only itself; getLaneCanvas(id) then reports null.
     function startControllerLane(id) {
         const c = ctlById.get(id);
         const kindId = kindFor(prefs, c.key);
         const kind = Object.prototype.hasOwnProperty.call(kinds, kindId) ? kinds[kindId] : null;
-        const lane = { key: c.key, kind, hw: null, canvas: null, pinned: false,
+        const lane = { key: c.key, kind, hw: null, canvas: null, pinned: false, replaced: [],
             opts: { part: c.part, difficulty: c.difficulty, lefty: c.lefty === true } };
         try {
             if (!kind || typeof kind.laneRenderer !== 'function' || typeof kind.pin !== 'function') {
@@ -419,7 +432,9 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             hw.setRenderer(factory());
             hw.init(canvas, boxes[id]);
             if (canvas.parentNode !== slots[id]) adoptLaneCanvas(lane, slotCanvas(slots[id]));
-            hw.connect(wsUrl(song.filename, song.arrangementIndex), { onSongInfo() {}, secondary: true });
+            const arrangement = typeof kind.laneArrangement === 'function'
+                ? kind.laneArrangement(plan, song) : song.arrangementIndex;
+            hw.connect(wsUrl(song.filename, arrangement), { onSongInfo() {}, secondary: true });
             hw.resize();
             clock.add(hw);
             if (!kind.pin(lane.canvas, lane.key, lane.opts)) throw new Error('pin refused for ' + lane.key);
@@ -556,7 +571,10 @@ export function mountStage({ player, song, prefs, deps = {} }) {
                 const hw = lane.hw;
                 safe(() => clock.remove(hw));
                 safe(() => hw.stop());
-                if (typeof lane.kind.unpin === 'function') safe(() => lane.kind.unpin(lane.canvas));
+                if (typeof lane.kind.unpin === 'function') {
+                    safe(() => lane.kind.unpin(lane.canvas));
+                    for (const old of lane.replaced) safe(() => lane.kind.unpin(old));
+                }
                 safe(() => lane.canvas.remove());
             }
             ctlLanes.clear();

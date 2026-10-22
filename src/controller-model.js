@@ -15,6 +15,7 @@ export const PART_AUDIO_MODES = Object.freeze(['rockband', 'always']);
 //   resolveBinding(key)         Promise of the controller's binding kind, or null
 //   setupHref()                 opens the plugin's controls screen and returns to this one
 //   laneRenderer()              the plugin's highway renderer, or null
+//   laneArrangement(plan, song) the arrangement a lane's WS streams (plan: planStage's)
 //   eventPrefix                 bus event prefix: `<prefix>:band-pause` etc.
 //   lights                      join-screen light -> the mapper actions that light it (any held)
 //   pickButton                  the standard-pad raw button that picks this kind for an undecided pad
@@ -49,6 +50,8 @@ export const CONTROLLER_KINDS = {
             if (api && typeof api.openControls === 'function') api.openControls({ returnTo: 'plugin-build_a_band' });
         },
         laneRenderer: () => globalThis.window?.feedBackViz_five_fret || null,
+        // Core streams every 5-fret part on any arrangement: the song's current one.
+        laneArrangement: (plan, song) => song && song.arrangementIndex,
         eventPrefix: 'five_fret',
         lights: Object.freeze({
             green: ['green'], red: ['red'], yellow: ['yellow'], blue: ['blue'], orange: ['orange'],
@@ -80,6 +83,8 @@ export const CONTROLLER_KINDS = {
             if (api && typeof api.openControls === 'function') api.openControls({ returnTo: 'plugin-build_a_band' });
         },
         laneRenderer: () => globalThis.window?.feedBackViz_drums || null,
+        // The real drum lane's arrangement (a drum arrangement, else the drum tab's carrier).
+        laneArrangement: (plan) => plan && plan.laneArrangement,
         eventPrefix: 'drums',
         lights: Object.freeze({
             red: ['red_pad'], yellow: ['yellow_pad', 'yellow_cymbal'], blue: ['blue_pad', 'blue_cymbal'],

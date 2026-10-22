@@ -231,3 +231,11 @@ test('CONTROLLER_KINDS.drums.partFor needs a drum chart', () => {
         { instrument: 'drums', kind: 'chart' });
     assert.equal(k.partFor({ arrangements: [{ name: 'Lead' }] }, { playsAs: 'drums', part: 'drums' }), null);
 });
+
+test('each kind names the arrangement its lane streams', () => {
+    const plan = { laneArrangement: 3 };
+    const song = { arrangementIndex: 1 };
+    assert.equal(CONTROLLER_KINDS.five_fret.laneArrangement(plan, song), 1, 'the song\'s current arrangement');
+    assert.equal(CONTROLLER_KINDS.drums.laneArrangement(plan, song), 3, 'the real drum lane\'s');
+    assert.equal(CONTROLLER_KINDS.drums.laneArrangement({ laneArrangement: undefined }, song), undefined);
+});
