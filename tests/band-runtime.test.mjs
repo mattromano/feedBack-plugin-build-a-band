@@ -3835,8 +3835,6 @@ test('holding Back on a controller lane opens the leave prompt', async () => {
     assert.equal(calls.pause, 1, 'the song pauses under the prompt');
     assert.equal(prompts.length, 1);
     assert.deepEqual(prompts[0].args, { title: 'Leave the song?', body: 'This ends the band song.', confirmText: 'Leave', cancelText: 'Stay' });
-    fb.emit('five_fret:band-pause', { controllerKey: 'Xbox#1', canvas });
-    assert.equal(calls.togglePlay, 0, 'Start under the prompt does not resume');
     prompts[0].resolve(false);
     await flush();
     assert.equal(calls.resume.length, 1, 'Stay resumes');
@@ -3845,6 +3843,65 @@ test('holding Back on a controller lane opens the leave prompt', async () => {
     prompts[1].resolve(true);
     await flush();
     assert.deepEqual(calls.showScreen, ['plugin-build_a_band'], 'Leave goes back to the band screen');
+    rt.dispose();
+});
+
+test('under the leave prompt, Start on a controller lane stays', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls, prompts, doc } = env;
+    await goCtl(env, ctlPrefs([PAD1, { ...PAD2, part: 'guitar' }]));
+    const [c1, c2] = [mounts[0].ctlCanvas.ctl1, mounts[0].ctlCanvas.ctl2];
+    fb.emit('five_fret:band-back-hold', { controllerKey: 'Xbox#1', canvas: c1 });
+    assert.equal(prompts.length, 1);
+    // Another band controller answers too.
+    fb.emit('five_fret:band-pause', { controllerKey: 'Xbox#2', canvas: c2 });
+    assert.equal(calls.togglePlay, 0, 'Start answers the prompt, it does not toggle');
+    assert.equal(prompts[0].settled, true, 'the prompt settled');
+    assert.ok(!doc.body.querySelector('.feedBack-modal'), 'the modal is gone');
+    assert.equal(rt.stageUi().overlay, null);
+    assert.equal(calls.resume.length, 1, 'Stay resumes');
+    assert.deepEqual(calls.showScreen, []);
+    await flush();
+    assert.equal(calls.resume.length, 1, "the modal's own Cancel answer does nothing more");
+    assert.equal(rt.phase(), 'playing');
+    // With the prompt gone, Start toggles pause again.
+    fb.emit('five_fret:band-pause', { controllerKey: 'Xbox#1', canvas: c1 });
+    assert.equal(calls.togglePlay, 1);
+    rt.dispose();
+});
+
+test('under the leave prompt, holding Back again leaves', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls, prompts, doc } = env;
+    await goCtl(env);
+    const canvas = mounts[0].ctlCanvas.ctl1;
+    fb.emit('five_fret:band-back-hold', { controllerKey: 'Xbox#1', canvas });
+    assert.equal(prompts.length, 1);
+    fb.emit('five_fret:band-back-hold', { controllerKey: 'Xbox#1', canvas });
+    assert.equal(prompts.length, 1, 'no second prompt');
+    assert.equal(prompts[0].settled, true);
+    assert.ok(!doc.body.querySelector('.feedBack-modal'), 'the modal is gone');
+    assert.deepEqual(calls.showScreen, ['plugin-build_a_band'], 'Leave goes back to the band screen');
+    assert.equal(calls.resume.length, 0, 'Leave resumes nothing');
+    await flush();
+    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    rt.dispose();
+});
+
+test('under Settings, Start and a held Back on a controller lane do nothing', async () => {
+    const env = setup();
+    const { rt, fb, mounts, calls, prompts, keyWin, sidebar, navLinks } = env;
+    await goCtl(env);
+    const canvas = mounts[0].ctlCanvas.ctl1;
+    keyWin('KeyM', 'm');
+    sidebar.fire('click', { target: navLinks.settings });
+    assert.equal(rt.stageUi().overlay, 'settings');
+    fb.emit('five_fret:band-pause', { controllerKey: 'Xbox#1', canvas });
+    fb.emit('five_fret:band-back-hold', { controllerKey: 'Xbox#1', canvas });
+    assert.equal(calls.togglePlay, 0);
+    assert.equal(prompts.length, 0);
+    assert.equal(rt.stageUi().overlay, 'settings', 'Settings stays open');
+    assert.equal(calls.resume.length, 0);
     rt.dispose();
 });
 

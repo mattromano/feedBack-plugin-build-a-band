@@ -321,8 +321,17 @@ export function createBandRuntime({
             if (s.od && !s.failed.has(id)) { const od = s.od; safe(() => od.deployed(id)); }
             record(s, { part: id, t: displayTime(s), kind: 'deploy' });
         },
-        onPause: (s) => { if (!s.overlay) callTogglePlay(); },
-        onBackHold: (s) => confirmLeave(s, () => { if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN)); }),
+        // Under the leave prompt a controller answers it (its claim keeps core's
+        // pad menus off): Start is Stay, holding Back again is Leave. Under
+        // Settings, Start does nothing.
+        onPause: (s) => {
+            if (!s.overlay) callTogglePlay();
+            else if (typeof s.overlay.answer === 'function') s.overlay.answer(false);
+        },
+        onBackHold: (s) => {
+            if (s.overlay && typeof s.overlay.answer === 'function') { s.overlay.answer(true); return; }
+            confirmLeave(s, () => { if (typeof win.showScreen === 'function') safe(() => win.showScreen(BAND_SCREEN)); });
+        },
         onJudgment: (s, id, type) => { if (s.stemSound) syncStemSound(s, s.stemSound.judge(id, type)); },
     });
 
@@ -965,6 +974,14 @@ export function createBandRuntime({
         overlay.close = () => {
             const b = modal && modal.parentNode && safe(() => modal.querySelector('[data-cancel]'));
             if (b) safe(() => b.click());
+        };
+        // Answered from a controller: core's modal goes through its own Cancel
+        // (dropping its key listener), and the answer settles now; the
+        // promise's later Cancel answer finds the prompt already settled.
+        overlay.answer = (yes) => {
+            if (s.overlay !== overlay) return;
+            overlay.close();
+            settle(yes === true);
         };
         answer.then(settle, () => settle(false));
     }

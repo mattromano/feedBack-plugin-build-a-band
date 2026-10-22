@@ -26,6 +26,9 @@ Early skeleton: the band screen is a placeholder until plan 2.
   setup, GO on Confirm. Frets never press GO. **Leave** on the column, or holding Back for
   1 s, takes the controller out. Joined controllers stay joined across songs; one that is
   unplugged shows "Not connected" and sits out.
+- **In the song.** Start on a controller pauses and resumes the band song. Holding Back for
+  1 s pauses and asks "Leave the song?": then Start answers Stay and holding Back again
+  answers Leave, from any band controller. Under Settings the controller does nothing.
 - **Missing pieces.** Without the 5-Fret plugin the join slot says to install it; on an
   older feedBack it says to update.
 
