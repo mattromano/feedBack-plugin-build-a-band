@@ -287,3 +287,40 @@ test('a throwing reader warns once', (t) => {
     assert.equal(warns[0][1], 'drums');
     assert.match(String(warns[0][2] && warns[0][2].message), /drums boom/);
 });
+
+test('controller meters are mirrored and drawn', (t) => {
+    t.mock.method(console, 'warn', () => {});   // ctl3's reader throws: one warning
+    let a = { starPower: { amount: 0.25, active: false } };
+    let b = null;
+    const { od, hud } = setup({
+        parts: ['ctl1', 'ctl2', 'ctl3'],
+        controllers: [
+            { id: 'ctl1', read: () => a },
+            { id: 'ctl2', read: () => b },
+            { id: 'ctl3', read: () => { throw new Error('x'); } },
+        ],
+    });
+    od.tick(1, 1);
+    assert.ok(has(hud, 'setOverdrive', 'ctl1', 0.25, false));
+    assert.ok(has(hud, 'setReady', 'ctl1', false));
+    assert.ok(!hud.calls.some((c) => c[1] === 'ctl2' || c[1] === 'ctl3'), 'no state: nothing drawn');
+    // The fill rule decides ready (the engine gives no canActivate), with the float epsilon.
+    a = { starPower: { amount: 0.4999999999, active: false } };
+    b = { starPower: { amount: 0.75, active: true } };
+    od.tick(1.1, 1.1);
+    assert.ok(has(hud, 'setReady', 'ctl1', true));
+    assert.ok(has(hud, 'callout', 'ctl1', 'Overdrive ready'));
+    assert.ok(has(hud, 'setOverdrive', 'ctl2', 0.75, true));
+    assert.ok(has(hud, 'setReady', 'ctl2', false));
+    od.tick(1.2, 1.2);
+    assert.equal(count(hud, 'callout', 'ctl1', 'Overdrive ready'), 1);
+    od.deployed('ctl2');
+    assert.ok(has(hud, 'callout', 'ctl2', 'OVERDRIVE!'));
+    assert.deepEqual(od.snapshot(1.2).controllers, {
+        ctl1: { fill: 0.4999999999, active: false }, ctl2: { fill: 0.75, active: true }, ctl3: null,
+    });
+    // Controllers never take the guitar factor.
+    assert.equal(od.factorFor('ctl1', 2), 1);
+    // No controllers option: an empty map.
+    assert.deepEqual(setup().od.snapshot(0).controllers, {});
+});

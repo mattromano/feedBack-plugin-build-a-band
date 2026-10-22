@@ -1,6 +1,6 @@
 // Build-a-Band per-song overdrive (plan 5 R16): the guitar meter, its phrase
-// tracker and Noodle it up, the drums and vocals meters mirrored from their
-// engines, and the HUD bars and callouts, behind one small interface so the
+// tracker and Noodle it up, the drums, vocals and controller meters mirrored
+// from their engines, and the HUD bars and callouts, behind one small interface so the
 // runtime only routes events.
 // Clocks (R17): `t` is the band's display time (the meter, rewinds);
 // `chartT`, `noteTime` and `onsetT` are chart time (phrases, gaps, onsets).
@@ -11,7 +11,9 @@ import { createPhraseTracker, createNoodle, findGaps, itemTimes } from './guitar
 import { drumsOverdrive, vocalsOverdrive } from './part-events.js';
 import { OD_CALLOUT } from './hud-model.js';
 
-export function createOverdriveSession({ parts, beats, guitar, getHud, readDrums, readVocals } = {}) {
+// controllers: [{ id, read }], each read() returning that lane's engine state
+// (its `starPower` has the drums engine's shape).
+export function createOverdriveSession({ parts, beats, guitar, getHud, readDrums, readVocals, controllers } = {}) {
     // A reader that throws falls back silently after one warning per tag
     // ('drums', 'vocals', 'hud'), so a broken source shows once, not per tick.
     const warned = new Set();
@@ -47,19 +49,22 @@ export function createOverdriveSession({ parts, beats, guitar, getHud, readDrums
     };
 
     // The mirrored meters; null when the reader is missing, throws or has no state.
-    // Drums ready is the engine's canActivate when it gives one; otherwise the
-    // fill rule, with an epsilon for the engine's float drift.
+    // Drums (and controller) ready is the engine's canActivate when it gives one;
+    // otherwise the fill rule, with an epsilon for the engine's float drift.
+    const starPowerMeter = (state) => {
+        const od = drumsOverdrive(state);
+        if (!od) return null;
+        const ready = typeof od.canActivate === 'boolean'
+            ? od.canActivate
+            : od.fill >= OVERDRIVE.deployMin - 1e-9 && !od.active;
+        return { fill: od.fill, active: od.active, ready };
+    };
     const mirrored = {
-        drums: () => {
-            const od = drumsOverdrive(safe(readDrums, null, 'drums'));
-            if (!od) return null;
-            const ready = typeof od.canActivate === 'boolean'
-                ? od.canActivate
-                : od.fill >= OVERDRIVE.deployMin - 1e-9 && !od.active;
-            return { fill: od.fill, active: od.active, ready };
-        },
+        drums: () => starPowerMeter(safe(readDrums, null, 'drums')),
         vocals: () => vocalsOverdrive(safe(readVocals, null, 'vocals')),
     };
+    const lanes = (Array.isArray(controllers) ? controllers : []).filter((c) => c && typeof c.id === 'string');
+    const laneMeter = (c) => starPowerMeter(safe(c.read, null, c.id));
 
     function draw(part, state) {
         hudCall('setOverdrive', part, state.fill, state.active);
@@ -110,6 +115,10 @@ export function createOverdriveSession({ parts, beats, guitar, getHud, readDrums
                 const state = mirrored[part]();
                 if (state) draw(part, state);
             }
+            for (const c of lanes) {
+                const state = laneMeter(c);
+                if (state) draw(c.id, state);
+            }
         },
         rewindTo(t) {
             if (g) {
@@ -127,10 +136,16 @@ export function createOverdriveSession({ parts, beats, guitar, getHud, readDrums
                 const s = playing.has(part) ? mirrored[part]() : null;
                 return s && (part === 'drums' ? { fill: s.fill, active: s.active } : s);
             };
+            const ctl = {};
+            for (const c of lanes) {
+                const m = laneMeter(c);
+                ctl[c.id] = m && { fill: m.fill, active: m.active };
+            }
             return {
                 guitar: g ? g.meter.stateAt(t) : null,
                 drums: read('drums'),
                 vocals: read('vocals'),
+                controllers: ctl,
                 noodle: !!zone,
             };
         },

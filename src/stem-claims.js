@@ -6,6 +6,8 @@
 // song. Every call is guarded: a missing or failing host never breaks the session.
 export const FAIL_CLAIM_PREFIX = 'build_a_band:fail:';
 export const SOUND_CLAIM_ID = 'build_a_band:sound:drums';
+// Controller players' part audio (Plan 3): one claim per stem, `<prefix><stemId>`.
+export const STEM_SOUND_CLAIM_PREFIX = 'build_a_band:sound:stem:';
 const REQUESTER = 'build_a_band';
 
 // The stem a part plays, only when the song's stem list has it; never `other`.
@@ -15,6 +17,14 @@ export function stemIdFor(part, partPrefs, stemIds) {
     if (part === 'guitar') {
         if (partPrefs && partPrefs.arrangement === 'Bass') return has('bass');
         return ids.find((id) => id === 'guitar' || id.startsWith('guitar')) || null;
+    }
+    // A 5-fret controller: Bass plays the bass stem, Rhythm the rhythm stem (else the guitar stem), Lead the guitar stem.
+    if (part === 'five_fret') {
+        const guitar = () => ids.find((id) => id === 'guitar' || id.startsWith('guitar')) || null;
+        const want = partPrefs && partPrefs.part;
+        if (want === 'bass') return has('bass');
+        if (want === 'rhythm') return ids.find((id) => id === 'rhythm' || id.startsWith('rhythm')) || guitar();
+        return guitar();
     }
     if (part === 'drums') return has('drums');
     if (part === 'vocals') return has('vocals');

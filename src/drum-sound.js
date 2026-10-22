@@ -5,6 +5,15 @@
 // change into one claim operation. Nothing here touches audio.
 export const DRUM_SOUND_MODES = ['song', 'rockband', 'kit'];
 
+// The Rock Band drop-out rule, shared with the controllers' part audio
+// (stem-sound.js): a miss, an overhit or an overstrum drops out, a hit comes
+// back, anything else leaves `dropped` as it is.
+export function dropoutStep(dropped, kind) {
+    if (kind === 'miss' || kind === 'overhit' || kind === 'overstrum') return true;
+    if (kind === 'hit') return false;
+    return dropped;
+}
+
 export function createDrumSound(mode) {
     const m = DRUM_SOUND_MODES.includes(mode) ? mode : 'song';
     let muted = m === 'kit';
@@ -17,10 +26,7 @@ export function createDrumSound(mode) {
         mode: m,
         muted: () => muted,
         judge(type) {
-            if (m !== 'rockband') return false;
-            if (type === 'miss' || type === 'overhit') return set(true);
-            if (type === 'hit') return set(false);
-            return false;
+            return m === 'rockband' ? set(dropoutStep(muted, type)) : false;
         },
         seek() {
             return m === 'rockband' ? set(false) : false;

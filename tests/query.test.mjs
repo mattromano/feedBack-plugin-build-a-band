@@ -6,13 +6,35 @@ import { PICK_FILTERS, pickFilters, songChips, resolveRecent } from '../src/quer
 const ALL_OFF = { guitar: { on: false }, drums: { on: false }, vocals: { on: false } };
 const byId = (list) => Object.fromEntries(list.map((f) => [f.id, f]));
 
-test('pickFilters lists the five chips in order', () => {
+test('pickFilters lists the seven chips in order', () => {
     const list = pickFilters();
     assert.deepEqual(list.map((f) => [f.id, f.label]), PICK_FILTERS.map(([id, label]) => [id, label]));
     assert.deepEqual(PICK_FILTERS.map(([id, label]) => [id, label]), [
         ['playable', 'Playable by band'], ['drumStem', 'Drum stem'], ['drums', 'Drum chart'],
         ['vocals', 'Vocal pitch'], ['guitar', 'Guitar part'],
+        ['fiveFret', '5-fret part'], ['fiveFretReal', 'Real 5-fret'],
     ]);
+});
+
+const CTL = (part, extra) => ({ id: 'ctl1', key: 'k' + part, name: 'X', part, on: true, connected: true, ...extra });
+
+test('playable adds the controllers instruments; the new chips params; chip order', () => {
+    const parts = ALL_OFF;
+    const two = [CTL('guitar'), CTL('bass'), CTL('guitar')];
+    assert.deepEqual(byId(pickFilters({ parts, controllers: two, showAuto: true })).playable.params, { five_fret: 'guitar,bass' });
+    assert.deepEqual(byId(pickFilters({ parts, controllers: two })).playable.params, { five_fret: 'guitar:chart,bass:chart' });
+    const mixed = { guitar: { on: true }, drums: { on: false }, vocals: { on: false } };
+    assert.deepEqual(byId(pickFilters({ parts: mixed, controllers: [CTL('rhythm')], showAuto: true })).playable.params,
+        { arrangements_has: 'Lead,Rhythm,Bass', five_fret: 'rhythm' });
+    // Disconnected or off controllers are not asked for; none means no param.
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [CTL('bass', { connected: false }), CTL('guitar', { on: false })] })).playable.params, {});
+    assert.deepEqual(byId(pickFilters({ parts })).playable.params, {});
+    const f = byId(pickFilters({ parts }));
+    assert.deepEqual(f.fiveFret.params, { five_fret: 'any:chart' });
+    assert.deepEqual(byId(pickFilters({ parts, showAuto: true })).fiveFret.params, { five_fret: 'any' });
+    assert.deepEqual(f.fiveFretReal.params, { five_fret: 'any:chart' });
+    assert.deepEqual(byId(pickFilters({ parts, showAuto: true })).fiveFretReal.params, { five_fret: 'any:chart' });
+    assert.equal(pickFilters({ on: { fiveFret: true } }).at(-2).on, true);
 });
 
 test('playable follows the parts that are on', () => {
@@ -56,8 +78,21 @@ test('songChips', () => {
     const chips = songChips({ has_drum_tab: true, stem_ids: ['drums'], has_vocal_pitch: false,
         arrangements: [{ name: 'Lead' }, { name: 'Bass' }] });
     assert.deepEqual(chips.map((c) => [c.id, c.good]),
-        [['drumChart', true], ['drumStem', true], ['vocalPitch', false], ['arrangements', true]]);
+        [['drumChart', true], ['drumStem', true], ['vocalPitch', false], ['arrangements', true], ['fiveFret', false]]);
     assert.equal(chips[3].label, 'Lead · Bass');
+});
+
+test('songChips 5-fret chip', () => {
+    const find = (item, o) => songChips(item, o).find((c) => c.id === 'fiveFret');
+    assert.equal(songChips({}).at(-1).id, 'fiveFret');
+    const none = find({});
+    assert.deepEqual([none.label, none.good], ['No 5-fret parts', false]);
+    const item = { five_fret_parts: ['bass:auto', 'guitar:chart', 'rhythm:auto'] };
+    assert.deepEqual([find(item, { showAuto: true }).label, find(item, { showAuto: true }).good], ['5-fret: Lead · Rhythm (auto) · Bass (auto)', true]);
+    assert.equal(find(item).label, '5-fret: Lead');
+    assert.equal(find({ five_fret_parts: ['bass:auto'] }).label, 'No 5-fret parts');
+    assert.equal(find({ five_fret_parts: ['bass:auto'], }, { showAuto: true }).label, '5-fret: Bass (auto)');
+    assert.equal(find({ five_fret_parts: ['bass:auto', 'bass:chart'] }, { showAuto: true }).label, '5-fret: Bass');
 });
 
 test('songChips on an item from an older core', () => {
@@ -73,4 +108,17 @@ test('resolveRecent finds the song by filename, or null', async () => {
     assert.equal(url, '/api/library?q=A%20%26%20B&size=30');
     assert.equal(await resolveRecent({ filename: 'nope', title: 't' }, fetchJson), null);
     assert.equal(await resolveRecent({ filename: 'y', title: 't' }, async () => { throw new Error('x'); }), null);
+});
+
+test('playable adds has_drums for a connected, decided drums controller', () => {
+    const parts = ALL_OFF;
+    const kit = (extra) => CTL('drums', { playsAs: 'drums', ...extra });
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [kit()] })).playable.params, { has_drums: '1' });
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [kit(), CTL('guitar', { playsAs: 'five_fret' })] })).playable.params,
+        { has_drums: '1', five_fret: 'guitar:chart' });
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [kit({ connected: false })] })).playable.params, {});
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [kit({ on: false })] })).playable.params, {});
+    assert.deepEqual(byId(pickFilters({ parts, controllers: [CTL(null, { playsAs: null })] })).playable.params, {});
+    const withReal = { guitar: { on: false }, drums: { on: true }, vocals: { on: false } };
+    assert.deepEqual(byId(pickFilters({ parts: withReal, controllers: [kit()] })).playable.params, { has_drums: '1' });
 });

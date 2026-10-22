@@ -30,6 +30,13 @@ test('stemIdFor picks the part\'s stem and never other', () => {
     assert.equal(stemIdFor('drums', {}, null), null);
 });
 
+test("stemIdFor('drums') serves a drums controller", () => {
+    const drummer = { playsAs: 'drums', part: 'drums', soundMode: 'rockband' };
+    assert.equal(stemIdFor('drums', drummer, ['guitar', 'drums', 'bass']), 'drums');
+    assert.equal(stemIdFor('drums', drummer, ['guitar', 'other']), null);
+    assert.equal(stemIdFor('drums_controller', drummer, ['drums']), null, 'the part id is not a stem kind');
+});
+
 test('muteStem claims, then mutes by id', async () => {
     const caps = fakeCaps();
     const ok = await muteStem({ caps, part: 'drums', stemId: 'drums' });
@@ -94,4 +101,15 @@ test('mute and restore take a claim id', async () => {
         ['dispatch', { capability: 'stems', command: 'restore', requester: 'build_a_band', args: { claimId } }],
         ['release', { capability: 'stems', claimId, requester: 'build_a_band' }],
     ]);
+});
+
+test('stemIdFor five_fret: bass, rhythm stem or guitar, guitar', () => {
+    assert.equal(stemIdFor('five_fret', { part: 'bass' }, ['bass', 'guitar']), 'bass');
+    assert.equal(stemIdFor('five_fret', { part: 'bass' }, ['guitar']), null);
+    assert.equal(stemIdFor('five_fret', { part: 'rhythm' }, ['guitar', 'rhythm']), 'rhythm');
+    assert.equal(stemIdFor('five_fret', { part: 'rhythm' }, ['guitar_lead', 'drums']), 'guitar_lead');
+    assert.equal(stemIdFor('five_fret', { part: 'guitar' }, ['rhythm', 'guitar']), 'guitar');
+    assert.equal(stemIdFor('five_fret', { part: 'guitar' }, ['rhythm', 'other']), null);
+    assert.equal(stemIdFor('five_fret', { part: 'guitar' }, undefined), null);
+    assert.equal(stemIdFor('five_fret', null, ['guitar']), 'guitar', 'no part reads as Lead');
 });

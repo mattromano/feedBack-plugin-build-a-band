@@ -1,5 +1,5 @@
 // Engine events to band score entries (plan 4 R3): note_detect's notedetect:hit/miss, the drums
-// plugin's drums:* bus events and karaoke's karaoke:phrase / karaoke:reset. Each returns null for
+// plugin's drums:* bus events, the 5-Fret plugin's five_fret:* lane events and karaoke's karaoke:phrase / karaoke:reset. Each returns null for
 // an event that isn't the band's. Plan 5 adds the overdrive readers (R12, R18).
 const finite = Number.isFinite;
 const or = (v, fallback) => (finite(v) ? v : fallback);
@@ -24,15 +24,38 @@ export function onsetTime(detail) {
     return detail.t;
 }
 
-export function drumsEntry(type, detail, t, bandCanvas) {
+// A drums lane's judgment on `bandCanvas`, for player `id` (the real drummer, or a
+// drums controller's ctl<N>).
+export function drumsEntry(type, detail, t, bandCanvas, id = 'drums') {
     if (!(bandCanvas && detail && detail.canvas === bandCanvas && DRUM_JUDGMENTS.includes(type))) return null;
     return {
-        part: 'drums', t, kind: type,
+        part: id, t, kind: type,
         points: type === 'hit' ? or(detail.points, 0) : 0,
         // Star power doubles the drums multiplier; the band multiplier leaves overdrive out (R4).
         multiplier: (or(detail.multiplier, 0) || 1) / (detail.spActive ? 2 : 1),
         streak: detail.combo | 0,
         stars: finite(detail.stars) ? detail.stars : null,
+    };
+}
+
+// A 5-fret lane's band events (five_fret:<type>), for player `id`. The band scores the five-fret
+// engine's numbers as they are (Decision 8): points are the engine score's delta since the lane's
+// last event, `last = { score, resets }` (null before its first). The engine resets its scoring on
+// a seek, which bumps `resets`; the delta then counts from the reset. Two judgments in one frame
+// share one score read, so the first carries the whole delta and the second 0.
+const FIVE_FRET_KINDS = Object.freeze({ hit: 'hit', miss: 'miss', overstrum: 'overhit', 'sustain-end': 'sustain' });
+
+export function fiveFretEntry(type, detail, t, id, last) {
+    if (!Object.prototype.hasOwnProperty.call(FIVE_FRET_KINDS, type) || !isObject(detail)) return null;
+    const score = or(detail.score, 0);
+    const counted = isObject(last) && last.resets === detail.resets ? or(last.score, 0) : 0;
+    return {
+        part: id, t, kind: FIVE_FRET_KINDS[type],
+        points: Math.max(0, score - counted),
+        // Star power doubles the lane multiplier; the band multiplier leaves overdrive out (R4).
+        multiplier: (or(detail.multiplier, 0) || 1) / (detail.spActive ? 2 : 1),
+        streak: detail.combo | 0,
+        noteTime: finite(detail.noteTime) ? detail.noteTime : null,
     };
 }
 

@@ -9,6 +9,43 @@ Early skeleton: the band screen is a placeholder until plan 2.
   (band chips, click to select, **Use this song**) → Confirm (parts, difficulty, devices,
   drum sound) → GO. Next song goes back to the library.
 
+## Playing on a controller
+
+- **Joining.** With the 5-Fret or Drums plugin installed, press **Start** on an Xbox
+  controller, a plastic guitar or a plastic Rock Band kit on the band screen. It gets a
+  column on Band setup and a row on Confirm, next to the guitar, drums and vocals. Its
+  lights follow what it plays: five frets for 5-Fret, or red, yellow, blue and green pads
+  plus the kick for Drums (a cymbal lights its pad's colour).
+- **Plays as.** A guitar plays 5-Fret and a kit plays Drums. An Xbox pad (with both plugins)
+  can play either, so it joins undecided ("Choose 5-Fret or Drums") and its column shows a
+  **Plays as** segment (5-Fret | Drums). On a standard pad **X** picks 5-Fret and **B** picks
+  Drums. The choice is remembered for that controller, so it rejoins the same way after
+  Leave; the segment changes it any time. Until it is chosen the controller sits out, and
+  Start on it does nothing.
+- **Set up first.** A controller neither plugin knows yet (no standard mapping, no saved
+  binding) can't join. The join slot lists it with a **Set up** link per plugin ("as
+  guitar" opens the 5-Fret controls screen, "as drum kit" the Drums one), and Back there
+  returns to the band screen. **Controls** on a column opens the screen for what it plays.
+- **On Confirm, 5-Fret:** pick the part (Lead, Rhythm or Bass; parts the song lacks are
+  greyed, each is tagged *real* or *auto*, and "also:" names the other controllers on it),
+  the difficulty, Lefty, and Part audio: **Rock Band** drops your part's stem on a miss,
+  **Always play** keeps it. Part audio is greyed when the song has no stem for the part.
+- **On Confirm, Drums:** the part is Drums ("also:" names the other drummers), then the
+  difficulty and the Sound: **Song drums**, **Rock Band** or **My kit only**, as for the
+  real drummer. Rock Band and My kit only are greyed when the song has no drum stem. With
+  the real drummer on, the drummer's own sound mode sets the drum stem and the controller's
+  Sound doesn't apply (the row says so). A song with no drum chart says "No drum chart for
+  this song" and the controller sits out.
+- **Start on a joined controller** is the screen's main button: Choose a song on Band
+  setup, GO on Confirm. Frets and pads never press GO. **Leave** on the column, or holding
+  Back for 1 s, takes the controller out. Joined controllers stay joined across songs; one that is
+  unplugged shows "Not connected" and sits out.
+- **In the song.** Start on a controller pauses and resumes the band song. Holding Back for
+  1 s pauses and asks "Leave the song?": then Start answers Stay and holding Back again
+  answers Leave, from any band controller. Under Settings the controller does nothing.
+- **Missing pieces.** Without the 5-Fret or Drums plugin the join slot says to install one;
+  on an older feedBack it says to update.
+
 ## On the stage: full screen, the hover chrome, the sidebar and Settings
 
 - **Full screen.** With "Full screen stage" on (the band screen), Go and Play again take the

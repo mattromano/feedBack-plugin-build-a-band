@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    loadPrefs, savePrefs, pushRecent, clampZoom,
+    loadPrefs, savePrefs, normalizePrefs, pushRecent, clampZoom,
     MIC_HIT_DB_MIN, MIC_HIT_DB_MAX, MIC_HIT_DB_STEP, MIC_HIT_DB_DEFAULT, clampMicHitDb,
 } from '../src/prefs.js';
 
@@ -145,7 +145,7 @@ test('micHitDb defaults, clamps and rounds', () => {
 
 test('pickFilters defaults', () => {
     assert.deepEqual(loadPrefs(stub()).pickFilters,
-        { playable: true, drumStem: false, drums: false, vocals: false, guitar: false });
+        { playable: true, drumStem: false, drums: false, vocals: false, guitar: false, fiveFret: false, fiveFretReal: false });
 });
 
 test('bad values fall back', () => {
@@ -163,4 +163,64 @@ test('savePrefs merges pickFilters', () => {
     assert.equal(next.pickFilters.playable, true);
     assert.equal(loadPrefs(s).pickFilters.playable, true);
     assert.equal(loadPrefs(s).pickFilters.drumStem, true);
+});
+
+test('normalizePrefs keeps valid controllers and repairs bad fields, duplicate keys and ids', () => {
+    const s = stub({ [KEY]: JSON.stringify({ controllers: [
+        { key: 'a#0', id: 'ctl2', name: 'A', playsAs: 'five_fret', part: 'bass', difficulty: 'expert', lefty: true, partAudio: 'always', on: false },
+        { key: 'b#0', id: 'ctl2', name: 5, playsAs: 'drums', part: 'kazoo', difficulty: 'nope', lefty: 'y', partAudio: 'x' },
+        { key: 'a#0', id: 'ctl9' },
+        { id: 'ctl3' },
+        { key: 7 },
+        'junk',
+        { key: 'c#0', id: 'guitar' },
+    ] }) });
+    const c = loadPrefs(s).controllers;
+    assert.deepEqual(c, [
+        { key: 'a#0', id: 'ctl2', name: 'A', playsAs: 'five_fret', part: 'bass', difficulty: 'expert', lefty: true, partAudio: 'always', soundMode: 'rockband', on: false },
+        { key: 'b#0', id: 'ctl1', name: '', playsAs: 'drums', part: 'drums', difficulty: 'medium', lefty: false, partAudio: 'rockband', soundMode: 'rockband', on: true },
+        { key: 'c#0', id: 'ctl3', name: '', playsAs: null, part: null, difficulty: 'medium', lefty: false, partAudio: 'rockband', soundMode: 'rockband', on: true },
+    ]);
+    assert.deepEqual(loadPrefs(stub()).controllers, []);
+    assert.deepEqual(loadPrefs(stub({ [KEY]: JSON.stringify({ controllers: 'x' }) })).controllers, []);
+});
+
+test('savePrefs({ controllers }) replaces the list', () => {
+    const s = stub();
+    savePrefs({ controllers: [{ key: 'a#0' }, { key: 'b#0' }] }, s);
+    assert.deepEqual(savePrefs({ controllers: [{ key: 'b#0' }] }, s).controllers.map((c) => c.key), ['b#0']);
+    assert.deepEqual(loadPrefs(s).controllers.map((c) => c.id), ['ctl1']);
+});
+
+test('normalizePrefs keeps only registered controllerKinds', () => {
+    const s = stub({ [KEY]: JSON.stringify({ controllerKinds: { 'a#0': 'five_fret', 'b#0': 'kazoo', 'c#0': 4 } }) });
+    assert.deepEqual(loadPrefs(s).controllerKinds, { 'a#0': 'five_fret' });
+    assert.deepEqual(loadPrefs(stub()).controllerKinds, {});
+    assert.deepEqual(savePrefs({ controllerKinds: { 'z#0': 'five_fret', 'y#0': 'nope' } }, s).controllerKinds, { 'z#0': 'five_fret' });
+});
+
+test('the pick chips default the 5-fret filters off', () => {
+    const pf = loadPrefs(stub()).pickFilters;
+    assert.equal(pf.fiveFret, false);
+    assert.equal(pf.fiveFretReal, false);
+});
+
+test('normalizePrefs keeps playsAs null, validates part per kind and soundMode, cleans the controllerKinds map', () => {
+    const p = normalizePrefs({
+        controllers: [
+            { key: 'u#0', id: 'ctl1', playsAs: null, part: 'bass', soundMode: 'kit' },
+            { key: 'd#0', id: 'ctl2', playsAs: 'drums', part: 'bass', soundMode: 'song' },
+            { key: 'f#0', id: 'ctl3', playsAs: 'five_fret', part: 'drums', soundMode: 'loud' },
+            { key: 'old#0', id: 'ctl4', playsAs: 'five_fret', part: 'rhythm' },
+        ],
+        controllerKinds: { 'u#0': 'drums', 'd#0': 'five_fret', 'x#0': 'kazoo', 'y#0': null },
+    });
+    assert.deepEqual(p.controllers.map((c) => [c.key, c.playsAs, c.part, c.soundMode]), [
+        ['u#0', null, null, 'kit'],
+        ['d#0', 'drums', 'drums', 'song'],
+        ['f#0', 'five_fret', 'guitar', 'rockband'],
+        ['old#0', 'five_fret', 'rhythm', 'rockband'],
+    ]);
+    assert.deepEqual(p.controllerKinds, { 'u#0': 'drums', 'd#0': 'five_fret' });
+    assert.equal(p.controllerKinds['old#0'], undefined, 'a pre-Plan-6 controller gets no invented choice');
 });

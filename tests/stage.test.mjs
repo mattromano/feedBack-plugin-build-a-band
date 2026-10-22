@@ -92,3 +92,47 @@ test('planStage drums alone gets the drums lane on the main highway', () => {
         { guitar: { on: false }, drums: { on: true }, vocals: { on: false } });
     assert.deepEqual({ strip: p.strip, mainPart: p.mainPart, lanes: p.lanes }, { strip: false, mainPart: 'drums', lanes: ['drums'] });
 });
+
+test('controllers on add lanes after the real ones; controllers only hide the main highway', () => {
+    const song = { arrangements: [{ name: 'Lead' }, { name: 'Drums' }] };
+    const ctls = [
+        { key: 'pad#1', id: 'ctl1', on: true },
+        { key: 'pad#2', id: 'ctl2', on: false },
+        { key: 'gtr#1', id: 'ctl3', on: true },
+    ];
+    assert.deepEqual(planStage(song, undefined, ctls).lanes, ['guitar', 'drums', 'ctl1', 'ctl3']);
+    assert.equal(planStage(song, undefined, ctls).mainPart, 'guitar');
+    const drumsOnly = planStage(song, { guitar: { on: false }, drums: { on: true } }, ctls);
+    assert.deepEqual({ mainPart: drumsOnly.mainPart, lanes: drumsOnly.lanes }, { mainPart: 'drums', lanes: ['drums', 'ctl1', 'ctl3'] });
+    const alone = planStage(song, { guitar: { on: false }, drums: { on: false }, vocals: { on: true } }, ctls);
+    assert.deepEqual({ strip: alone.strip, mainPart: alone.mainPart, lanes: alone.lanes },
+        { strip: true, mainPart: null, lanes: ['ctl1', 'ctl3'] });
+    // Without controllers (or with none on) the plan is unchanged.
+    assert.deepEqual(planStage(song, undefined, []), planStage(song));
+    assert.deepEqual(planStage(song, undefined, [{ id: 'ctl1', on: false }, null]), planStage(song));
+});
+
+// Plan 6: a drums controller plays the song's drum chart, so it gets a lane only
+// when the song has one; an undecided controller (playsAs null) never gets one.
+test('a drums controller gets a lane only when the song has a drum chart', () => {
+    const fret = { key: 'pad#1', id: 'ctl1', on: true, playsAs: 'five_fret' };
+    const drums = { key: 'pad#2', id: 'ctl2', on: true, playsAs: 'drums' };
+    const withDrums = { arrangements: [{ name: 'Lead' }, { name: 'Drums' }] };
+    const noDrums = { arrangements: [{ name: 'Lead' }] };
+    const tabOnly = { arrangements: [{ index: 0, name: 'Lead' }], hasDrumTab: true, arrangementIndex: 0 };
+    assert.deepEqual(planStage(withDrums, undefined, [fret, drums]).lanes, ['guitar', 'drums', 'ctl1', 'ctl2']);
+    assert.deepEqual(planStage(tabOnly, undefined, [fret, drums]).lanes, ['guitar', 'drums', 'ctl1', 'ctl2']);
+    assert.deepEqual(planStage(noDrums, undefined, [fret, drums]).lanes, ['guitar', 'ctl1']);
+    // The real drummer switched off doesn't take the chart away from the controller.
+    const ctlOnly = planStage(withDrums, { guitar: { on: false }, drums: { on: false } }, [drums]);
+    assert.deepEqual({ mainPart: ctlOnly.mainPart, lanes: ctlOnly.lanes, laneArrangement: ctlOnly.laneArrangement },
+        { mainPart: null, lanes: ['ctl2'], laneArrangement: 1 });
+    assert.deepEqual(planStage(noDrums, { guitar: { on: false }, drums: { on: false } }, [drums]).lanes, []);
+});
+
+test('an undecided controller (playsAs null) gets no lane', () => {
+    const song = { arrangements: [{ name: 'Lead' }, { name: 'Drums' }] };
+    const ctls = [{ key: 'pad#1', id: 'ctl1', on: true, playsAs: null },
+        { key: 'pad#2', id: 'ctl2', on: true, playsAs: 'five_fret' }];
+    assert.deepEqual(planStage(song, undefined, ctls).lanes, ['guitar', 'drums', 'ctl2']);
+});

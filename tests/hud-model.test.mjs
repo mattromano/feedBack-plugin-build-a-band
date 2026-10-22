@@ -57,3 +57,10 @@ test('OD_CALLOUT holds the five overdrive callouts and is frozen', () => {
     });
     assert.ok(Object.isFrozen(OD_CALLOUT));
 });
+
+test('controller streak callouts every 50', () => {
+    assert.equal(streakCallout('five_fret', 49, 50), '50 NOTE STREAK!');
+    assert.equal(streakCallout('five_fret', 50, 51), null);
+    assert.equal(streakCallout('five_fret', 99, 100), '100 NOTE STREAK!');
+    assert.equal(streakCallout('ctl1', 49, 50), null, 'the callout kind, not the player id');
+});

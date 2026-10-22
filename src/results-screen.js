@@ -78,6 +78,7 @@ export function showResultsScreen({ doc, win, host, model, onAgain, onNext }) {
         iconIn(top, 'bab-card-icon', c.icon, 28);
         el('h3', 'bab-card-name', top).textContent = c.name || '';
         el('span', 'bab-card-diff', top).textContent = c.difficulty || '';
+        if (c.subname) el('div', 'bab-card-sub', card).textContent = c.subname;
         el('div', 'bab-card-pct', card).textContent = Number.isFinite(c.accuracyPct) ? c.accuracyPct + '%' : '—';
         for (const [label, value] of Array.isArray(c.stats) ? c.stats : []) {
             const row = el('div', 'bab-stat', card);

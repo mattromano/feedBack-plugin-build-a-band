@@ -51,8 +51,10 @@
 .bab-screen .bab-confirm .bab-songhead .bab-art { width: 120px; height: 120px; }
 
 /* Part columns */
-.bab-screen .bab-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) 120px; gap: 14px; }
-.bab-screen .bab-parts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+/* Controller columns and rows join the same grids (their hosts are display: contents). */
+.bab-screen .bab-cols { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+.bab-screen .bab-parts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.bab-screen .bab-ctlcols, .bab-screen .bab-ctlparts { display: contents; }
 .bab-screen .bab-col,
 .bab-screen .bab-part {
     --bab-c: #888;
@@ -63,6 +65,9 @@
 }
 .bab-screen .bab-col.bab-off, .bab-screen .bab-part.bab-off { opacity: 0.35; }
 .bab-screen .bab-col.bab-unavailable, .bab-screen .bab-part.bab-unavailable { opacity: 0.35; filter: grayscale(1); }
+/* An undecided controller: dimmed, apart from the Plays as question and Leave / Controls. */
+.bab-screen .bab-col.bab-unavailable.bab-asking { opacity: 1; filter: none; }
+.bab-screen .bab-col.bab-unavailable.bab-asking > :not(.bab-playsas):not(.bab-ctl-actions) { opacity: 0.35; filter: grayscale(1); }
 .bab-screen .bab-top { display: flex; align-items: center; gap: 10px; }
 .bab-screen .bab-ico { font-size: 34px; line-height: 1; }
 .bab-screen .bab-col .bab-ico, .bab-screen .bab-part .bab-ico { display: inline-flex; color: var(--bab-c); }
@@ -144,12 +149,62 @@
 .bab-screen .bab-michit-light.bab-hit { background: var(--bab-c); border-color: var(--bab-c); box-shadow: 0 0 8px var(--bab-c); }
 .bab-screen .bab-michit-text { grid-column: 2; }
 .bab-screen .bab-michit.bab-disabled { opacity: 0.5; }
-.bab-screen .bab-addslot {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-    padding: 10px; font-size: 12px; text-align: center; color: var(--bab-dim);
-    background: transparent; border: 2px dashed var(--bab-line); border-radius: 14px; cursor: not-allowed;
+/* The join slot: Press Start on a controller to join, or why not, and Set up links */
+.bab-screen .bab-joinslot {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    padding: 14px; font-size: 12px; text-align: center; color: var(--bab-dim);
+    background: transparent; border: 2px dashed var(--bab-line); border-radius: 14px;
 }
-.bab-screen .bab-addslot .bab-ico { font-size: 28px; opacity: 0.5; }
+.bab-screen .bab-joinslot .bab-ico { display: inline-flex; opacity: 0.6; }
+.bab-screen .bab-setup-link {
+    padding: 5px 10px; font-size: 12px; cursor: pointer; color: var(--bab-text);
+    background: transparent; border: 1px dashed #2ecc40; border-radius: 7px;
+}
+
+/* Controller players: the Setup column's fret lights and buttons, the Confirm row's tags */
+.bab-screen .bab-ctl .bab-part-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bab-screen .bab-frets { display: flex; gap: 6px; }
+.bab-screen .bab-fret {
+    --bab-fret: #888;
+    flex: 1; height: 14px; border-radius: 4px;
+    background: var(--bab-field); border: 2px solid color-mix(in srgb, var(--bab-fret) 55%, var(--bab-line));
+    transition: background 0.05s;
+}
+.bab-screen .bab-fret[data-fret="green"] { --bab-fret: #2ecc40; }
+.bab-screen .bab-fret[data-fret="red"] { --bab-fret: #ff4136; }
+.bab-screen .bab-fret[data-fret="yellow"] { --bab-fret: #ffdc00; }
+.bab-screen .bab-fret[data-fret="blue"] { --bab-fret: #0074d9; }
+.bab-screen .bab-fret[data-fret="orange"] { --bab-fret: #ff851b; }
+.bab-screen .bab-fret.bab-lit { background: var(--bab-fret); box-shadow: 0 0 8px var(--bab-fret); }
+/* A drums controller's lights: four pads (a cymbal lights its pad's colour) and the kick */
+.bab-screen .bab-drumpads { display: flex; gap: 6px; }
+.bab-screen .bab-drumpad {
+    --bab-fret: #888;
+    flex: 1; height: 14px; border-radius: 50%;
+    background: var(--bab-field); border: 2px solid color-mix(in srgb, var(--bab-fret) 55%, var(--bab-line));
+    transition: background 0.05s;
+}
+.bab-screen .bab-drumpad[data-light="red"] { --bab-fret: #ff4136; }
+.bab-screen .bab-drumpad[data-light="yellow"] { --bab-fret: #ffdc00; }
+.bab-screen .bab-drumpad[data-light="blue"] { --bab-fret: #0074d9; }
+.bab-screen .bab-drumpad[data-light="green"] { --bab-fret: #2ecc40; }
+.bab-screen .bab-drumpad[data-light="kick"] { --bab-fret: #f28c28; flex: 1.6; border-radius: 4px; }
+.bab-screen .bab-drumpad.bab-lit { background: var(--bab-fret); box-shadow: 0 0 8px var(--bab-fret); }
+/* Plays as (5-Fret | Drums) and its pad hint */
+.bab-screen .bab-playsas-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--bab-dim); }
+.bab-screen .bab-playsas-hint:empty { display: none; }
+.bab-screen .bab-ctl-actions { display: flex; gap: 8px; margin-top: auto; }
+.bab-screen .bab-ctl-actions button {
+    flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 6px 10px; font-size: 12px; cursor: pointer;
+    background: var(--bab-field); border: 1px solid var(--bab-line); border-radius: 7px;
+}
+.bab-screen .bab-btn-ico { display: inline-flex; }
+.bab-screen .bab-ctl .bab-seg[data-field="part"] button,
+.bab-screen .bab-ctl .bab-seg[data-field="drumPart"] button { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.bab-screen .bab-ctl .bab-tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--bab-dim); }
+.bab-screen .bab-ctl .bab-tag:empty, .bab-screen .bab-ctl .bab-also:empty { display: none; }
+.bab-screen .bab-ctl .bab-also { font-size: 10px; color: var(--bab-dim); }
 
 /* Setup bar and Go bar */
 .bab-screen .bab-setupbar,
@@ -316,7 +371,8 @@
     bottom: 0;
     overflow: hidden;
 }
-#player .bab-lane[data-part="drums"] {
+#player .bab-lane[data-part="drums"],
+#player .bab-lane.bab-lane-ctl {
     pointer-events: auto;
     background: #050508;
 }
@@ -591,6 +647,7 @@ body.bab-band-song #count-in-overlay { display: none !important; }
 #player .bab-card-icon { display: inline-flex; color: var(--bab-c, #8d8ca0); }
 #player .bab-card-name { margin: 0; flex: 1; min-width: 0; font: 700 17px/1.2 'Unbounded', system-ui, sans-serif; }
 #player .bab-card-diff { font-size: 12px; color: #8d8ca0; }
+#player .bab-card-sub { margin: -4px 0 6px; font-size: 12px; color: #8d8ca0; overflow-wrap: anywhere; }
 #player .bab-card-pct {
     font: 800 40px/1.1 'Unbounded', system-ui, sans-serif; color: var(--bab-c, #ecebf2);
     font-variant-numeric: tabular-nums;

@@ -3,10 +3,14 @@
 // that Lyrics Karaoke draws into. The main window.highway is sized into the
 // guitar lane (or the drums lane for drums alone, or hidden for vocals
 // alone); a drum lane beside guitar is its own createHighway() with the drums
-// renderer, fed by a lane clock. Each lane has its own zoom.
+// renderer, fed by a lane clock. Each lane has its own zoom. Controller
+// players (ctl<N>) get one lane each on the right, every one its own
+// createHighway() with its kind's lane renderer, pinned to its controller.
 // No DOM or browser access at module top level: planStage imports under node.
 import { drumArrIndex } from './arrangements.js';
-import { clampSplit, computeStageLayout, computeStageRows } from './layout.js';
+import { clampSplit, computeStageLayout, computeStageRows, splitFromPointer } from './layout.js';
+import { CONTROLLER_KINDS, isControllerId, kindFor } from './controller-model.js';
+import { drumsControllerPartFor } from './parts.js';
 import { createLaneClock } from './lane-clock.js';
 import { clampLabelScale, clampZoom, savePrefs, ZOOM_STEP } from './prefs.js';
 import { drumsDifficultyId } from './mappings.js';
@@ -27,14 +31,19 @@ const LABEL_STEP = 0.25;
 // holding the main highway: 'guitar' when guitar is on; 'drums' for drums
 // alone, with or without the strip (the drum chart is already on the main
 // highway); null otherwise (no playable lane: vocals alone, or nothing).
-export function planStage(song, parts = { guitar: { on: true }, drums: { on: true } }) {
+// `controllers` (prefs.controllers): each one with `on === true` adds a lane
+// after the real ones, in join order; a band of controllers alone has no main part.
+// An undecided one (playsAs null) gets none, nor does a drums one on a song
+// without a drum chart (its lane would have nothing to play).
+export function planStage(song, parts = { guitar: { on: true }, drums: { on: true } }, controllers = []) {
     const hasDrumTab = !!(song && (song.hasDrumTab || song.has_drum_tab));
     const drumIndex = drumArrIndex(song && song.arrangements, { hasDrumTab });
     const current = song && song.arrangementIndex;
     const laneArrangement = drumIndex >= 0 ? drumIndex
         : (hasDrumTab && Number.isInteger(current) && current >= 0 ? current : undefined);
     const strip = !!(parts && parts.vocals && parts.vocals.on === true);
-    const plan = (mainPart, lanes) => ({ strip, mainPart, lanes, drumIndex, laneArrangement });
+    const ctlLanes = controllerLanes(controllers, song).map((c) => c.id);
+    const plan = (mainPart, lanes) => ({ strip, mainPart, lanes: lanes.concat(ctlLanes), drumIndex, laneArrangement });
     const on = (id) => !(parts && parts[id] && parts[id].on === false);
     const drumChart = on('drums') && (drumIndex >= 0 || hasDrumTab);
     if (on('guitar')) return plan('guitar', drumChart ? ['guitar', 'drums'] : ['guitar']);
@@ -42,19 +51,36 @@ export function planStage(song, parts = { guitar: { on: true }, drums: { on: tru
     return plan(null, []);
 }
 
+// The controllers that get a lane: switched on, with a player id, decided, once
+// each; a drums controller only on a song with a drum chart.
+function controllerLanes(controllers, song) {
+    const seen = new Set();
+    const drumChart = !!drumsControllerPartFor(song);
+    return (Array.isArray(controllers) ? controllers : []).filter((c) => {
+        if (!c || c.on !== true || !isControllerId(c.id) || seen.has(c.id)) return false;
+        if (c.playsAs === null) return false;
+        if (c.playsAs === 'drums' && !drumChart) return false;
+        seen.add(c.id);
+        return true;
+    });
+}
+
 function safe(fn) {
     try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
 }
 
 // mountStage({ player, song, prefs, deps })
-//   -> { unmount(), setSplit(pct), stripSlot, laneSlot(part), getDrumCanvas() }
+//   -> { unmount(), setSplit(pct), refit(), stripSlot, laneSlot(part), getDrumCanvas(), getLaneCanvas(id) }
 // stripSlot is the vocal strip's empty container (null without vocals).
 // laneSlot(part) is a lane's slot element (null when the part has no lane);
 // getDrumCanvas() is the live drum-lane canvas (null without a second highway).
+// getLaneCanvas(id) is getDrumCanvas() for 'drums', a controller lane's live
+// canvas for its player id, else null. A drum or controller lane that failed
+// to start reports null here, so the runtime can drop that player.
 // deps (all optional, default to the window globals):
 //   createHighway, getWsUrl, getDisplayTime, drumsApi, splitscreen,
 //   mainHighway, drumRenderer (factory returning a renderer), savePrefs,
-//   bus (core's window.feedBack event bus).
+//   bus (core's window.feedBack event bus), kinds (CONTROLLER_KINDS).
 export function mountStage({ player, song, prefs, deps = {} }) {
     const doc = player.ownerDocument;
     const win = doc.defaultView;
@@ -73,12 +99,16 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     const drumRenderer = deps.drumRenderer || win.feedBackViz_drums;
     const persist = deps.savePrefs || savePrefs;
     const bus = 'bus' in deps ? deps.bus : win.feedBack;
+    // Controller kinds: each accessor reads its plugin's global when called (Ruling 4).
+    const kinds = deps.kinds || CONTROLLER_KINDS;
 
     // 1. Band mode and splitscreen never run at once.
     safe(() => splitscreen && splitscreen.stop());
 
     const parts = (prefs && prefs.parts) || undefined;
-    const plan = planStage(song, parts);
+    const controllers = prefs && prefs.controllers;
+    const plan = planStage(song, parts, controllers);
+    const ctlById = new Map(controllerLanes(controllers, song).map((c) => [c.id, c]));
     // The band drum difficulty, pinned to whichever canvas takes kit input.
     const drumsDiff = drumsDifficultyId(parts && parts.drums && parts.drums.difficulty);
     function pinDrums(canvas) {
@@ -89,7 +119,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     let lanes = plan.lanes;
     if (guitarMain && lanes.includes('drums') && (typeof drumRenderer !== 'function' || typeof makeHighway !== 'function')) {
         console.warn('[build-a-band] drums plugin or createHighway missing; guitar lane only');
-        lanes = ['guitar'];
+        lanes = lanes.filter((p) => p !== 'drums');
     }
     let split = clampSplit(prefs && prefs.split);
 
@@ -102,6 +132,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         const slot = doc.createElement('div');
         slot.className = 'bab-lane';
         slot.dataset.part = part;
+        if (isControllerId(part)) slot.classList.add('bab-lane-ctl');
         slots[part] = slot;
     }
     // Vocal strip slot: first child, full width under the HUD row.
@@ -117,9 +148,10 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         root.appendChild(stripSlot);
     }
     if (rows.lanesTopPx !== null) player.style.setProperty('--bab-lanes-top', rows.lanesTopPx + 'px');
-    for (const part of lanes) if (part !== 'drums') root.appendChild(slots[part]);
+    // Left to right: guitar | divider | drums, then the controller lanes in join order.
+    for (const part of lanes) if (part !== 'drums' && !isControllerId(part)) root.appendChild(slots[part]);
     let divider = null;
-    if (slots.drums && lanes.length === 2) {
+    if (slots.drums && slots.guitar) {
         divider = doc.createElement('div');
         divider.className = 'bab-divider';
         divider.setAttribute('role', 'separator');
@@ -128,6 +160,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         root.appendChild(divider);
     }
     if (slots.drums) root.appendChild(slots.drums);
+    for (const part of lanes) if (isControllerId(part)) root.appendChild(slots[part]);
     // The slot holding the main highway is see-through (CSS).
     if (plan.mainPart && slots[plan.mainPart]) slots[plan.mainPart].classList.add('bab-lane-main');
 
@@ -206,6 +239,16 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         applyZoom(part);
     };
     for (const part of lanes) {
+        if (isControllerId(part)) {
+            // No chrome: the lane width is the knob. The box is unzoomed.
+            const box = doc.createElement('div');
+            box.className = 'bab-zoom-box';
+            box.style.width = '100%';
+            box.style.height = '100%';
+            boxes[part] = box;
+            slots[part].appendChild(box);
+            continue;
+        }
         const chrome = doc.createElement('div');
         chrome.className = 'bab-lane-chrome';
         if (part === 'guitar') {
@@ -235,16 +278,24 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     }
 
     function applyLayout() {
+        let guitarPct = split;
         for (const { part, leftPct, widthPct } of computeStageLayout({ lanes, split })) {
             slots[part].style.left = leftPct + '%';
             slots[part].style.width = widthPct + '%';
+            if (part === 'guitar') guitarPct = widthPct;
         }
-        if (divider) divider.style.left = split + '%';
+        if (divider) divider.style.left = guitarPct + '%';
     }
 
+    // Controller lanes that started: player id -> { key, kind, opts, hw, canvas }.
+    const ctlLanes = new Map();
+    function resizeLanes() {
+        if (drumHw) safe(() => drumHw.resize());
+        for (const lane of ctlLanes.values()) if (lane.hw) safe(() => lane.hw.resize());
+    }
     function resizeAll() {
         safe(() => mainHw.resize());
-        if (drumHw) safe(() => drumHw.resize());
+        resizeLanes();
     }
 
     fitFooter();
@@ -272,13 +323,33 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         scaleDrumCanvas(drumCanvas);
         if (drumHw) pinDrums(drumCanvas);
     }
+    // A controller lane follows its canvas the same way and pins the live one.
+    function placeLaneCanvas(c) {
+        c.style.cssText = 'width:100%;height:100%;display:block;';
+        c.style.position = 'absolute';
+        c.style.left = '0px';
+        c.style.top = '0px';
+    }
+    // A pinned canvas that was replaced is remembered, so unmount clears its pin
+    // too: a plugin that doesn't move the pin with the canvas would otherwise
+    // keep a pin alive (a leftover drums pin disables the normal player's free
+    // source). It isn't cleared now, while the lane still plays on it.
+    function adoptLaneCanvas(lane, next) {
+        if (!next || next === lane.canvas) return;
+        if (lane.pinned) lane.replaced.push(lane.canvas);
+        lane.canvas = next;
+        placeLaneCanvas(next);
+        if (lane.pinned) safe(() => lane.kind.pin(next, lane.key, lane.opts));
+    }
     function onCanvasReplaced(e) {
         const d = e && e.detail;
-        if (d && drumCanvas && d.oldCanvas === drumCanvas) adoptCanvas(d.newCanvas);
+        if (!d || !d.oldCanvas) return;
+        if (drumCanvas && d.oldCanvas === drumCanvas) adoptCanvas(d.newCanvas);
+        for (const lane of ctlLanes.values()) if (lane.canvas === d.oldCanvas) adoptLaneCanvas(lane, d.newCanvas);
     }
     // Fallback for a core that swaps without announcing: the slot's canvas.
-    function slotCanvas() {
-        const kids = slots.drums ? Array.from(slots.drums.children || []) : [];
+    function slotCanvas(slot) {
+        const kids = slot ? Array.from(slot.children || []) : [];
         return kids.find((c) => c && c.tagName === 'CANVAS') || null;
     }
     const listenBus = !!(bus && typeof bus.on === 'function');
@@ -309,18 +380,16 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             // inited). A hand-rolled resize override can't reach the renderer.
             hw.setRenderer(drumRenderer());
             hw.init(drumCanvas, boxes.drums);
-            if (drumCanvas.parentNode !== slots.drums) adoptCanvas(slotCanvas());
+            if (drumCanvas.parentNode !== slots.drums) adoptCanvas(slotCanvas(slots.drums));
             // secondary: parse and draw the drum chart without rebroadcasting
             // it as the current song (song:loaded / song:ready / beats:loaded).
             hw.connect(wsUrl(song.filename, plan.laneArrangement), { onSongInfo() {}, secondary: true });
             hw.resize();
             clock.add(hw);
-            clock.start();
             pinDrums(drumCanvas);
         } catch (e) {
             // Fall back to the guitar lane alone rather than an empty slot.
             console.error('[build-a-band] drum lane failed to start; guitar lane only', e);
-            safe(() => clock.stop());
             if (drumHw) { const hw = drumHw; drumHw = null; safe(() => clock.remove(hw)); safe(() => hw.stop()); }
             safe(() => drumsApi && drumsApi.setInputTarget(null));
             if (drumCanvas) safe(() => drumCanvas.remove());
@@ -329,10 +398,65 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             drumCanvas = null;
             divider = null;
             delete slots.drums;
-            lanes = ['guitar'];
+            lanes = lanes.filter((p) => p !== 'drums');
             applyLayout();
         }
     }
+
+    // Controller lanes: the drum lane's pattern, with the kind's renderer, on
+    // the kind's arrangement (laneArrangement(plan, song): 5-Fret the song's
+    // current one, since core streams every 5-fret part on any arrangement;
+    // Drums the real drum lane's), then pinned to the controller. One that fails to start
+    // leaves only itself; getLaneCanvas(id) then reports null.
+    function startControllerLane(id) {
+        const c = ctlById.get(id);
+        const kindId = kindFor(prefs, c.key);
+        const kind = Object.prototype.hasOwnProperty.call(kinds, kindId) ? kinds[kindId] : null;
+        const lane = { key: c.key, kind, hw: null, canvas: null, pinned: false, replaced: [],
+            opts: { part: c.part, difficulty: c.difficulty, lefty: c.lefty === true } };
+        try {
+            if (!kind || typeof kind.laneRenderer !== 'function' || typeof kind.pin !== 'function') {
+                throw new Error('no controller kind ' + kindId);
+            }
+            const factory = kind.laneRenderer();
+            if (typeof factory !== 'function') throw new Error(kindId + ' lane renderer missing');
+            if (typeof makeHighway !== 'function') throw new Error('createHighway missing');
+            const canvas = doc.createElement('canvas');
+            canvas.className = 'bab-ctl-canvas';
+            placeLaneCanvas(canvas);
+            slots[id].appendChild(canvas);
+            lane.canvas = canvas;
+            ctlLanes.set(id, lane);
+            const hw = makeHighway();
+            lane.hw = hw;
+            hw.setRenderer(factory());
+            hw.init(canvas, boxes[id]);
+            if (canvas.parentNode !== slots[id]) adoptLaneCanvas(lane, slotCanvas(slots[id]));
+            const arrangement = typeof kind.laneArrangement === 'function'
+                ? kind.laneArrangement(plan, song) : song.arrangementIndex;
+            hw.connect(wsUrl(song.filename, arrangement), { onSongInfo() {}, secondary: true });
+            hw.resize();
+            clock.add(hw);
+            if (!kind.pin(lane.canvas, lane.key, lane.opts)) throw new Error('pin refused for ' + lane.key);
+            lane.pinned = true;
+        } catch (e) {
+            console.error('[build-a-band] controller lane failed to start; it leaves the band:', id, e);
+            ctlLanes.delete(id);
+            if (lane.hw) { const hw = lane.hw; safe(() => clock.remove(hw)); safe(() => hw.stop()); }
+            if (lane.canvas) {
+                const cv = lane.canvas;
+                if (typeof kind.unpin === 'function') safe(() => kind.unpin(cv));
+                safe(() => cv.remove());
+            }
+            safe(() => slots[id].remove());
+            delete slots[id];
+            delete boxes[id];
+            lanes = lanes.filter((p) => p !== id);
+            applyLayout();
+        }
+    }
+    for (const id of lanes.filter(isControllerId)) startControllerLane(id);
+    if (drumHw || ctlLanes.size > 0) clock.start();
 
     // Divider drag: live widths + resize, persist on release.
     let dragging = false;
@@ -340,7 +464,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         if (!dragging) return;
         const rect = root.getBoundingClientRect();
         if (!(rect.width > 0)) return;
-        split = clampSplit(((e.clientX - rect.left) / rect.width) * 100);
+        split = splitFromPointer(((e.clientX - rect.left) / rect.width) * 100, lanes);
         applyLayout();
         resizeAll();
     }
@@ -387,7 +511,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     let footerObserver = null;
     const footerEl = doc.getElementById('player-footer');
     if (footerEl && typeof win.ResizeObserver === 'function') {
-        footerObserver = new win.ResizeObserver(() => { fitFooter(); if (drumHw) safe(() => drumHw.resize()); });
+        footerObserver = new win.ResizeObserver(() => { fitFooter(); resizeLanes(); });
         footerObserver.observe(footerEl);
     }
     resizeAll();
@@ -404,6 +528,11 @@ export function mountStage({ player, song, prefs, deps = {} }) {
         stripSlot,
         laneSlot(part) { return slots[part] || null; },
         getDrumCanvas() { return drumHw ? drumCanvas : null; },
+        getLaneCanvas(id) {
+            if (id === 'drums') return drumHw ? drumCanvas : null;
+            const lane = ctlLanes.get(id);
+            return lane ? lane.canvas : null;
+        },
         setSplit(pct) {
             if (!mounted) return;
             split = clampSplit(pct);
@@ -435,6 +564,20 @@ export function mountStage({ player, song, prefs, deps = {} }) {
                 drumHw = null;
             }
             if (drumCanvas) { safe(() => drumCanvas.remove()); drumCanvas = null; }
+            // 2b. Controller lanes: each highway stops (its renderer lets the
+            // controller go) before its pin is cleared, so no lane falls back
+            // to its unpinned settings in between.
+            for (const lane of ctlLanes.values()) {
+                const hw = lane.hw;
+                safe(() => clock.remove(hw));
+                safe(() => hw.stop());
+                if (typeof lane.kind.unpin === 'function') {
+                    safe(() => lane.kind.unpin(lane.canvas));
+                    for (const old of lane.replaced) safe(() => lane.kind.unpin(old));
+                }
+                safe(() => lane.canvas.remove());
+            }
+            ctlLanes.clear();
             // 3. Kit routing back to default.
             safe(() => drumsApi && drumsApi.setInputTarget(null));
             // 4. The solo-play fret-number size, unpersisted (it is already saved).

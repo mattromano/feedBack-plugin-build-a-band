@@ -1,7 +1,7 @@
 // Drum sound modes (plan 6 R2, R16): a pure state machine, nothing plays.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createDrumSound } from '../src/drum-sound.js';
+import { createDrumSound, dropoutStep } from '../src/drum-sound.js';
 
 test('song drums never mute', () => {
     const d = createDrumSound('song');
@@ -49,4 +49,13 @@ test('unknown modes and judgments', () => {
     const d = createDrumSound('rockband');
     assert.equal(d.judge('sp-activate'), false);
     assert.equal(d.muted(), false);
+});
+
+test('dropoutStep: the drop-out rule the stem sound shares', () => {
+    for (const kind of ['miss', 'overhit', 'overstrum']) assert.equal(dropoutStep(false, kind), true, kind);
+    assert.equal(dropoutStep(true, 'hit'), false);
+    for (const kind of ['sustain-end', 'sp-activate', undefined]) {
+        assert.equal(dropoutStep(true, kind), true, String(kind));
+        assert.equal(dropoutStep(false, kind), false, String(kind));
+    }
 });
