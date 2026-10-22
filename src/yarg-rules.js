@@ -1,5 +1,5 @@
 /*
- * yarg-rules.js: star score and star power (overdrive) rules from YARG for the feedBack Build-a-Band plugin.
+ * yarg-rules.js: star score and star power (overdrive) rules from YARG for the feedBack RockHeroSmith plugin.
  *
  * Re-implemented from the numbers and rules in:
  *   YARG.Core (https://github.com/YARC-Official/YARG.Core):
@@ -18,7 +18,7 @@
  * (see https://github.com/YARC-Official/YARG.Core/blob/master/LICENSE, and LICENSE.LGPL-3.0 at the plugin
  * root; LGPL-3.0 builds on the GPL-3.0 in LICENSE.GPL-3.0).
  *
- * Written in JavaScript for the feedBack Build-a-Band plugin. This file is a derivative work of the
+ * Written in JavaScript for the feedBack RockHeroSmith plugin. This file is a derivative work of the
  * above files and stays under LGPL-3.0. The rest of the plugin is MIT (see NOTICE.md) and only uses
  * this file through its exports.
  * Modifications: a dependency-free ES module working on plain numbers; thresholds take any base score

@@ -100,8 +100,8 @@ test('Start on an unclaimed set-up pad joins it and claims it', async () => {
     await flush();
     t.input.press(0, BTN.start, true);
     assert.deepEqual(t.log.join, [{ controllerKey: 'Xbox#1', name: 'Xbox', kinds: ['five_fret'] }]);
-    assert.deepEqual(t.input.claimCalls, [{ index: 0, owner: 'build_a_band' }]);
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
+    assert.deepEqual(t.input.claimCalls, [{ index: 0, owner: 'rockherosmith' }]);
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
 });
 
 test('a pad that needs setup never joins and is listed in needsSetup', async () => {
@@ -117,7 +117,7 @@ test('a joined pad lights frets and Start calls onPrimary, not onJoin', async ()
     const t = setup([pad(0, 'Xbox', 1)]);
     t.m.start(joinedAs('five_fret', 'Xbox#1'));
     await flush();
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
     t.input.send('Xbox#1', BTN.green, true);
     t.input.send('Xbox#1', BTN.orange, true);
     t.input.send('Xbox#1', BTN.strum, true);
@@ -206,8 +206,8 @@ test('stop releases every claim; start re-claims the joined keys', async () => {
     assert.equal(t.input.released.length, 2);
     t.m.start(joinedAs('five_fret', 'Xbox#1', 'Xbox#2'));
     await flush();
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
-    assert.equal(t.input.pads[1].claimedBy, 'build_a_band');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
+    assert.equal(t.input.pads[1].claimedBy, 'rockherosmith');
     t.m.start(joinedAs('five_fret', 'Xbox#1', 'Xbox#2'));
     await flush();
     assert.equal(t.input.watchers.length, 1);
@@ -228,7 +228,7 @@ test('a joined pad that disconnects is not connected; reconnecting re-claims it'
     t.input.change();
     await flush();
     assert.equal(t.m.status().connected.has('Xbox#1'), true);
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
     t.input.send('Xbox#1', BTN.yellow, true);
     assert.equal(t.log.light.at(-1)[1].yellow, true);
 });
@@ -340,7 +340,7 @@ test('a kit set up only in drums joins with kinds [drums]', async () => {
     assert.deepEqual(t.log.join, [{ controllerKey: 'Kit#1', name: 'Kit', kinds: ['drums'] }]);
     assert.deepEqual(t.api.mapperCalls, [], 'no 5-Fret mapper for a kit');
     assert.deepEqual(t.drumsApi.mapperCalls, ['Kit#1']);
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
 });
 
 test('an Xbox pad joins with both kinds; X and B pick 5-Fret and Drums', async () => {
@@ -398,7 +398,7 @@ test('a joined drums pad lights pads and kick; Start is primary', async () => {
     const t = setup([pad(0, 'Xbox', 1, { drumsKind: 'gamepad' })], {}, both);
     t.m.start(joinedAs('drums', 'Xbox#1'));
     await flush();
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
     assert.deepEqual(t.drumsApi.mapperCalls, ['Xbox#1']);
     assert.deepEqual(t.api.mapperCalls, [], 'plays as drums: no 5-Fret mapper');
     t.input.send('Xbox#1', DRUM.red, true);

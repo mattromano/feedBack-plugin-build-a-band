@@ -2,7 +2,7 @@
 // Reads MIDI only; plays nothing. DOM-free.
 import { isPadHit } from './devices.js';
 
-const REQUESTER = 'build_a_band';
+const REQUESTER = 'rockherosmith';
 
 // openPadLight({ midiInput, key, onHit }) -> Promise<{ close() }>
 export async function openPadLight({ midiInput, key, onHit }) {

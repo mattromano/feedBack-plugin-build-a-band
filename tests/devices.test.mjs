@@ -99,7 +99,7 @@ test('drum inputs come from core midiInput; [] without the capability', async ()
 test('applyGuitarDevice routes to the session or to note_detect', async () => {
     const s = fakeWin({ sessionSources: SESSION });
     assert.equal(await applyGuitarDevice('native::in1', s.win), 'session');
-    assert.deepEqual(s.calls.select, [[{ logicalSourceKey: 'native::in1' }, 'build_a_band']]);
+    assert.deepEqual(s.calls.select, [[{ logicalSourceKey: 'native::in1' }, 'rockherosmith']]);
     assert.deepEqual(s.calls.noteDetect, []);
 
     const b = fakeWin();
@@ -195,7 +195,7 @@ test('applyDevices leaves inputs that are already selected alone', async () => {
     const b = fakeWin({ sessionSources: SESSION, sessionSelected: 'native::other', midiSelected: 'webmidi:old' });
     b.win.feedBackDrums.getMidiInput = () => 'webmidi:old';
     await applyDevices(prefs, b.win, memStorage({ 'lyrics_karaoke.deviceId': 'old' }), {});
-    assert.deepEqual(b.calls.select, [[{ logicalSourceKey: 'native::in1' }, 'build_a_band']]);
+    assert.deepEqual(b.calls.select, [[{ logicalSourceKey: 'native::in1' }, 'rockherosmith']]);
     assert.deepEqual(b.calls.midiSelect, ['webmidi:kit']);
     assert.deepEqual(b.calls.drums, ['webmidi:kit']);
 });

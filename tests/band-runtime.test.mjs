@@ -97,7 +97,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     sidebar.id = 'v3-sidebar';
     doc.body.appendChild(sidebar);
     const navLinks = {};
-    for (const key of ['settings', 'songs', 'build_a_band']) {
+    for (const key of ['settings', 'songs', 'rockherosmith']) {
         const a = doc.createElement('a');
         a.setAttribute('data-v3-nav', key);
         a.addEventListener('click', () => calls.nav.push(key));
@@ -109,7 +109,7 @@ function setup({ slider = '80', storageInit = { splitscreenActive: 'true' }, set
     settingsScreen.className = 'screen';
     doc.body.appendChild(settingsScreen);
     const bandScreen = doc.createElement('div');
-    bandScreen.id = 'plugin-build_a_band';
+    bandScreen.id = 'plugin-rockherosmith';
     bandScreen.className = 'screen';
     doc.body.appendChild(bandScreen);
 
@@ -352,7 +352,7 @@ test('Go plays the chosen guitar arrangement from the band screen', async () => 
     const started = rt.startSession({ song: ITEM, prefs });
     assert.equal(typeof started.then, 'function', 'a started session returns a promise');
     assert.deepEqual(calls.playSong, [['My%20Song.sloppak', 1]]);
-    assert.deepEqual(calls.setReturnScreen, ['plugin-build_a_band']);
+    assert.deepEqual(calls.setReturnScreen, ['plugin-rockherosmith']);
     assert.equal(rt.phase(), 'armed');
     assert.equal(rt.startSession({ song: ITEM, prefs }), false);
     assert.equal(calls.playSong.length, 1);
@@ -435,7 +435,7 @@ test('song:ended holds auto-exit and shows the results; Next song releases once 
     rt.next();
     assert.equal(calls.release, 1);
     assert.equal(mounts[0].unmounted, 1);
-    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
     assert.equal(player.querySelector('.bab-results'), null);
     assert.equal(rt.phase(), 'idle');
     rt.next();
@@ -450,7 +450,7 @@ test('the band screen is not re-shown when release already returned to it', () =
     fb.holdAutoExit = () => () => {
         calls.release++;
         bandScreen.classList.add('active');
-        fb.emit('screen:changing', { id: 'plugin-build_a_band', from: 'player' });
+        fb.emit('screen:changing', { id: 'plugin-rockherosmith', from: 'player' });
     };
     rt.startSession({ song: ITEM, prefs: prefsWith() });
     loadSong(ITEM);
@@ -708,7 +708,7 @@ test('a late playSong rejection does not tear down a playing session', async () 
     await assert.rejects(started, /late failure/);
     assert.equal(rt.phase(), 'playing');
     assert.equal(mounts[0].unmounted, 0);
-    assert.equal(fb._nextReturnScreen, 'plugin-build_a_band', 'a started song keeps its origin');
+    assert.equal(fb._nextReturnScreen, 'plugin-rockherosmith', 'a started song keeps its origin');
     rt.dispose();
 });
 
@@ -1570,7 +1570,7 @@ test('a session whose stage never mounted still ends on the results', () => {
     assert.equal(results.querySelectorAll('.bab-card').length, 0);
     rt.next();
     assert.equal(calls.release, 1);
-    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
     rt.dispose();
 });
 
@@ -1583,7 +1583,7 @@ test('results that cannot show fall through to Next song, so the held exit is re
     assert.equal(rt.phase(), 'idle');
     assert.equal(calls.hold, 1);
     assert.equal(calls.release, 1);
-    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
     rt.dispose();
 });
 
@@ -1595,7 +1595,7 @@ test("results that cannot show return to the band screen without opening the pic
     player.remove();
     fb.emit('song:ended', {});
     assert.equal(rt.phase(), 'idle');
-    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
     assert.equal(n, 0, 'no user asked for Next song, so the library pick stays shut');
     rt.dispose();
 });
@@ -2012,7 +2012,7 @@ test('splitscreen up at song:ready: overdrive starts once the stage mounts', () 
 
 const failPrefs = (opts) => ({ ...prefsWith(opts), failMode: 'fail' });
 const guitarMiss = () => ({ isDefault: true, counted: true, hit: false, points: 0, multiplier: 1, streak: 0 });
-const FAIL_CLAIM = 'build_a_band:fail:guitar';
+const FAIL_CLAIM = 'rockherosmith:fail:guitar';
 const capCalls = (calls, name, pred = () => true) => calls.caps.filter((c) => c[0] === name && pred(c[1])).map((c) => c[1]);
 const stemsCommand = (calls, command) => capCalls(calls, 'dispatch', (r) => r.capability === 'stems' && r.command === command);
 const toastTexts = (player) => player.querySelectorAll('div.bab-toast').map((t) => t.textContent);
@@ -2038,7 +2038,7 @@ test('an empty crowd drops the player: grey lane, stem muted, toast', () => {
     assert.equal(rt.snapshot().parts.guitar.failed, true);
     assert.ok(mounts[0].lanes.guitar.classList.contains('bab-failed'));
     assert.equal(mounts[0].lanes.drums.classList.contains('bab-failed'), false);
-    assert.deepEqual(capCalls(calls, 'claim'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }]);
+    assert.deepEqual(capCalls(calls, 'claim'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'rockherosmith' }]);
     assert.deepEqual(stemsCommand(calls, 'mute').map((r) => r.args), [{ id: 'guitar', claimId: FAIL_CLAIM }]);
     assert.ok(toastTexts(player).includes('Guitar dropped out: overdrive brings them back'));
     assert.equal(partCallout(player, 'guitar'), 'DROPPED OUT');
@@ -2058,7 +2058,7 @@ test("a bandmate's overdrive rescues them", async () => {
     assert.equal(partCallout(player, 'guitar'), 'SAVED!');
     await flush();   // the restore follows the mute's answer
     assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
-    assert.deepEqual(capCalls(calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }]);
+    assert.deepEqual(capCalls(calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'rockherosmith' }]);
     rt.dispose();
 });
 
@@ -2083,7 +2083,7 @@ test('everyone out: the song pauses and the results say Band failed', async () =
     dropGuitar(env);
     assert.equal(rt.phase(), 'ending');
     assert.deepEqual(capCalls(calls, 'dispatch', (r) => r.capability === 'playback'), [
-        { capability: 'playback', command: 'pause', requester: 'build_a_band', args: { requesterId: 'build_a_band' } },
+        { capability: 'playback', command: 'pause', requester: 'rockherosmith', args: { requesterId: 'rockherosmith' } },
     ]);
     await flush();
     assert.equal(calls.audioPause, 0, "core's pause answered 'paused'");
@@ -2122,7 +2122,7 @@ test('after Band failed, Next song reaches the band screen and Play again replay
         assert.equal(calls.release, 0, `${exit}: no exit to release`);
         assert.equal(player.querySelector('.bab-results'), null, exit);
         if (exit === 'next') {
-            assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+            assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
             assert.equal(rt.phase(), 'idle');
         } else {
             assert.deepEqual(calls.playSong, [['My%20Song.sloppak', 0], ['My%20Song.sloppak', 0]]);
@@ -2171,7 +2171,7 @@ test('every exit path releases the stem claim', async () => {
         exit(env);
         await flush();
         assert.deepEqual(stemsCommand(env.calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }], name);
-        assert.deepEqual(capCalls(env.calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }], name);
+        assert.deepEqual(capCalls(env.calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'rockherosmith' }], name);
         const kinds = env.calls.caps.map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
         assert.ok(kinds.indexOf('dispatch:restore') < kinds.indexOf('release'), `${name}: restore before release`);
         env.rt.dispose();
@@ -2425,7 +2425,7 @@ test('dispose() mid-song after a drop restores and releases', async () => {
     rt.dispose();
     await flush();
     assert.deepEqual(stemsCommand(calls, 'restore').map((r) => r.args), [{ claimId: FAIL_CLAIM }]);
-    assert.deepEqual(capCalls(calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'build_a_band' }]);
+    assert.deepEqual(capCalls(calls, 'release'), [{ capability: 'stems', claimId: FAIL_CLAIM, requester: 'rockherosmith' }]);
     assert.deepEqual(capKinds(calls), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
 });
 
@@ -2497,7 +2497,7 @@ test('with isPlaying true and the chart clock advancing, onsets still deploy', (
 // ── Drum sound modes (plan 6 Task 3): My kit only holds the sound claim ──
 
 const STEM_ITEM = { ...DRUM_ITEM, stem_ids: ['guitar', 'drums'] };
-const SOUND_CLAIM = 'build_a_band:sound:drums';
+const SOUND_CLAIM = 'rockherosmith:sound:drums';
 const isSound = (r) => !!r && (r.claimId === SOUND_CLAIM || !!(r.args && r.args.claimId === SOUND_CLAIM));
 const soundCommand = (calls, command) => stemsCommand(calls, command).filter(isSound);
 const soundCaps = (calls) => calls.caps.filter((c) => isSound(c[1]));
@@ -2508,7 +2508,7 @@ test('My kit only mutes the drum stem under its own claim', () => {
     const { rt, loadSong, calls } = env;
     rt.startSession({ song: STEM_ITEM, prefs: kitPrefs() });
     loadSong(STEM_ITEM);
-    assert.deepEqual(capCalls(calls, 'claim', isSound), [{ capability: 'stems', claimId: SOUND_CLAIM, requester: 'build_a_band' }]);
+    assert.deepEqual(capCalls(calls, 'claim', isSound), [{ capability: 'stems', claimId: SOUND_CLAIM, requester: 'rockherosmith' }]);
     assert.deepEqual(soundCommand(calls, 'mute').map((r) => r.args), [{ id: 'drums', claimId: SOUND_CLAIM }]);
     assert.deepEqual(rt.drumSound(), { mode: 'kit', muted: true });
     rt.dispose();
@@ -2589,7 +2589,7 @@ test('every exit path restores and releases the kit claim', async () => {
         exit(env);
         await flush();
         assert.deepEqual(soundCommand(env.calls, 'restore').map((r) => r.args), [{ claimId: SOUND_CLAIM }], name);
-        assert.deepEqual(capCalls(env.calls, 'release', isSound), [{ capability: 'stems', claimId: SOUND_CLAIM, requester: 'build_a_band' }], name);
+        assert.deepEqual(capCalls(env.calls, 'release', isSound), [{ capability: 'stems', claimId: SOUND_CLAIM, requester: 'rockherosmith' }], name);
         const kinds = soundCaps(env.calls).map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
         assert.ok(kinds.indexOf('dispatch:restore') < kinds.indexOf('release'), `${name}: restore before release`);
         assert.equal(env.rt.drumSound(), null, name);
@@ -2636,7 +2636,7 @@ test('pausing changes nothing', () => {
 
 // ── Task 3 review gaps ──
 
-const FAIL_DRUMS = 'build_a_band:fail:drums';
+const FAIL_DRUMS = 'rockherosmith:fail:drums';
 const isFailDrums = (r) => !!r && (r.claimId === FAIL_DRUMS || !!(r.args && r.args.claimId === FAIL_DRUMS));
 const soundKinds = (calls) => soundCaps(calls).map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
 // 14 drums misses on the band's drum canvas, at display times from..from+13.
@@ -2902,8 +2902,8 @@ test('Rock Band: the band-failed ending keeps the drums out until teardown', asy
     assert.deepEqual(soundKinds(calls).slice(-2), ['dispatch:restore', 'release']);
     assert.equal(soundKinds(calls).length, 4);
     for (const part of ['guitar', 'drums']) {
-        const isFail = (r) => !!r && (r.claimId === `build_a_band:fail:${part}`
-            || !!(r.args && r.args.claimId === `build_a_band:fail:${part}`));
+        const isFail = (r) => !!r && (r.claimId === `rockherosmith:fail:${part}`
+            || !!(r.args && r.args.claimId === `rockherosmith:fail:${part}`));
         assert.equal(stemsCommand(calls, 'restore').filter(isFail).length, 1, `${part} fail restore`);
         assert.equal(capCalls(calls, 'release', isFail).length, 1, `${part} fail release`);
     }
@@ -3092,8 +3092,8 @@ test('another item asks first: Stay resumes, Leave follows the link', async () =
     await flush();
     assert.deepEqual(calls.nav, ['songs']);
     assert.equal(calls.resume.length, 1, 'no second resume');
-    sidebar.fire('click', { target: navLinks.build_a_band });
-    assert.equal(prompts.length, 3, 'the Build-a-Band entry asks too');
+    sidebar.fire('click', { target: navLinks.rockherosmith });
+    assert.equal(prompts.length, 3, 'the RockHeroSmith entry asks too');
     prompts[2].reject(new Error('gone'));
     await flush();
     assert.equal(calls.resume.length, 2, 'a rejected prompt resumes');
@@ -3422,7 +3422,7 @@ test('Next song calls onShowBandScreen once, after the band screen is shown', ()
     env.win.showScreen = (id) => { env.calls.showScreen.push(id); order.push(`show:${id}`); };
     toResults(env);
     env.rt.next();
-    assert.deepEqual(order, ['show:plugin-build_a_band', 'hook']);
+    assert.deepEqual(order, ['show:plugin-rockherosmith', 'hook']);
     env.rt.next();
     assert.equal(order.length, 2, 'idle: a second next() does nothing');
     env.rt.dispose();
@@ -3461,7 +3461,7 @@ test("a throwing onShowBandScreen doesn't break Next song", () => {
     env.rt.next();
     assert.equal(env.rt.phase(), 'idle');
     assert.equal(env.calls.release, 1, 'releaseExit still ran');
-    assert.deepEqual(env.calls.showScreen, ['plugin-build_a_band']);
+    assert.deepEqual(env.calls.showScreen, ['plugin-rockherosmith']);
     env.rt.dispose();
 });
 
@@ -3507,7 +3507,7 @@ test('end of song: Next song opens the library pick once, though hide() runs on 
     await flush();
     await flush();
     assert.equal(t.picks.length, 1, 'opened exactly once');
-    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    t.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'player' });
     await flush();
     assert.equal(t.picks.length, 1, 'a repeated show does not reopen it');
     t.bs.dispose();
@@ -3516,7 +3516,7 @@ test('end of song: Next song opens the library pick once, though hide() runs on 
 
 test('end of song: the band screen already visible opens the pick once, now', async () => {
     const t = endToEnd({ activeAtNext: true });
-    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'v3-songs' });
+    t.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'v3-songs' });
     assert.equal(t.bs.isVisible(), true);
     toResults(t);
     t.rt.next();
@@ -3541,7 +3541,7 @@ test("end of song: an overlapping showScreen before the band screen's late chang
     };
     t.rt.next();
     // The user starts Settings before the band screen's late screen:changed.
-    t.fb.emit('screen:changing', { id: 'settings', from: 'plugin-build_a_band' });
+    t.fb.emit('screen:changing', { id: 'settings', from: 'plugin-rockherosmith' });
     t.bandScreen.classList.remove('active');
     t.settingsScreen.classList.add('active');
     await flush();
@@ -3559,7 +3559,7 @@ test('end of song: leaving to another screen before the band screen shows drops 
     t.rt.next();
     t.fb.emit('screen:changing', { id: 'v3-settings', from: 'player' });
     t.bandScreen.classList.add('active');
-    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'v3-settings' });
+    t.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'v3-settings' });
     await flush();
     assert.equal(t.picks.length, 0);
     t.bs.dispose();
@@ -3851,7 +3851,7 @@ test('holding Back on a controller lane opens the leave prompt', async () => {
     fb.emit('five_fret:band-back-hold', { controllerKey: 'Xbox#1', canvas });
     prompts[1].resolve(true);
     await flush();
-    assert.deepEqual(calls.showScreen, ['plugin-build_a_band'], 'Leave goes back to the band screen');
+    assert.deepEqual(calls.showScreen, ['plugin-rockherosmith'], 'Leave goes back to the band screen');
     rt.dispose();
 });
 
@@ -3890,10 +3890,10 @@ test('under the leave prompt, holding Back again leaves', async () => {
     assert.equal(prompts.length, 1, 'no second prompt');
     assert.equal(prompts[0].settled, true);
     assert.ok(!doc.body.querySelector('.feedBack-modal'), 'the modal is gone');
-    assert.deepEqual(calls.showScreen, ['plugin-build_a_band'], 'Leave goes back to the band screen');
+    assert.deepEqual(calls.showScreen, ['plugin-rockherosmith'], 'Leave goes back to the band screen');
     assert.equal(calls.resume.length, 0, 'Leave resumes nothing');
     await flush();
-    assert.deepEqual(calls.showScreen, ['plugin-build_a_band']);
+    assert.deepEqual(calls.showScreen, ['plugin-rockherosmith']);
     rt.dispose();
 });
 
@@ -3941,7 +3941,7 @@ test("events from a canvas the band doesn't own are ignored", async () => {
 
 // ---- Plan 3 Task 11: Rock Band part audio for controller players, per stem ----
 
-const BASS_STEM = 'build_a_band:sound:stem:bass';
+const BASS_STEM = 'rockherosmith:sound:stem:bass';
 const isStemSound = (claimId) => (r) => !!r && (r.claimId === claimId || !!(r.args && r.args.claimId === claimId));
 const stemSoundKinds = (calls, claimId) => calls.caps.filter((c) => isStemSound(claimId)(c[1]))
     .map((c) => c[0] + (c[1].command ? ':' + c[1].command : ''));
@@ -3954,7 +3954,7 @@ test('a controller miss mutes the bass stem through its claim; a hit restores an
     const canvas = mounts[0].ctlCanvas.ctl1;
     assert.deepEqual(stemSoundKinds(calls, BASS_STEM), [], 'nothing at load');
     fb.emit('five_fret:miss', ffEv(canvas, { combo: 0 }));
-    assert.deepEqual(capCalls(calls, 'claim', isStemSound(BASS_STEM)), [{ capability: 'stems', claimId: BASS_STEM, requester: 'build_a_band' }]);
+    assert.deepEqual(capCalls(calls, 'claim', isStemSound(BASS_STEM)), [{ capability: 'stems', claimId: BASS_STEM, requester: 'rockherosmith' }]);
     assert.deepEqual(stemsCommand(calls, 'mute').filter(isStemSound(BASS_STEM)).map((r) => r.args), [{ id: 'bass', claimId: BASS_STEM }]);
     fb.emit('five_fret:overstrum', ffEv(canvas, { combo: 0 }));
     await flush();
@@ -3969,7 +3969,7 @@ test('a controller miss mutes the bass stem through its claim; a hit restores an
     await flush();
     assert.deepEqual(stemSoundKinds(calls, BASS_STEM).slice(4), ['claim', 'dispatch:mute', 'dispatch:restore', 'release']);
     // The guitar and drum stems are never touched by the bass player.
-    assert.ok(calls.caps.every((c) => !isStemSound('build_a_band:sound:stem:guitar')(c[1])));
+    assert.ok(calls.caps.every((c) => !isStemSound('rockherosmith:sound:stem:guitar')(c[1])));
     rt.dispose();
 });
 
@@ -3988,7 +3988,7 @@ test('Always play sends nothing', async () => {
     await goCtl(lead, ctlPrefs([{ ...PAD1, part: 'guitar' }]));
     lead.fb.emit('five_fret:miss', ffEv(lead.mounts[0].ctlCanvas.ctl1, { combo: 0 }));
     await flush();
-    assert.deepEqual(stemSoundKinds(lead.calls, 'build_a_band:sound:stem:guitar'), []);
+    assert.deepEqual(stemSoundKinds(lead.calls, 'rockherosmith:sound:stem:guitar'), []);
     lead.rt.dispose();
 });
 
@@ -4315,7 +4315,7 @@ test('Start on a drums controller lane toggles band pause; a held Back opens the
     fb.emit('drums:band-back-hold', { controllerKey: 'Kit#1', canvas });
     assert.equal(prompts.length, 2);
     assert.equal(prompts[1].settled, true);
-    assert.deepEqual(calls.showScreen, ['plugin-build_a_band'], 'Leave goes back to the band screen');
+    assert.deepEqual(calls.showScreen, ['plugin-rockherosmith'], 'Leave goes back to the band screen');
     rt.dispose();
 });
 
@@ -4339,17 +4339,17 @@ test('every drums controller lane is unpinned at the end, Play again included', 
 
 // ---- Plan 6 Task B7: drum sound modes for controller drummers ----
 
-const DRUMS_STEM = 'build_a_band:sound:stem:drums';
+const DRUMS_STEM = 'rockherosmith:sound:stem:drums';
 const noRealDrums = { drums: { on: false } };
 
-test('a drums controller miss in Rock Band mutes the drums stem under build_a_band:sound:stem:drums; a hit restores', async () => {
+test('a drums controller miss in Rock Band mutes the drums stem under rockherosmith:sound:stem:drums; a hit restores', async () => {
     const env = setup();
     const { rt, fb, mounts, calls } = env;
     await goCtl(env, padPrefs([KIT1], noRealDrums), DRUM_ITEM);
     const lane = mounts[0].ctlCanvas.ctl1;
     assert.deepEqual(stemSoundKinds(calls, DRUMS_STEM), [], 'nothing at load');
     fb.emit('drums:miss', drEv(lane, { combo: 0 }));
-    assert.deepEqual(capCalls(calls, 'claim', isStemSound(DRUMS_STEM)), [{ capability: 'stems', claimId: DRUMS_STEM, requester: 'build_a_band' }]);
+    assert.deepEqual(capCalls(calls, 'claim', isStemSound(DRUMS_STEM)), [{ capability: 'stems', claimId: DRUMS_STEM, requester: 'rockherosmith' }]);
     assert.deepEqual(stemsCommand(calls, 'mute').filter(isStemSound(DRUMS_STEM)).map((r) => r.args), [{ id: 'drums', claimId: DRUMS_STEM }]);
     fb.emit('drums:overhit', drEv(lane));
     await flush();

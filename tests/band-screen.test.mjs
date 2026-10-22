@@ -33,13 +33,13 @@ function fakePickLibrary() {
 function setup({ active = true, stored = null, library = [], picker = fakePickLibrary(), libraryOnWin = false, winExtra = {}, onGo = null, deviceMemo } = {}) {
     const doc = makeDoc();
     const screen = makeEl('div', doc);
-    screen.setAttribute('id', 'plugin-build_a_band');
+    screen.setAttribute('id', 'plugin-rockherosmith');
     screen.classList.add('screen');
     if (active) screen.classList.add('active');
     doc.body.appendChild(screen);
     parseHtml(HTML, doc, screen);
     const root = doc.getElementById('build-a-band-root');
-    const storage = memStorage(stored ? { 'build_a_band.prefs.v1': JSON.stringify(stored) } : {});
+    const storage = memStorage(stored ? { 'rockherosmith.prefs.v1': JSON.stringify(stored) } : {});
     const bus = new EventTarget();
     const fb = {
         on: (t, f) => bus.addEventListener(t, f),
@@ -170,15 +170,15 @@ test('Go button and Space call onGo only while visible and a part can play', () 
     doc.fire('keydown', { code: 'Space' });
     root.querySelector('.bab-go').click();
     assert.equal(gos.length, 1, 'Go latches until the screen is shown again');
-    fb.emit('screen:changed', { id: 'player', from: 'plugin-build_a_band' });
+    fb.emit('screen:changed', { id: 'player', from: 'plugin-rockherosmith' });
     assert.equal(bs.isVisible(), false);
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 1, 'hidden');
-    fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'player' });
     const ev = doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 2, 'shown again: the latch resets');
     assert.equal(ev.defaultPrevented, true);
-    fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'player' });
     bs.dispose();
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 2, 'disposed');
@@ -200,7 +200,7 @@ test('screen:changing away hides the screen before screen:changed arrives', () =
     const t = setup();
     const { doc, fb, bs, gos } = t;
     onConfirm(t, holiday);
-    fb.emit('screen:changing', { id: 'player', from: 'plugin-build_a_band' });
+    fb.emit('screen:changing', { id: 'player', from: 'plugin-rockherosmith' });
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0);
     assert.equal(bs.isVisible(), false);
@@ -211,7 +211,7 @@ test('Space does nothing when the plugin screen is not .active', () => {
     const t = setup();
     const { doc, bs, gos } = t;
     onConfirm(t, holiday);
-    doc.getElementById('plugin-build_a_band').classList.remove('active');
+    doc.getElementById('plugin-rockherosmith').classList.remove('active');
     doc.fire('keydown', { code: 'Space' });
     assert.equal(gos.length, 0);
     bs.dispose();
@@ -357,7 +357,7 @@ test('lights run only while visible and never connect the analyser', async () =>
     await flush();
     await flush();
     assert.deepEqual(d.calls.gum.sort(), ['usb-guitar', 'usb-mic']);
-    assert.deepEqual(d.calls.open, [{ logicalSourceKey: 'webmidi:kit', requester: 'build_a_band' }]);
+    assert.deepEqual(d.calls.open, [{ logicalSourceKey: 'webmidi:kit', requester: 'rockherosmith' }]);
     d.runFrames();
     assert.ok(col('guitar').querySelector('.bab-signal').classList.contains('bab-lit'));
     for (const ctx of d.audio.contexts) {
@@ -366,14 +366,14 @@ test('lights run only while visible and never connect the analyser', async () =>
     }
     assert.ok(d.audio.connects.every((c) => c.from.kind === 'source'));
 
-    fb.emit('screen:changing', { id: 'player', from: 'plugin-build_a_band' });
+    fb.emit('screen:changing', { id: 'player', from: 'plugin-rockherosmith' });
     assert.equal(liveStreams(d).length, 0, 'every track stopped on hide');
     assert.ok(d.audio.contexts.every((c) => c.closed === 1));
     assert.equal(d.frames.size, 0);
     assert.equal(d.listeners.size, 0);
-    assert.deepEqual(d.calls.close, [{ logicalSourceKey: 'webmidi:kit', requester: 'build_a_band' }]);
+    assert.deepEqual(d.calls.close, [{ logicalSourceKey: 'webmidi:kit', requester: 'rockherosmith' }]);
 
-    fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'player' });
     await flush();
     await flush();
     assert.equal(liveStreams(d).length, 2, 'meters back on show');
@@ -390,7 +390,7 @@ test('losing .active stops the lights at the next frame', async () => {
     const { doc, bs } = setup({ stored: withDevices, winExtra: d.winExtra });
     await flush();
     await flush();
-    doc.getElementById('plugin-build_a_band').classList.remove('active');
+    doc.getElementById('plugin-rockherosmith').classList.remove('active');
     d.runFrames();
     assert.equal(liveStreams(d).length, 0);
     assert.equal(d.listeners.size, 0);
@@ -485,8 +485,8 @@ test('a burst of pad hits, or Space right after a pad Go, calls onGo once', asyn
     assert.equal(gos.length, 1, 'Space after a pad Go');
     assert.equal(ev.defaultPrevented, false);
     assert.equal(d.listeners.size, 0, 'the drums light stops once Go fires');
-    fb.emit('screen:changing', { id: 'player', from: 'plugin-build_a_band' });
-    fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    fb.emit('screen:changing', { id: 'player', from: 'plugin-rockherosmith' });
+    fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'player' });
     await flush();
     await flush();
     d.hit([0x99, 38, 100]);
@@ -826,7 +826,7 @@ test('Choose a song asks core with the band chips', () => {
     assert.equal(picker.calls.length, 1);
     const o = picker.calls[0];
     assert.equal(o.title, 'Pick a song for the band');
-    assert.equal(o.returnTo, 'plugin-build_a_band');
+    assert.equal(o.returnTo, 'plugin-rockherosmith');
     assert.equal(o.confirmLabel, 'Use this song');
     assert.equal(o.backLabel, 'Back to the band');
     assert.equal(o.selected, null);
@@ -942,7 +942,7 @@ test('Esc on Confirm opens the library; Esc on Setup does nothing', async () => 
     assert.equal(ev.defaultPrevented, true);
     assert.equal(picker.calls[1].selected, holiday, 'the whole current row');
     assert.equal(view(root), 'confirm');
-    doc.getElementById('plugin-build_a_band').classList.remove('active');
+    doc.getElementById('plugin-rockherosmith').classList.remove('active');
     esc(doc);
     assert.equal(picker.calls.length, 2, 'not the active screen');
     bs.dispose();
@@ -1068,10 +1068,10 @@ test('nextSong opens the library now when visible, else on the next show', () =>
     b.bs.nextSong();
     assert.equal(b.bs.view(), 'confirm');
     assert.equal(b.picker.calls.length, 0, 'hidden: waits');
-    b.doc.getElementById('plugin-build_a_band').classList.add('active');
-    b.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    b.doc.getElementById('plugin-rockherosmith').classList.add('active');
+    b.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'player' });
     assert.equal(b.picker.calls.length, 1);
-    b.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    b.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'player' });
     assert.equal(b.picker.calls.length, 1, 'once');
     b.bs.dispose();
 });
@@ -1105,7 +1105,7 @@ test('a pick after dispose does nothing, and a failing hook is logged', async ()
             b.bs.dispose();
         });
         assert.equal(warned.length, 1);
-        assert.equal(warned[0][0], '[build-a-band] library pick failed');
+        assert.equal(warned[0][0], '[rockherosmith] library pick failed');
     }
 });
 
@@ -1151,8 +1151,8 @@ test('Next song opens the pick before loading devices: no mic opens', async () =
     const t = setup({ active: false, stored: withDevices, winExtra: d.winExtra });
     t.bs.setSong(holiday);
     t.bs.nextSong();
-    t.doc.getElementById('plugin-build_a_band').classList.add('active');
-    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'player' });
+    t.doc.getElementById('plugin-rockherosmith').classList.add('active');
+    t.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'player' });
     await flush();
     await flush();
     assert.equal(t.picker.calls.length, 1);
@@ -1166,8 +1166,8 @@ test('a pending Next song pick is dropped when the screen hides', () => {
     const t = setup({ active: false });
     t.bs.nextSong();
     t.fb.emit('screen:changing', { id: 'v3-settings' });
-    t.doc.getElementById('plugin-build_a_band').classList.add('active');
-    t.fb.emit('screen:changed', { id: 'plugin-build_a_band', from: 'v3-settings' });
+    t.doc.getElementById('plugin-rockherosmith').classList.add('active');
+    t.fb.emit('screen:changed', { id: 'plugin-rockherosmith', from: 'v3-settings' });
     assert.equal(t.picker.calls.length, 0);
     t.bs.dispose();
 });
@@ -1196,7 +1196,7 @@ test('the Confirm key listener runs in the capture phase, ahead of core gamepad-
 // ── Controller players: Start-to-join and the controller columns ──────────
 const BTN = { green: 0, red: 1, yellow: 2, blue: 3, orange: 4, strum: 5, back: 8, start: 9 };
 const ACTION_OF = { 0: 'green', 1: 'red', 2: 'yellow', 3: 'blue', 4: 'orange', 5: 'strum_down', 9: 'pause' };
-const SCREEN = 'plugin-build_a_band';
+const SCREEN = 'plugin-rockherosmith';
 
 // core's gamepadInput: passive watch, change events and claims. Event times are seconds.
 function fakeGamepadInput(pads) {
@@ -1309,7 +1309,7 @@ test('Start on a new pad adds a Setup column and a Confirm row', async () => {
         ['part', 'difficulty', 'lefty', 'partAudio']);
     assert.equal(segBtn(row[0], 'part', 'guitar').getAttribute('aria-pressed'), 'true');
     assert.equal(segBtn(row[0], 'difficulty', 'medium').getAttribute('aria-pressed'), 'true');
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
     // A second Start on the same (now joined) pad does not add another.
     t.input.send('Xbox#1', BTN.start);
     assert.equal(t.prefs().controllers.length, 1);
@@ -1334,7 +1334,7 @@ test('Leave removes them; the join slot explains how to join', async () => {
     const t = ctlSetup({ stored: ctlPrefs([{ key: 'Xbox#1' }]) });
     await flush();
     assert.equal(t.setupCols().length, 1);
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
     t.setupCols()[0].querySelector('.bab-ctl-leave').click();
     assert.deepEqual(t.prefs().controllers, []);
     assert.equal(t.setupCols().length, 0);
@@ -1448,7 +1448,7 @@ test('hiding for the library pick releases claims; Confirm re-claims', async () 
     const t = ctlSetup({ stored: ctlPrefs([{ key: 'Xbox#1' }]) });
     await flush();
     onConfirm(t, ffSong);
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith');
     t.root.querySelector('.bab-change').click();
     t.screen.classList.remove('active');
     t.fb.emit('screen:changing', { id: 'songs' });
@@ -1457,7 +1457,7 @@ test('hiding for the library pick releases claims; Confirm re-claims', async () 
     t.screen.classList.add('active');
     t.fb.emit('screen:changed', { id: SCREEN });
     await flush();
-    assert.equal(t.input.pads[0].claimedBy, 'build_a_band', 'back on Confirm: claimed again');
+    assert.equal(t.input.pads[0].claimedBy, 'rockherosmith', 'back on Confirm: claimed again');
     assert.equal(t.input.watchers.length, 1);
     t.bs.dispose();
     assert.equal(t.input.pads[0].claimedBy, null, 'dispose releases');

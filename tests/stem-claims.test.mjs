@@ -41,12 +41,12 @@ test('muteStem claims, then mutes by id', async () => {
     const caps = fakeCaps();
     const ok = await muteStem({ caps, part: 'drums', stemId: 'drums' });
     assert.equal(ok, true);
-    const claimId = 'build_a_band:fail:drums';
+    const claimId = 'rockherosmith:fail:drums';
     assert.equal(FAIL_CLAIM_PREFIX + 'drums', claimId);
     assert.deepEqual(caps.calls, [
-        ['claim', { capability: 'stems', claimId, requester: 'build_a_band' }],
+        ['claim', { capability: 'stems', claimId, requester: 'rockherosmith' }],
         ['dispatch', {
-            capability: 'stems', command: 'mute', requester: 'build_a_band',
+            capability: 'stems', command: 'mute', requester: 'rockherosmith',
             args: { id: 'drums', claimId }, claim: { claimId, capability: 'stems' },
         }],
     ]);
@@ -68,10 +68,10 @@ test('muteStem without capabilities resolves false', async () => {
 test('restoreStem restores then releases', async () => {
     const caps = fakeCaps();
     await restoreStem({ caps, part: 'guitar' });
-    const claimId = 'build_a_band:fail:guitar';
+    const claimId = 'rockherosmith:fail:guitar';
     assert.deepEqual(caps.calls, [
-        ['dispatch', { capability: 'stems', command: 'restore', requester: 'build_a_band', args: { claimId } }],
-        ['release', { capability: 'stems', claimId, requester: 'build_a_band' }],
+        ['dispatch', { capability: 'stems', command: 'restore', requester: 'rockherosmith', args: { claimId } }],
+        ['release', { capability: 'stems', claimId, requester: 'rockherosmith' }],
     ]);
 });
 
@@ -84,22 +84,22 @@ test('restoreStem still releases when the restore fails, and never throws', asyn
 });
 
 test('mute and restore take a claim id', async () => {
-    assert.equal(SOUND_CLAIM_ID, 'build_a_band:sound:drums');
+    assert.equal(SOUND_CLAIM_ID, 'rockherosmith:sound:drums');
     const claimId = SOUND_CLAIM_ID;
     const caps = fakeCaps();
     assert.equal(await muteStem({ caps, part: 'drums', stemId: 'drums', claimId }), true);
     assert.deepEqual(caps.calls, [
-        ['claim', { capability: 'stems', claimId, requester: 'build_a_band' }],
+        ['claim', { capability: 'stems', claimId, requester: 'rockherosmith' }],
         ['dispatch', {
-            capability: 'stems', command: 'mute', requester: 'build_a_band',
+            capability: 'stems', command: 'mute', requester: 'rockherosmith',
             args: { id: 'drums', claimId }, claim: { claimId, capability: 'stems' },
         }],
     ]);
     const caps2 = fakeCaps();
     await restoreStem({ caps: caps2, part: 'drums', claimId });
     assert.deepEqual(caps2.calls, [
-        ['dispatch', { capability: 'stems', command: 'restore', requester: 'build_a_band', args: { claimId } }],
-        ['release', { capability: 'stems', claimId, requester: 'build_a_band' }],
+        ['dispatch', { capability: 'stems', command: 'restore', requester: 'rockherosmith', args: { claimId } }],
+        ['release', { capability: 'stems', claimId, requester: 'rockherosmith' }],
     ]);
 });
 

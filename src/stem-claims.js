@@ -4,11 +4,11 @@
 // released, when the part comes back or the session ends. Stems
 // stacks claims and fades the mute (~12 ms); capability mutes are never saved per
 // song. Every call is guarded: a missing or failing host never breaks the session.
-export const FAIL_CLAIM_PREFIX = 'build_a_band:fail:';
-export const SOUND_CLAIM_ID = 'build_a_band:sound:drums';
+export const FAIL_CLAIM_PREFIX = 'rockherosmith:fail:';
+export const SOUND_CLAIM_ID = 'rockherosmith:sound:drums';
 // Controller players' part audio (Plan 3): one claim per stem, `<prefix><stemId>`.
-export const STEM_SOUND_CLAIM_PREFIX = 'build_a_band:sound:stem:';
-const REQUESTER = 'build_a_band';
+export const STEM_SOUND_CLAIM_PREFIX = 'rockherosmith:sound:stem:';
+const REQUESTER = 'rockherosmith';
 
 // The stem a part plays, only when the song's stem list has it; never `other`.
 export function stemIdFor(part, partPrefs, stemIds) {

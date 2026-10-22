@@ -1,4 +1,4 @@
-// Controller players: pure data helpers for the Build-a-Band join list. A controller
+// Controller players: pure data helpers for the RockHeroSmith join list. A controller
 // player is `ctl<N>` in `prefs.controllers`, next to the fixed guitar / drums / vocals
 // ids. No DOM, and nothing here reads `window` at import time.
 import { DIFFICULTIES, drumsDifficultyId } from './mappings.js';
@@ -54,7 +54,7 @@ export const CONTROLLER_KINDS = {
         resolveBinding: (controllerKey) => listedKind(fiveFretApi(), controllerKey),
         setupHref() {
             const api = fiveFretApi();
-            if (api && typeof api.openControls === 'function') api.openControls({ returnTo: 'plugin-build_a_band' });
+            if (api && typeof api.openControls === 'function') api.openControls({ returnTo: 'plugin-rockherosmith' });
         },
         laneRenderer: () => globalThis.window?.feedBackViz_five_fret || null,
         // Core streams every 5-fret part on any arrangement: the song's current one.
@@ -88,7 +88,7 @@ export const CONTROLLER_KINDS = {
         resolveBinding: (controllerKey) => listedKind(drumsApi(), controllerKey),
         setupHref() {
             const api = drumsApi();
-            if (api && typeof api.openControls === 'function') api.openControls({ returnTo: 'plugin-build_a_band' });
+            if (api && typeof api.openControls === 'function') api.openControls({ returnTo: 'plugin-rockherosmith' });
         },
         laneRenderer: () => globalThis.window?.feedBackViz_drums || null,
         // The real drum lane's arrangement (a drum arrangement, else the drum tab's carrier).

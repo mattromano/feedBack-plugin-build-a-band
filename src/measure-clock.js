@@ -1,4 +1,4 @@
-// Build-a-Band measure clock: chart time <-> measures from highway.getBeats()
+// RockHeroSmith measure clock: chart time <-> measures from highway.getBeats()
 // ([{ time, measure }], measure >= 0 marks a downbeat). Plan 5 R3:
 // - two or more downbeats: each downbeat is the next whole measure;
 // - else two or more beats: every 4th beat is one (4/4);

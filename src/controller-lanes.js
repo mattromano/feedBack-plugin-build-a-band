@@ -11,7 +11,7 @@ import { fullChartThresholds } from './stars.js';
 const LANE_EVENTS = ['sp-activate', 'band-pause', 'band-back-hold'];
 
 function safe(fn) {
-    try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
+    try { return fn(); } catch (e) { console.warn('[rockherosmith]', e); return undefined; }
 }
 
 // A controller's kind entry in the registry, or null.
@@ -150,7 +150,7 @@ export function createControllerLanes({
         }
         if (!apis.size) return;
         const lists = [...apis].map((api) => Promise.resolve().then(() => api.listControllers()).catch((e) => {
-            console.warn('[build-a-band] could not list controllers', e);
+            console.warn('[rockherosmith] could not list controllers', e);
             return [];
         }));
         Promise.all(lists).then((all) => {

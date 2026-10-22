@@ -1,4 +1,4 @@
-// Build-a-Band stage layout: pure functions, no DOM access.
+// RockHeroSmith stage layout: pure functions, no DOM access.
 import { isControllerId } from './controller-model.js';
 
 const MIN_SPLIT = 35;

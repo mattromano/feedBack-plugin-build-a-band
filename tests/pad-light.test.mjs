@@ -1,5 +1,5 @@
 // Drum pad light: a listener on core's shared MIDI session, opened and closed
-// as build_a_band without touching anyone else's listener.
+// as rockherosmith without touching anyone else's listener.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { openPadLight } from '../src/pad-light.js';
@@ -23,7 +23,7 @@ test("pad hits light, other messages don't", async () => {
     const m = fakeMidi();
     let hits = 0;
     const light = await openPadLight({ midiInput: m.midiInput, key: 'webmidi:kit', onHit: () => hits++ });
-    assert.deepEqual(m.calls.open, [{ logicalSourceKey: 'webmidi:kit', requester: 'build_a_band' }]);
+    assert.deepEqual(m.calls.open, [{ logicalSourceKey: 'webmidi:kit', requester: 'rockherosmith' }]);
     m.send([0x99, 38, 100]);
     m.send([0x99, 38, 0]);
     m.send([0x89, 38, 64]);
@@ -33,7 +33,7 @@ test("pad hits light, other messages don't", async () => {
     light.close();
 });
 
-test('close removes only our listener and closes as build_a_band', async () => {
+test('close removes only our listener and closes as rockherosmith', async () => {
     const m = fakeMidi();
     const theirs = () => {};
     m.handle.addListener(theirs);
@@ -44,7 +44,7 @@ test('close removes only our listener and closes as build_a_band', async () => {
     light.close();
     assert.equal(m.listeners.size, 1);
     assert.ok(m.listeners.has(theirs), 'the other listener stays registered');
-    assert.deepEqual(m.calls.close, [{ logicalSourceKey: 'webmidi:kit', requester: 'build_a_band' }]);
+    assert.deepEqual(m.calls.close, [{ logicalSourceKey: 'webmidi:kit', requester: 'rockherosmith' }]);
     m.send([0x99, 38, 100]);
     assert.equal(hits, 0);
 });
@@ -54,5 +54,5 @@ test('an open without a handle still closes cleanly', async () => {
     m.midiInput.open = async () => ({ outcome: 'denied', handle: null });
     const light = await openPadLight({ midiInput: m.midiInput, key: 'webmidi:kit', onHit: () => {} });
     light.close();
-    assert.deepEqual(m.calls.close, [{ logicalSourceKey: 'webmidi:kit', requester: 'build_a_band' }]);
+    assert.deepEqual(m.calls.close, [{ logicalSourceKey: 'webmidi:kit', requester: 'rockherosmith' }]);
 });

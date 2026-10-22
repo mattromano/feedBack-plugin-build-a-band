@@ -1,4 +1,4 @@
-# Build-a-Band
+# RockHeroSmith
 
 A Rock Band-style band mode plugin for [feedBack](https://github.com/got-feedback/feedBack).
 Early skeleton: the band screen is a placeholder until plan 2.

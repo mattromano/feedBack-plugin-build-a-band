@@ -16,7 +16,7 @@ import { createJoinManager } from './join.js';
 import { createControllerColumns } from './controller-columns.js';
 import { CONTROLLER_KINDS, kindFor, joinController, leaveController, setPlaysAs, updateController } from './controller-model.js';
 
-const SCREEN_ID = 'plugin-build_a_band';
+const SCREEN_ID = 'plugin-rockherosmith';
 const SOUND_MODES_NEEDING_STEM = ['rockband', 'kit'];
 
 // Input devices and signal lights, per part. Lights are silent: meters read
@@ -362,7 +362,7 @@ export function createBandScreen({
         if (goError) { goError = ''; render(); }
         const failed = (err) => {
             if (disposed || attempt !== goAttempt || !launched) return;
-            if (err !== undefined) console.warn('[build-a-band] Go failed', err);
+            if (err !== undefined) console.warn('[rockherosmith] Go failed', err);
             launched = false;
             goError = GO_FAILED;
             render();
@@ -447,7 +447,7 @@ export function createBandScreen({
         const parts = vocalsSupported ? prefs.parts
             : { ...prefs.parts, vocals: { ...prefs.parts.vocals, on: false } };
         const live = () => gen === pickGen && !disposed;
-        const failed = (err) => console.warn('[build-a-band] library pick failed', err);
+        const failed = (err) => console.warn('[rockherosmith] library pick failed', err);
         let pending;
         try {
             pending = library.pick({

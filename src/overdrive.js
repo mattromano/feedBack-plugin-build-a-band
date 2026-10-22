@@ -1,4 +1,4 @@
-// Build-a-Band overdrive meter (plan 5 R3), one shape for every part:
+// RockHeroSmith overdrive meter (plan 5 R3), one shape for every part:
 // fill 0..1; ready = not active and fill >= deployMin; deploy only when
 // ready; while active the fill drains by measures / barMeasures; reaching 0
 // ends it; a gain while active adds (cap 1) and so extends it.

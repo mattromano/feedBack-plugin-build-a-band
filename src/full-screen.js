@@ -49,7 +49,7 @@ export function createFullScreen({ doc, win }) {
             ours = false;
             if (warned) return;
             warned = true;
-            console.warn('[build-a-band] full screen refused', err);
+            console.warn('[rockherosmith] full screen refused', err);
         };
         const entered = () => {
             pending = false;

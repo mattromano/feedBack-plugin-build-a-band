@@ -103,7 +103,7 @@ test('CONTROLLER_KINDS.five_fret pins and unpins through window.feedBackFiveFret
         assert.deepEqual(calls, [
             ['set', canvas, { controllerKey: 'pad#0', part: 'bass', difficulty: 'hard', lefty: true }],
             ['clear', canvas],
-            ['controls', { returnTo: 'plugin-build_a_band' }],
+            ['controls', { returnTo: 'plugin-rockherosmith' }],
         ]);
     } finally {
         delete globalThis.window;
@@ -212,7 +212,7 @@ test('CONTROLLER_KINDS.drums pins, unpins and lists through window.feedBackDrums
             ['set', 'pad#0', canvas], ['diff', 'hard', canvas],
             ['set', 'pad#0', canvas], ['diff', 'medium', canvas],
             ['clear', canvas], ['cleardiff', canvas],
-            ['controls', { returnTo: 'plugin-build_a_band' }],
+            ['controls', { returnTo: 'plugin-rockherosmith' }],
         ]);
         globalThis.window.feedBackDrums.setController = () => false;
         calls.length = 0;

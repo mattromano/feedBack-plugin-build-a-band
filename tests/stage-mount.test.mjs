@@ -783,13 +783,13 @@ test('unmount clears every pin', () => {
     assert.deepEqual(log, []);
 });
 
-// Task 8 hand-off: Go on the band screen can mount the stage while build_a_band still
+// Task 8 hand-off: Go on the band screen can mount the stage while rockherosmith still
 // claims the joined pads (released on screen:changing). The lane is pinned anyway and
 // stays; the five-fret renderer retries its claim on core's `change` event, which the
 // release fires. This fake kind models that retry against a fake core gamepadInput.
 test('a lane pinned while the band screen still claims its pad gets it once the screen releases', () => {
     const { player, deps, log } = setup();
-    const owners = new Map([['pad#1', 'build_a_band']]);
+    const owners = new Map([['pad#1', 'rockherosmith']]);
     const changeFns = new Set();
     const gi = {
         claim(key, owner) { if (owners.has(key)) return null; owners.set(key, owner); return { key }; },
@@ -809,7 +809,7 @@ test('a lane pinned while the band screen still claims its pad gets it once the 
     const s = mountStage({ player, song: ctlSong, prefs: { controllers: [ctl('ctl1', 'pad#1', 'bass')] }, deps });
     const canvas = s.getLaneCanvas('ctl1');
     assert.ok(canvas, 'the lane is not treated as failed');
-    assert.equal(owners.get('pad#1'), 'build_a_band');
+    assert.equal(owners.get('pad#1'), 'rockherosmith');
     assert.equal(lanes.get(canvas).handle, null);
     gi.release('pad#1');   // the band screen hides (screen:changing)
     assert.equal(owners.get('pad#1'), 'five_fret');

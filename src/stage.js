@@ -1,4 +1,4 @@
-// Build-a-Band stage: lays out the vocal strip and the guitar + drum lanes
+// RockHeroSmith stage: lays out the vocal strip and the guitar + drum lanes
 // inside core's #player, under the band HUD bar. The strip is an empty slot
 // that Lyrics Karaoke draws into. The main window.highway is sized into the
 // guitar lane (or the drums lane for drums alone, or hidden for vocals
@@ -66,7 +66,7 @@ function controllerLanes(controllers, song) {
 }
 
 function safe(fn) {
-    try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
+    try { return fn(); } catch (e) { console.warn('[rockherosmith]', e); return undefined; }
 }
 
 // mountStage({ player, song, prefs, deps })
@@ -118,7 +118,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
     const guitarMain = plan.mainPart === 'guitar';
     let lanes = plan.lanes;
     if (guitarMain && lanes.includes('drums') && (typeof drumRenderer !== 'function' || typeof makeHighway !== 'function')) {
-        console.warn('[build-a-band] drums plugin or createHighway missing; guitar lane only');
+        console.warn('[rockherosmith] drums plugin or createHighway missing; guitar lane only');
         lanes = lanes.filter((p) => p !== 'drums');
     }
     let split = clampSplit(prefs && prefs.split);
@@ -389,7 +389,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             pinDrums(drumCanvas);
         } catch (e) {
             // Fall back to the guitar lane alone rather than an empty slot.
-            console.error('[build-a-band] drum lane failed to start; guitar lane only', e);
+            console.error('[rockherosmith] drum lane failed to start; guitar lane only', e);
             if (drumHw) { const hw = drumHw; drumHw = null; safe(() => clock.remove(hw)); safe(() => hw.stop()); }
             safe(() => drumsApi && drumsApi.setInputTarget(null));
             if (drumCanvas) safe(() => drumCanvas.remove());
@@ -440,7 +440,7 @@ export function mountStage({ player, song, prefs, deps = {} }) {
             if (!kind.pin(lane.canvas, lane.key, lane.opts)) throw new Error('pin refused for ' + lane.key);
             lane.pinned = true;
         } catch (e) {
-            console.error('[build-a-band] controller lane failed to start; it leaves the band:', id, e);
+            console.error('[rockherosmith] controller lane failed to start; it leaves the band:', id, e);
             ctlLanes.delete(id);
             if (lane.hw) { const hw = lane.hw; safe(() => clock.remove(hw)); safe(() => hw.stop()); }
             if (lane.canvas) {

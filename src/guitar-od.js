@@ -1,4 +1,4 @@
-// Build-a-Band guitar overdrive rules (plan 5 R8, R9), pure:
+// RockHeroSmith guitar overdrive rules (plan 5 R8, R9), pure:
 // - earning: a chart phrase whose notes were hit at PHRASE_CLEAR or better
 //   earns once it closes, PHRASE_GRACE_S after its end (engine verdicts land
 //   late);

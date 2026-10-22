@@ -3,7 +3,7 @@
 // Licensed under the GNU Lesser General Public License v3.0
 // (see https://github.com/YARC-Official/YARG.Core/blob/master/LICENSE and ../LICENSE.LGPL-3.0;
 // the LGPL builds on the GPL-3.0 in ../LICENSE.GPL-3.0).
-// Re-implemented in JavaScript (node:test) for the feedBack Build-a-Band plugin. See ../NOTICE.md.
+// Re-implemented in JavaScript (node:test) for the feedBack RockHeroSmith plugin. See ../NOTICE.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { GUITAR_STAR_MULTIPLIERS, OVERDRIVE, starScoreThresholds, starsFromScore } from '../src/yarg-rules.js';

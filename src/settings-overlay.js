@@ -13,7 +13,7 @@ import { contains, otherModalOpen, restoreFocus } from './modal-open.js';
 const OVER_CLASS = 'bab-settings-over';
 const DIALOG_ATTRS = [['role', 'dialog'], ['aria-modal', 'true'], ['aria-label', 'Settings']];
 
-const warn = (e) => { console.warn('[build-a-band] loadSettings failed', e); };
+const warn = (e) => { console.warn('[rockherosmith] loadSettings failed', e); };
 
 // openSettingsOverlay({ doc, win, onClose }) -> { kind: 'settings', close({ silent }), loaded } | null
 export function openSettingsOverlay({ doc, win, onClose }) {

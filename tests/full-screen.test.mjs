@@ -139,7 +139,7 @@ test('a refused request is not ours', async () => {
     }
     assert.equal(calls.request, 2);
     assert.equal(warns.length, 1);
-    assert.equal(warns[0][0], '[build-a-band] full screen refused');
+    assert.equal(warns[0][0], '[rockherosmith] full screen refused');
     assert.ok(warns[0][1] instanceof Error);
 });
 

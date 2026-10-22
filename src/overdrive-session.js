@@ -1,4 +1,4 @@
-// Build-a-Band per-song overdrive (plan 5 R16): the guitar meter, its phrase
+// RockHeroSmith per-song overdrive (plan 5 R16): the guitar meter, its phrase
 // tracker and Noodle it up, the drums, vocals and controller meters mirrored
 // from their engines, and the HUD bars and callouts, behind one small interface so the
 // runtime only routes events.
@@ -23,7 +23,7 @@ export function createOverdriveSession({ parts, beats, guitar, getHud, readDrums
         } catch (e) {
             if (tag && !warned.has(tag)) {
                 warned.add(tag);
-                console.warn('[build-a-band] overdrive', tag, e);
+                console.warn('[rockherosmith] overdrive', tag, e);
             }
             return fallback;
         }

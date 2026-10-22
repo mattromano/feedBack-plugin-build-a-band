@@ -1,10 +1,12 @@
-// Build-a-Band per-viewer prefs, persisted in localStorage. Every storage
+// RockHeroSmith per-viewer prefs, persisted in localStorage. Every storage
 // access is guarded: private windows / blocked storage must never throw.
 import { DIFFICULTIES } from './mappings.js';
 import { CONTROLLER_KINDS, PART_AUDIO_MODES, isControllerId } from './controller-model.js';
 import { DRUM_SOUND_MODES } from './drum-sound.js';
 
-const KEY = 'build_a_band.prefs.v1';
+const KEY = 'rockherosmith.prefs.v1';
+// Pre-rename key (RockHeroSmith): copied to KEY on first load, never removed.
+export const LEGACY_KEY = 'build_a_band.prefs.v1';
 
 // labelScale: the guitar lane's fret-number size in band mode, kept apart from
 // core's solo-play `highwayLabelScale` so neither leaks into the other.
@@ -182,8 +184,22 @@ export function pushRecent(list, song) {
     return [{ filename: song.filename, title: song.title, artist: song.artist }, ...rest].slice(0, MAX_RECENT);
 }
 
+// One-time move of saved setups from the RockHeroSmith key. Copies the raw
+// string verbatim (even if it is not valid JSON) and keeps the old key.
+export function migrateLegacyPrefs(storage = defaultStorage()) {
+    try {
+        if (!storage) return 'none';
+        if (storage.getItem(KEY) !== null) return 'present';
+        const legacy = storage.getItem(LEGACY_KEY);
+        if (typeof legacy !== 'string') return 'none';
+        storage.setItem(KEY, legacy);
+        return 'migrated';
+    } catch (_) { return 'none'; }
+}
+
 export function loadPrefs(storage = defaultStorage()) {
     let parsed = null;
+    migrateLegacyPrefs(storage);
     try {
         const raw = storage && storage.getItem(KEY);
         parsed = raw ? JSON.parse(raw) : null;

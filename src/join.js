@@ -2,7 +2,7 @@
 //
 // Unclaimed controllers are heard through core's passive `gamepadInput.watch`; a Start
 // (`pause`) press on one that is set up joins it. Joined, connected controllers are
-// claimed (owner `build_a_band`) so their lights follow and the menus stand down.
+// claimed (owner `rockherosmith`) so their lights follow and the menus stand down.
 //
 // Every kind in the `kinds` registry (CONTROLLER_KINDS) is consulted through its
 // `api()`: `listControllers()` and `createMapper()` return Promises, so the controller
@@ -16,7 +16,7 @@
 // Watch/handle event times (`t`) are seconds, as core reports them.
 import { CONTROLLER_KINDS, playableKinds } from './controller-model.js';
 
-export const OWNER = 'build_a_band';
+export const OWNER = 'rockherosmith';
 export const LEAVE_HOLD_MS = 1000;
 export const MIRROR_WINDOW_S = 0.05;   // identical-id slots pressing Start within 50 ms are one press
 const BACK_BUTTON = 8;                 // standard mapping

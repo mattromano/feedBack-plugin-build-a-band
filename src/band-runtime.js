@@ -1,4 +1,4 @@
-// Build-a-Band session runtime: Go plays the picked song, the band stage
+// RockHeroSmith session runtime: Go plays the picked song, the band stage
 // mounts on that song's song:ready, and the session ends on song end (the
 // results, then Play again or Next song) or on leaving the player. The state
 // machine lives in session.js; this file feeds it bus events and runs the
@@ -35,7 +35,7 @@ import { CONTROLLER_KINDS, kindFor, isControllerId } from './controller-model.js
 import { createControllerLanes, kindOf } from './controller-lanes.js';
 import { playingIds, playerStyle } from './players.js';
 
-const BAND_SCREEN = 'plugin-build_a_band';
+const BAND_SCREEN = 'plugin-rockherosmith';
 const SPLIT_KEY = 'splitscreenActive';
 const VIZ_KEY = 'vizSelection';
 const TOAST_MS = 4000;
@@ -60,7 +60,7 @@ const GUITAR_INPUT_FAILED = "Guitar input couldn't start";
 const LEAVE_PROMPT = { title: 'Leave the song?', body: 'This ends the band song.', confirmText: 'Leave', cancelText: 'Stay' };
 
 function safe(fn) {
-    try { return fn(); } catch (e) { console.warn('[build-a-band]', e); return undefined; }
+    try { return fn(); } catch (e) { console.warn('[rockherosmith]', e); return undefined; }
 }
 
 // The prefs a session runs with: Rock Band / My kit need a drum stem, so a
@@ -286,7 +286,7 @@ export function createBandRuntime({
         if (!stage) return;
         const st = stage;
         stage = null;
-        try { st.unmount(); } catch (e) { console.error('[build-a-band] unmount failed', e); }
+        try { st.unmount(); } catch (e) { console.error('[rockherosmith] unmount failed', e); }
     }
 
     function showToast(s, text) {
@@ -460,7 +460,7 @@ export function createBandRuntime({
         if (safe(() => nd.isEnabled()) !== false) return;
         s.ndEnabled = true;
         safe(() => Promise.resolve(nd.enable())
-            .catch((e) => console.warn('[build-a-band] note detection failed to start', e)));
+            .catch((e) => console.warn('[rockherosmith] note detection failed to start', e)));
     }
 
     function restoreGuitarDetect(s) {
@@ -759,7 +759,7 @@ export function createBandRuntime({
         if (s.splitWaiting) return; // the same start announcing again
         s.splitStarts++;
         if (s.splitStarts >= SPLIT_MAX_STARTS) {
-            console.warn('[build-a-band] splitscreen keeps starting; ending the band session');
+            console.warn('[rockherosmith] splitscreen keeps starting; ending the band session');
             dispatch({ type: 'left' });
             return;
         }
@@ -788,7 +788,7 @@ export function createBandRuntime({
             return;
         }
         if (++s.splitPolls > SPLIT_POLL_MAX) {
-            console.warn('[build-a-band] splitscreen did not stop; ending the band session');
+            console.warn('[rockherosmith] splitscreen did not stop; ending the band session');
             dispatch({ type: 'left' });
             return;
         }
@@ -823,7 +823,7 @@ export function createBandRuntime({
         const hw = win.highway;
         if (!s.drumView || !hw || typeof hw.setRenderer !== 'function' || typeof win.feedBackViz_drums !== 'function') return;
         let renderer = null;
-        try { renderer = win.feedBackViz_drums(); } catch (e) { console.warn('[build-a-band] drums view failed', e); }
+        try { renderer = win.feedBackViz_drums(); } catch (e) { console.warn('[rockherosmith] drums view failed', e); }
         if (!renderer || typeof renderer.draw !== 'function') return;
         if (safe(() => { hw.setRenderer(renderer); return true; })) s.viewSwitched = true;
     }
@@ -1053,7 +1053,7 @@ export function createBandRuntime({
 
     function callTogglePlay() {
         if (typeof win.togglePlay !== 'function') return;
-        safe(() => Promise.resolve(win.togglePlay()).catch((e) => console.warn('[build-a-band] togglePlay failed', e)));
+        safe(() => Promise.resolve(win.togglePlay()).catch((e) => console.warn('[rockherosmith] togglePlay failed', e)));
     }
 
     // note_detect never blocks the band song with an alert (R16): quiet while
@@ -1100,7 +1100,7 @@ export function createBandRuntime({
             if (armVocals(api, s.prefs.parts.vocals)) return;
             // Karaoke's default is hear-myself on: opening the mic would put the
             // singer through the speakers. Sit vocals out for this session.
-            console.warn('[build-a-band] hear-myself off could not be applied; vocals skipped');
+            console.warn('[rockherosmith] hear-myself off could not be applied; vocals skipped');
             s.vocals = false;
             s.vocalsFailed = true;
             s.prefs = withoutVocals(s.prefs);
@@ -1146,7 +1146,7 @@ export function createBandRuntime({
             try {
                 stage = mountStage({ player, song, prefs: s.prefs, deps: { kinds } });
             } catch (e) {
-                console.error('[build-a-band] stage failed to mount', e);
+                console.error('[rockherosmith] stage failed to mount', e);
                 stage = null;
                 // No strip slot: vocals can't start (startVocals bails silently).
                 if (s.vocals && !s.vocalsStarted) showToast(s, VOCALS_FAILED);
@@ -1213,7 +1213,7 @@ export function createBandRuntime({
         applyDevices(s) {
             Promise.resolve()
                 .then(() => applyDevices(s.prefs, win, storage, deviceMemo))
-                .catch((e) => console.warn('[build-a-band] device routing failed', e));
+                .catch((e) => console.warn('[rockherosmith] device routing failed', e));
         },
         // After the band song's song:ready and the mount (R9): karaoke mode,
         // the band mic, then karaoke's mic. A session that ended meanwhile
@@ -1235,7 +1235,7 @@ export function createBandRuntime({
                     // Karaoke no longer prompts for an API start: the band says so.
                     showToast(s, VOCALS_FAILED);
                 }
-            }, (e) => console.warn('[build-a-band] vocals failed to start', e));
+            }, (e) => console.warn('[rockherosmith] vocals failed to start', e));
         },
         holdExit() {
             release = (typeof fb.holdAutoExit === 'function') ? safe(() => fb.holdAutoExit()) || null : null;
@@ -1255,7 +1255,7 @@ export function createBandRuntime({
             let result;
             try {
                 result = caps.dispatch({
-                    capability: 'playback', command: 'pause', requester: 'build_a_band', args: { requesterId: 'build_a_band' },
+                    capability: 'playback', command: 'pause', requester: 'rockherosmith', args: { requesterId: 'rockherosmith' },
                 });
             } catch (_) {
                 pauseAudio();
@@ -1408,7 +1408,7 @@ export function createBandRuntime({
                 safe(() => showKaraokeHud(api));
             }
             if (started && typeof started.then === 'function') {
-                started.catch((e) => console.warn('[build-a-band] Play again failed to start the song', e));
+                started.catch((e) => console.warn('[rockherosmith] Play again failed to start the song', e));
             }
         },
     };
@@ -1424,7 +1424,7 @@ export function createBandRuntime({
         for (const name of effects) {
             const fn = EFFECTS[name];
             if (!fn) continue;
-            try { fn(s); } catch (e) { console.error(`[build-a-band] session effect ${name} failed`, e); }
+            try { fn(s); } catch (e) { console.error(`[rockherosmith] session effect ${name} failed`, e); }
         }
     }
 

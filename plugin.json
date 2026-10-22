@@ -1,12 +1,12 @@
 {
-  "id": "build_a_band",
-  "name": "Build-a-Band",
-  "version": "0.1.0",
+  "id": "rockherosmith",
+  "name": "RockHeroSmith",
+  "version": "0.2.0",
   "description": "Rock Band-style band mode: play together on a shared stage.",
   "license": "MIT",
   "nav": {
-    "label": "Build-a-Band",
-    "screen": "plugin-build_a_band"
+    "label": "RockHeroSmith",
+    "screen": "plugin-rockherosmith"
   },
   "screen": "screen.html",
   "script": "screen.js",

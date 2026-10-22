@@ -2,7 +2,7 @@
 // `win` and `storage` are injected. Listing never opens a mic (no
 // getUserMedia), and nothing here plays sound.
 
-const REQUESTER = 'build_a_band';
+const REQUESTER = 'rockherosmith';
 const KARAOKE_DEVICE_KEY = 'lyrics_karaoke.deviceId';
 
 const midiOf = (win) => (win && win.feedBack && win.feedBack.midiInput) || null;

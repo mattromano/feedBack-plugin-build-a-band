@@ -1,4 +1,4 @@
-# Licensing notice for the Build-a-Band plugin
+# Licensing notice for the RockHeroSmith plugin
 
 Most of this plugin is original code under the **MIT** license (see `README.md`). That includes
 `screen.js`, everything in `src/` other than `src/yarg-rules.js`, `screen.html`, `plugin.json`, the assets,

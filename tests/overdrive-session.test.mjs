@@ -283,7 +283,7 @@ test('a throwing reader warns once', (t) => {
     od.tick(1.1, 1.1);
     od.tick(1.2, 1.2);
     assert.equal(warns.length, 1);
-    assert.equal(warns[0][0], '[build-a-band] overdrive');
+    assert.equal(warns[0][0], '[rockherosmith] overdrive');
     assert.equal(warns[0][1], 'drums');
     assert.match(String(warns[0][2] && warns[0][2].message), /drums boom/);
 });

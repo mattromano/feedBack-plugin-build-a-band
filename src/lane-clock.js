@@ -1,4 +1,4 @@
-// Build-a-Band lane clock: one shared time read per frame fed to every
+// RockHeroSmith lane clock: one shared time read per frame fed to every
 // lane's highway. schedule/cancel default lazily to rAF/cAF so importing
 // under node never touches browser globals.
 //
@@ -17,7 +17,7 @@ export function createLaneClock({ getTime, schedule, cancel, warn } = {}) {
     const sched = (fn) => (schedule || globalThis.requestAnimationFrame.bind(globalThis))(fn);
     const unsched = (h) => (cancel || globalThis.cancelAnimationFrame.bind(globalThis))(h);
     const report = (...args) => {
-        try { (warn || console.warn)('[build-a-band]', ...args); } catch (_) { /* never let logging throw */ }
+        try { (warn || console.warn)('[rockherosmith]', ...args); } catch (_) { /* never let logging throw */ }
     };
 
     function tick() {

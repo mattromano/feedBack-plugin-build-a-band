@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     loadPrefs, savePrefs, normalizePrefs, pushRecent, clampZoom,
     MIC_HIT_DB_MIN, MIC_HIT_DB_MAX, MIC_HIT_DB_STEP, MIC_HIT_DB_DEFAULT, clampMicHitDb,
+    migrateLegacyPrefs, LEGACY_KEY,
 } from '../src/prefs.js';
 
 function stub(initial = {}) {
@@ -13,7 +14,8 @@ function stub(initial = {}) {
         _m: m,
     };
 }
-const KEY = 'build_a_band.prefs.v1';
+const KEY = 'rockherosmith.prefs.v1';
+const LEGACY = 'build_a_band.prefs.v1';
 
 test('defaults when empty', () => {
     assert.equal(loadPrefs(stub()).split, 62);
@@ -223,4 +225,61 @@ test('normalizePrefs keeps playsAs null, validates part per kind and soundMode, 
     ]);
     assert.deepEqual(p.controllerKinds, { 'u#0': 'drums', 'd#0': 'five_fret' });
     assert.equal(p.controllerKinds['old#0'], undefined, 'a pre-Plan-6 controller gets no invented choice');
+});
+
+test('LEGACY_KEY is the old Build-a-Band key', () => {
+    assert.equal(LEGACY_KEY, LEGACY);
+});
+
+test('legacy prefs move on first load', () => {
+    const legacy = JSON.stringify({
+        parts: { guitar: { deviceKey: 'g1' } },
+        controllers: [{ key: 'pad#1', id: 'ctl1', playsAs: 'drums' }],
+    });
+    const s = stub({ [LEGACY]: legacy });
+    const p = loadPrefs(s);
+    assert.equal(p.parts.guitar.deviceKey, 'g1');
+    assert.equal(p.controllers.length, 1);
+    assert.equal(s.getItem(KEY), legacy);
+    assert.equal(s.getItem(LEGACY), legacy);
+});
+
+test('an existing new key is never overwritten', () => {
+    const s = stub({ [KEY]: JSON.stringify({ split: 40 }), [LEGACY]: JSON.stringify({ split: 80 }) });
+    assert.equal(migrateLegacyPrefs(s), 'present');
+    assert.equal(loadPrefs(s).split, 40);
+});
+
+test('savePrefs writes only the new key', () => {
+    const legacy = JSON.stringify({ parts: { guitar: { deviceKey: 'g1' } } });
+    const s = stub({ [LEGACY]: legacy });
+    savePrefs({ split: 50 }, s);
+    assert.equal(s.getItem(LEGACY), legacy);
+    const saved = JSON.parse(s.getItem(KEY));
+    assert.equal(saved.split, 50);
+    assert.equal(saved.parts.guitar.deviceKey, 'g1');
+});
+
+test('invalid legacy JSON is copied verbatim and loads defaults', () => {
+    const s = stub({ [LEGACY]: '{oops' });
+    assert.equal(migrateLegacyPrefs(s), 'migrated');
+    assert.equal(s.getItem(KEY), '{oops');
+    assert.equal(loadPrefs(s).split, 62);
+    assert.equal(s.getItem(LEGACY), '{oops');
+});
+
+test('no keys: none', () => {
+    assert.equal(migrateLegacyPrefs(stub()), 'none');
+});
+
+test('storage that throws: none', () => {
+    const bad = { getItem: () => { throw new Error('denied'); }, setItem: () => { throw new Error('denied'); } };
+    assert.equal(migrateLegacyPrefs(bad), 'none');
+    assert.equal(loadPrefs(bad).split, 62);
+});
+
+test('migration never removes the legacy key', () => {
+    const s = stub({ [LEGACY]: '{}' });
+    s.removeItem = () => { throw new Error('removeItem must not be called'); };
+    assert.equal(migrateLegacyPrefs(s), 'migrated');
 });
