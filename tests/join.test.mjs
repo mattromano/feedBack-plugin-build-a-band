@@ -380,6 +380,20 @@ test('an Xbox pad joins with both kinds; X and B pick 5-Fret and Drums', async (
     assert.equal(t.log.playsAs.length, 2);
 });
 
+test('Start on an undecided pad is not primary; status lists the standard pads', async () => {
+    const t = setup([pad(0, 'Xbox', 1, { drumsKind: 'gamepad' }), pad(1, 'Pad', 1, { mapping: '', drumsKind: 'gamepad' })], {}, both);
+    t.m.start([]);
+    await flush();
+    assert.deepEqual([...t.m.status().standard], ['Xbox#1']);
+    t.input.press(0, BTN.start, true, 1);
+    t.input.send('Xbox#1', BTN.start, true, 2);
+    assert.deepEqual(t.log.primary, [], 'undecided: Start waits for X / B');
+    t.input.send('Xbox#1', DRUM.b, true, 3);
+    await flush();
+    t.input.send('Xbox#1', BTN.start, true, 4);
+    assert.deepEqual(t.log.primary, ['Xbox#1'], 'decided: Start is primary');
+});
+
 test('a joined drums pad lights pads and kick; Start is primary', async () => {
     const t = setup([pad(0, 'Xbox', 1, { drumsKind: 'gamepad' })], {}, both);
     t.m.start(joinedAs('drums', 'Xbox#1'));

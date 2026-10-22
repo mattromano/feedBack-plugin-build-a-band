@@ -92,9 +92,10 @@ const NO_STEM_SOUND_MODES = ['rockband', 'kit'];
 // One row per joined controller, in join order. `playsAs` is the kind it plays (null =
 // undecided: it sits out, its part fields are null and it never counts for Go or the pick).
 // `kinds` is what it could play, from controllerStatus.kinds (a Map of key -> kinds; the
-// default is the row's own playsAs, or none while undecided). `parts[p]` is what the song
-// has for p (a real chart beats an auto one; auto counts only with showAuto) and who else
-// holds p; `part` is the one that will play (the stored part when the song has it, else a
+// default is the row's own playsAs, or none while undecided); `standard` says the pad has
+// the standard mapping (controllerStatus.standard), so X / B answer plays-as. `parts[p]`
+// is what the song has for p (a real chart beats an auto one; auto counts only with
+// showAuto) and who else holds p; `part` is the one that will play (the stored part when the song has it, else a
 // fallback). A drums row's `soundMode` is the one that will play: a song without a drum
 // stem plays Song drums, and soundModeDisabled lists the modes that need the stem.
 function controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerStatus, showAuto, realDrumsOn }) {
@@ -102,6 +103,7 @@ function controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerSt
     const status = controllerStatus || {};
     const connected = status.connected instanceof Set ? status.connected : new Set(status.connected || []);
     const kindsByKey = status.kinds instanceof Map ? status.kinds : new Map();
+    const standard = status.standard instanceof Set ? status.standard : new Set(status.standard || []);
     const loaded = { five_fret: !!fiveFretLoaded, drums: !!drumsLoaded };
     const anyLoaded = loaded.five_fret || loaded.drums;
     const facts = item ? songFacts(item).fiveFret.filter((p) => showAuto || p.kind !== 'auto') : null;
@@ -158,7 +160,7 @@ function controllerRows({ prefs, item, fiveFretLoaded, drumsLoaded, controllerSt
         const unavailable = !available || !isConnected || !playsAs || (!!item && !part);
         return {
             key: c.key, id: c.id, name: c.name, on: c.on !== false, available, connected: isConnected, unavailable, note,
-            kinds, playsAs, part: playsAs ? (part || c.part) : null, parts, partAudio: c.partAudio, partAudioDisabled,
+            kinds, playsAs, standard: standard.has(c.key), part: playsAs ? (part || c.part) : null, parts, partAudio: c.partAudio, partAudioDisabled,
             soundMode, soundModeDisabled,
             difficulty: c.difficulty, lefty: !!c.lefty,
         };

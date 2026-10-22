@@ -46,7 +46,7 @@ const DEVICE_NOT_FOUND = 'Saved device (not found)';
 const JOIN_HINT = 'Press Start on a controller to join';
 const NO_CONTROLLER_PLUGINS = 'Install the 5-Fret or Drums plugin to play on a controller';
 const NO_WATCH = 'Update feedBack to join with a controller';
-const LIGHTS_OFF = Object.freeze({ green: false, red: false, yellow: false, blue: false, orange: false });
+const SETUP_AS = { five_fret: 'as guitar', drums: 'as drum kit' };
 const TEXT_TAGS = ['INPUT', 'TEXTAREA', 'SELECT'];
 const isTyping = (a) => !!a && (TEXT_TAGS.includes(String(a.tagName || '').toUpperCase()) || !!a.isContentEditable);
 const meterPct = (db) => `${Math.min(1, Math.max(0, (db + METER_FLOOR_DB) / METER_FLOOR_DB)) * 100}%`;
@@ -128,8 +128,9 @@ export function createBandScreen({
     // A pad's playable kinds, from the join manager's listings ([] when not listed).
     const kindsOf = (key) => (joinManager && joinManager.status().kinds.get(key)) || [];
     const NO_KINDS = new Map();
+    const NO_KEYS = new Set();
 
-    // { available, reason (a note, or null), connected, needsSetup, kinds } for the model and the join slot.
+    // { available, reason (a note, or null), connected, needsSetup, kinds, standard } for the model and the join slot.
     function controllerStatus() {
         const gi = gamepadInput();
         let reason = null;
@@ -141,6 +142,7 @@ export function createBandScreen({
             connected: (s && s.connected) || new Set(),
             needsSetup: (reason === null && s && s.needsSetup) || [],
             kinds: (s && s.kinds) || NO_KINDS,
+            standard: (s && s.standard) || NO_KEYS,
         };
     }
 
@@ -261,7 +263,7 @@ export function createBandScreen({
         const slot = $('.bab-joinslot');
         if (!slot) return;
         const text = status.reason || JOIN_HINT;
-        const sig = JSON.stringify([text, status.needsSetup.map((n) => [n.controllerKey, n.name])]);
+        const sig = JSON.stringify([text, status.needsSetup.map((n) => [n.controllerKey, n.name, n.setupWith])]);
         if (sig === joinSlotSig) return;
         joinSlotSig = sig;
         const ico = doc.createElement('span');
@@ -271,13 +273,17 @@ export function createBandScreen({
         hint.className = 'bab-join-text';
         hint.textContent = text;
         slot.replaceChildren(ico, hint);
+        // One link per plugin that can set it up: "as guitar" (5-Fret), "as drum kit" (Drums).
         for (const n of status.needsSetup) {
-            const b = doc.createElement('button');
-            b.type = 'button';
-            b.className = 'bab-setup-link';
-            b.textContent = `Set up ${n.name || n.controllerKey}`;
-            b.addEventListener('click', () => openControllerSetup(n.controllerKey, n.setupWith && n.setupWith[0]));
-            slot.appendChild(b);
+            for (const kindId of n.setupWith || []) {
+                const b = doc.createElement('button');
+                b.type = 'button';
+                b.className = 'bab-setup-link';
+                const as = SETUP_AS[kindId];
+                b.textContent = `Set up ${n.name || n.controllerKey}` + (as ? ` ${as}` : '');
+                b.addEventListener('click', () => openControllerSetup(n.controllerKey, kindId));
+                slot.appendChild(b);
+            }
         }
     }
 
@@ -297,7 +303,17 @@ export function createBandScreen({
         try { if (kind && typeof kind.setupHref === 'function') kind.setupHref(); } catch (_) { /* plugin gone */ }
     }
 
-    // Start on a joined controller is the screen's primary button.
+    // X / B on an undecided pad, or the column's Plays as segment: play as that kind, and
+    // remember it for this controller (prefs.controllerKinds outlives Leave).
+    function choosePlaysAs(key, kind) {
+        save({
+            controllers: setPlaysAs(prefs.controllers, key, kind),
+            controllerKinds: { ...(prefs.controllerKinds || {}), [key]: kind },
+        });
+    }
+
+    // Start on a joined, decided controller is the screen's primary button (the join
+    // manager holds an undecided pad's Start back until it answers plays-as).
     function primary() {
         if (view === 'confirm') go();
         else openLibrary();
@@ -315,11 +331,8 @@ export function createBandScreen({
             // of them, else undecided; joinController drops a remembered kind it can't play.
             onJoin: (j) => save({ controllers: joinController(prefs.controllers, { ...j, remembered: kindFor(prefs, j.controllerKey, j.kinds) }) }),
             onLeave: (key) => save({ controllers: leaveController(prefs.controllers, key) }),
-            // X / B on an undecided pad: play as that kind, and remember it for this controller.
-            onPlaysAs: (key, kind) => save({
-                controllers: setPlaysAs(prefs.controllers, key, kind),
-                controllerKinds: { ...(prefs.controllerKinds || {}), [key]: kind },
-            }),
+            // X / B on an undecided pad.
+            onPlaysAs: (key, kind) => choosePlaysAs(key, kind),
             onPrimary: () => primary(),
             onLight: (key, lit) => { if (columns) columns.light(key, lit); },
             onChange: () => render(),
@@ -330,7 +343,7 @@ export function createBandScreen({
     function stopJoin() {
         if (!joinManager) return;
         joinManager.stop();
-        if (columns) for (const key of controllerKeys()) columns.light(key, LIGHTS_OFF);
+        if (columns) for (const key of controllerKeys()) columns.light(key, null);
     }
 
     function setView(v) {
@@ -798,6 +811,7 @@ export function createBandScreen({
             save({ controllers: leaveController(prefs.controllers, key) });
         },
         onControls: (key) => openControllerSetup(key),
+        onPlaysAs: (key, kind) => choosePlaysAs(key, kind),
     });
 
     render();

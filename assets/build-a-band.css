@@ -173,6 +173,23 @@
 .bab-screen .bab-fret[data-fret="blue"] { --bab-fret: #0074d9; }
 .bab-screen .bab-fret[data-fret="orange"] { --bab-fret: #ff851b; }
 .bab-screen .bab-fret.bab-lit { background: var(--bab-fret); box-shadow: 0 0 8px var(--bab-fret); }
+/* A drums controller's lights: four pads (a cymbal lights its pad's colour) and the kick */
+.bab-screen .bab-drumpads { display: flex; gap: 6px; }
+.bab-screen .bab-drumpad {
+    --bab-fret: #888;
+    flex: 1; height: 14px; border-radius: 50%;
+    background: var(--bab-field); border: 2px solid color-mix(in srgb, var(--bab-fret) 55%, var(--bab-line));
+    transition: background 0.05s;
+}
+.bab-screen .bab-drumpad[data-light="red"] { --bab-fret: #ff4136; }
+.bab-screen .bab-drumpad[data-light="yellow"] { --bab-fret: #ffdc00; }
+.bab-screen .bab-drumpad[data-light="blue"] { --bab-fret: #0074d9; }
+.bab-screen .bab-drumpad[data-light="green"] { --bab-fret: #2ecc40; }
+.bab-screen .bab-drumpad[data-light="kick"] { --bab-fret: #f28c28; flex: 1.6; border-radius: 4px; }
+.bab-screen .bab-drumpad.bab-lit { background: var(--bab-fret); box-shadow: 0 0 8px var(--bab-fret); }
+/* Plays as (5-Fret | Drums) and its pad hint */
+.bab-screen .bab-playsas-hint { display: block; margin-top: 4px; font-size: 11px; color: var(--bab-dim); }
+.bab-screen .bab-playsas-hint:empty { display: none; }
 .bab-screen .bab-ctl-actions { display: flex; gap: 8px; margin-top: auto; }
 .bab-screen .bab-ctl-actions button {
     flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
@@ -180,7 +197,8 @@
     background: var(--bab-field); border: 1px solid var(--bab-line); border-radius: 7px;
 }
 .bab-screen .bab-btn-ico { display: inline-flex; }
-.bab-screen .bab-ctl .bab-seg[data-field="part"] button { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.bab-screen .bab-ctl .bab-seg[data-field="part"] button,
+.bab-screen .bab-ctl .bab-seg[data-field="drumPart"] button { display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .bab-screen .bab-ctl .bab-tag { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--bab-dim); }
 .bab-screen .bab-ctl .bab-tag:empty, .bab-screen .bab-ctl .bab-also:empty { display: none; }
 .bab-screen .bab-ctl .bab-also { font-size: 10px; color: var(--bab-dim); }

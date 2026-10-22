@@ -1254,12 +1254,14 @@ function fakeDrumsControllerApi(input) {
         createMapper: async (key) => {
             const p = input.pads.find((x) => x.controllerKey === key);
             if (!p || !p.drumsKind) return null;
-            return { map: (ev) => (ev.index === 9 ? [{ action: 'pause', value: ev.pressed ? 1 : 0 }] : []) };
+            return { map: (ev) => (DRUM_ACTION_OF[ev.index] ? [{ action: DRUM_ACTION_OF[ev.index], value: ev.pressed ? 1 : 0 }] : []) };
         },
         openControls: (opts) => { api.opened.push(opts); },
     };
     return api;
 }
+// The spec's Xbox drums defaults: red LB, yellow RB, blue LT, green RT, kick A, pause Start.
+const DRUM_ACTION_OF = { 4: 'red_pad', 5: 'yellow_pad', 6: 'blue_pad', 7: 'green_pad', 0: 'kick', 9: 'pause' };
 function ctlSetup({ pads = [gpad(0, 'Xbox', 1)], plugin = true, drums = false, watch = true, showAuto = false, ...rest } = {}) {
     const input = fakeGamepadInput(pads);
     if (!watch) delete input.watch;
@@ -1581,6 +1583,154 @@ test('a pad set up nowhere offers setup with the first plugin present', async ()
     const links = t.joinslot().querySelectorAll('.bab-setup-link');
     assert.equal(links.length, 1);
     links[0].click();
+    assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
+    t.bs.dispose();
+});
+
+// ── Plan 6 B4: drums controller columns and the plays-as choice ──────────
+const drumSong = {
+    filename: 'sloppak/dr.sloppak', title: 'Drum', artist: 'Band', arrangements: [{ name: 'Lead', index: 0 }],
+    has_drum_tab: true, has_vocal_pitch: false, stem_ids: ['drums', 'guitar'], five_fret_parts: [],
+};
+const fields = (el) => el.querySelectorAll('.bab-seg[data-field]').map((s) => s.getAttribute('data-field'));
+const lit = (col, sel) => col.querySelectorAll(sel).filter((e) => e.classList.contains('bab-lit')).map((e) => e.getAttribute('data-light'));
+const xboxBoth = () => ctlSetup({ drums: true, pads: [gpad(0, 'Xbox', 1, { drumsKind: 'gamepad' })] });
+
+test("an Xbox pad's column asks plays-as; choosing Drums swaps the lights and the Confirm row", async () => {
+    const t = xboxBoth();
+    await flush();
+    t.input.press(0, BTN.start);
+    await flush();
+    let col = t.setupCols()[0];
+    // Undecided: the segment and its pad hint, no lights, no part fields.
+    assert.equal(segBtn(col, 'playsAs', 'five_fret').textContent, '5-Fret');
+    assert.equal(segBtn(col, 'playsAs', 'drums').textContent, 'Drums');
+    assert.equal(segBtn(col, 'playsAs', 'five_fret').getAttribute('aria-pressed'), 'false');
+    assert.equal(segBtn(col, 'playsAs', 'drums').getAttribute('aria-pressed'), 'false');
+    assert.equal(col.querySelector('.bab-playsas-hint').textContent, 'X: 5-Fret \u00b7 B: Drums');
+    assert.equal(col.querySelector('.bab-note').textContent, 'Choose 5-Fret or Drums');
+    assert.equal(col.querySelectorAll('[data-light]').length, 0);
+    assert.deepEqual(fields(t.confirmRows()[0]), ['difficulty']);
+
+    segBtn(col, 'playsAs', 'five_fret').click();
+    await flush();
+    col = t.setupCols()[0];
+    assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['five_fret', 'guitar']);
+    assert.deepEqual(t.prefs().controllerKinds, { 'Xbox#1': 'five_fret' });
+    assert.equal(segBtn(col, 'playsAs', 'five_fret').getAttribute('aria-pressed'), 'true');
+    assert.equal(col.querySelectorAll('.bab-fret').length, 5);
+    assert.deepEqual(fields(t.confirmRows()[0]), ['part', 'difficulty', 'lefty', 'partAudio']);
+    t.input.send('Xbox#1', BTN.red);
+    assert.deepEqual(lit(col, '.bab-fret'), ['red']);
+
+    segBtn(col, 'playsAs', 'drums').click();
+    await flush();
+    col = t.setupCols()[0];
+    assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['drums', 'drums']);
+    assert.deepEqual(t.prefs().controllerKinds, { 'Xbox#1': 'drums' });
+    assert.equal(segBtn(col, 'playsAs', 'drums').getAttribute('aria-pressed'), 'true');
+    assert.equal(col.querySelectorAll('.bab-fret').length, 0, 'the fret lights are gone');
+    assert.deepEqual(col.querySelectorAll('.bab-drumpad').map((e) => e.getAttribute('data-light')),
+        ['red', 'yellow', 'blue', 'green', 'kick']);
+    assert.equal(col.style.props['--bab-c'], '#f28c28');
+    assert.equal(t.confirmRows()[0].style.props['--bab-c'], '#f28c28');
+    const row = t.confirmRows()[0];
+    assert.deepEqual(fields(row), ['drumPart', 'difficulty', 'soundMode']);
+    assert.match(segBtn(row, 'drumPart', 'drums').textContent, /^Drums/);
+    assert.equal(segBtn(row, 'drumPart', 'drums').getAttribute('aria-pressed'), 'true');
+    // The drum lights: LB red, A kick; a released pad goes dark.
+    t.input.send('Xbox#1', 4);
+    t.input.send('Xbox#1', 0);
+    assert.deepEqual(lit(col, '.bab-drumpad'), ['red', 'kick']);
+    t.input.send('Xbox#1', 4, false);
+    assert.deepEqual(lit(col, '.bab-drumpad'), ['kick']);
+    t.bs.dispose();
+});
+
+test('B on an undecided pad chooses Drums and remembers it after leave and rejoin', async () => {
+    const t = xboxBoth();
+    await flush();
+    t.input.press(0, BTN.start);
+    await flush();
+    assert.equal(t.prefs().controllers[0].playsAs, null);
+    // Start on an undecided pad waits for X / B: no Choose a song.
+    t.input.send('Xbox#1', BTN.start);
+    assert.equal(t.picker.calls.length, 0, 'undecided Start is not the primary button');
+    t.input.send('Xbox#1', 1); // B
+    await flush();
+    assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['drums', 'drums']);
+    assert.deepEqual(t.prefs().controllerKinds, { 'Xbox#1': 'drums' });
+    assert.equal(t.setupCols()[0].querySelectorAll('.bab-drumpad').length, 5);
+    t.setupCols()[0].querySelector('.bab-ctl-leave').click();
+    assert.equal(t.prefs().controllers.length, 0);
+    t.input.press(0, BTN.start, true, 5);
+    await flush();
+    assert.deepEqual([t.prefs().controllers[0].playsAs, t.prefs().controllers[0].part], ['drums', 'drums']);
+    // Decided: Start is the primary button again.
+    t.input.send('Xbox#1', BTN.start, true, 6);
+    assert.equal(t.picker.calls.length, 1, 'Choose a song');
+    t.bs.dispose();
+});
+
+test('drums Confirm row: difficulty and sound mode saved; modes greyed without a drum stem', async () => {
+    const t = ctlSetup({
+        drums: true, pads: [gpad(0, 'Kit', 1, { kind: null, mapping: '', drumsKind: 'kit' })],
+        stored: ctlPrefs([{ key: 'Kit#1', playsAs: 'drums', part: 'drums' }]),
+    });
+    await flush();
+    onConfirm(t, drumSong);
+    let row = t.confirmRows()[0];
+    assert.equal(t.setupCols()[0].querySelector('.bab-seg[data-field="playsAs"]'), null, 'a kit plays drums only');
+    assert.equal(segBtn(row, 'drumPart', 'drums').querySelector('.bab-also').textContent, 'also: Drums', 'the real drummer is on');
+    assert.equal(segBtn(row, 'soundMode', 'rockband').getAttribute('aria-pressed'), 'true', 'default Rock Band');
+    assert.deepEqual(['song', 'rockband', 'kit'].map((v) => segBtn(row, 'soundMode', v).textContent),
+        ['Song drums', 'Rock Band', 'My kit only']);
+    segBtn(row, 'difficulty', 'expert').click();
+    segBtn(row, 'soundMode', 'kit').click();
+    let c = t.prefs().controllers[0];
+    assert.deepEqual([c.difficulty, c.soundMode], ['expert', 'kit']);
+    row = t.confirmRows()[0];
+    assert.equal(segBtn(row, 'difficulty', 'expert').getAttribute('aria-pressed'), 'true');
+    assert.equal(segBtn(row, 'soundMode', 'kit').getAttribute('aria-pressed'), 'true');
+    assert.equal(row.querySelector('.bab-note').textContent, '');
+    // No drum stem: Rock Band and My kit only are greyed, Song drums plays, the stored mode stays.
+    t.bs.setSong({ ...drumSong, stem_ids: ['guitar'] });
+    row = t.confirmRows()[0];
+    assert.equal(segBtn(row, 'soundMode', 'rockband').disabled, true);
+    assert.equal(segBtn(row, 'soundMode', 'kit').disabled, true);
+    assert.equal(segBtn(row, 'soundMode', 'song').disabled, false);
+    assert.equal(segBtn(row, 'soundMode', 'song').getAttribute('aria-pressed'), 'true');
+    assert.equal(row.querySelector('.bab-note').textContent, 'Rock Band and My kit only need a drum stem');
+    c = t.prefs().controllers[0];
+    assert.equal(c.soundMode, 'kit');
+    t.bs.dispose();
+});
+
+test('Controls on a drums controller opens the Drums screen returning to the band', async () => {
+    const t = ctlSetup({
+        drums: true, pads: [gpad(0, 'Xbox', 1, { drumsKind: 'gamepad' })],
+        stored: ctlPrefs([{ key: 'Xbox#1', playsAs: 'drums', part: 'drums' }]),
+    });
+    await flush();
+    t.setupCols()[0].querySelector('.bab-ctl-controls').click();
+    assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
+    assert.deepEqual(t.api.opened, []);
+    segBtn(t.setupCols()[0], 'playsAs', 'five_fret').click();
+    t.setupCols()[0].querySelector('.bab-ctl-controls').click();
+    assert.deepEqual(t.api.opened, [{ returnTo: SCREEN }], '5-Fret: the 5-Fret controls');
+    assert.equal(t.drumsApi.opened.length, 1);
+    t.bs.dispose();
+});
+
+test('Set up offers guitar and drum kit', async () => {
+    const t = ctlSetup({ drums: true, pads: [gpad(0, 'Mystery', 1, { kind: null, mapping: '' })] });
+    await flush();
+    const links = t.joinslot().querySelectorAll('.bab-setup-link');
+    assert.deepEqual(links.map((l) => l.textContent), ['Set up Mystery as guitar', 'Set up Mystery as drum kit']);
+    links[0].click();
+    assert.deepEqual([t.api.opened.length, t.drumsApi.opened.length], [1, 0]);
+    links[1].click();
+    assert.deepEqual(t.api.opened, [{ returnTo: SCREEN }]);
     assert.deepEqual(t.drumsApi.opened, [{ returnTo: SCREEN }]);
     t.bs.dispose();
 });

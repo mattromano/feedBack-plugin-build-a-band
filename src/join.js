@@ -74,6 +74,7 @@ export function createJoinManager({
     const byPad = new Map();           // slot index -> entry
     let padKinds = new Map();          // controllerKey -> playable kinds (rebuilt per refresh)
     let connected = new Set();
+    let standard = new Set();          // keys of standard-mapped pads (rebuilt per refresh)
     let needsSetup = [];
     const specs = perKind((k) => lightSpec(registry[k] && registry[k].lights));
     const mappers = perKind(() => new Map());   // kind -> key -> mapper
@@ -194,7 +195,8 @@ export function createJoinManager({
                 if (on) {
                     // Record the press so a mirrored twin slot's Start right after is not a join.
                     if (e && ev.t !== undefined) recentStart.set(e.id, { pad: e.index, t: ev.t });
-                    emit.primary(key);
+                    // An undecided pad waits for its plays-as answer (X / B or the column).
+                    if (play !== null) emit.primary(key);
                 }
             } else if (spec && spec.lightOf.has(action)) {
                 if (!s) s = lightState(play, key);
@@ -253,8 +255,10 @@ export function createJoinManager({
         }
         const setupWith = Object.freeze(kindIds.filter((k) => !!apiOf(k)));
         connected = new Set();
+        standard = new Set();
         needsSetup = [];
         for (const e of byKey.values()) {
+            if (e.mapping === 'standard') standard.add(e.controllerKey);
             if (!e.connected) continue;
             const key = e.controllerKey;
             connected.add(key);
@@ -338,12 +342,13 @@ export function createJoinManager({
             joined = joinedMap(joinedList);
             if (running) syncClaims();
         },
-        // kinds: Map controllerKey -> playable kinds; needsSetup: [{ controllerKey, name, setupWith }].
+        // kinds: Map controllerKey -> playable kinds; needsSetup: [{ controllerKey, name, setupWith }];
+        // standard: the keys of standard-mapped pads (X / B answer plays-as on those).
         status() {
             let reason = null;
             if (!gamepadInput || typeof gamepadInput.watch !== 'function') reason = 'no-watch';
             else if (!anyApi()) reason = 'no-controller-plugins';
-            return { available: reason === null, reason, needsSetup, connected, kinds: padKinds };
+            return { available: reason === null, reason, needsSetup, connected, standard, kinds: padKinds };
         },
     };
 }
