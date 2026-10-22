@@ -50,7 +50,7 @@ function init() {
                 return runtime.startSession({ song: item, prefs });
             },
         });
-    // Deprecated alias (one release, remove after 0.2.x): stale peers may still read the old name.
+        // Deprecated alias (one release, remove after 0.2.x): stale peers may still read the old name.
         window.__buildABandScreen = window.__rockherosmithScreen;
     }
 

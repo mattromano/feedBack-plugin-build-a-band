@@ -1,7 +1,7 @@
 # RockHeroSmith
 
 A Rock Band-style band mode plugin for [feedBack](https://github.com/got-feedback/feedBack).
-Early skeleton: the band screen is a placeholder until plan 2.
+Play a song as a band from Home or the Song Library: Setup, Confirm, then the live band stage.
 
 ## Ways in
 

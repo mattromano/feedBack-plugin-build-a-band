@@ -5,7 +5,7 @@ import { CONTROLLER_KINDS, PART_AUDIO_MODES, isControllerId } from './controller
 import { DRUM_SOUND_MODES } from './drum-sound.js';
 
 const KEY = 'rockherosmith.prefs.v1';
-// Pre-rename key (RockHeroSmith): copied to KEY on first load, never removed.
+// Pre-rename key (the old Build-a-Band key): copied to KEY on first load, never removed.
 export const LEGACY_KEY = 'build_a_band.prefs.v1';
 
 // labelScale: the guitar lane's fret-number size in band mode, kept apart from
@@ -184,7 +184,7 @@ export function pushRecent(list, song) {
     return [{ filename: song.filename, title: song.title, artist: song.artist }, ...rest].slice(0, MAX_RECENT);
 }
 
-// One-time move of saved setups from the RockHeroSmith key. Copies the raw
+// One-time move of saved setups from the old Build-a-Band key. Copies the raw
 // string verbatim (even if it is not valid JSON) and keeps the old key.
 export function migrateLegacyPrefs(storage = defaultStorage()) {
     try {
