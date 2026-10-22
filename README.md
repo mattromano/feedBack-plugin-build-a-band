@@ -40,13 +40,27 @@ None of these does anything while a band song is playing.
 - **On Confirm, 5-Fret:** pick the part (Lead, Rhythm or Bass; parts the song lacks are
   greyed, each is tagged *real* or *auto*, and "also:" names the other controllers on it),
   the difficulty, Lefty, and Part audio: **Rock Band** drops your part's stem on a miss,
-  **Always play** keeps it. Part audio is greyed when the song has no stem for the part.
+  **Always play** keeps it. On an unsplit song (no stems, or only the full mix) Rock Band
+  muffles the whole song instead. Part audio is greyed when a split song has no stem for
+  the part.
 - **On Confirm, Drums:** the part is Drums ("also:" names the other drummers), then the
   difficulty and the Sound: **Song drums**, **Rock Band** or **My kit only**, as for the
-  real drummer. Rock Band and My kit only are greyed when the song has no drum stem. With
+  real drummer. Rock Band and My kit only are greyed when a split song has no drum stem
+  (on an unsplit song only My kit only is). With
   the real drummer on, the drummer's own sound mode sets the drum stem and the controller's
   Sound doesn't apply (the row says so). A song with no drum chart says "No drum chart for
   this song" and the controller sits out.
+- **Rock Band audio.** For a controller in Rock Band part audio (5-Fret Rock Band, Drums
+  Rock Band), a miss, an overstrum or an overhit plays a short, quiet "clunk" (synthesized,
+  no sample files; at most one every 90 ms), and the part's audio drops until the next hit
+  or a seek. A song with no stem for the part drops nothing, unless it is unsplit (no
+  stems, or only the `full` stem): then the whole song is muffled. In the browser with the
+  Stems plugin that is a real low-pass on the song; on core's plain `<audio>` path and the
+  desktop's native (JUCE) engine the song's volume dips to 40% instead. A real part or an
+  Always play controller playing along keeps the song unmuffled, and it always comes back
+  on a hit, a seek or when the song ends. **Miss sound** (On | Off, next to Failing on the
+  band screen) turns the clunk off; solo Play as uses the same setting. Real players
+  never clunk.
 - **Start on a joined controller** is the screen's main button: Choose a song on Band
   setup, GO on Confirm. Frets and pads never press GO. **Leave** on the column, or holding
   Back for 1 s, takes the controller out. Joined controllers stay joined across songs; one that is
