@@ -79,6 +79,16 @@ export function registerMainMode({ win, getScreen, getRuntime, showScreen }) {
         tour: { title: 'Play RockHeroSmith', content: TOUR_CONTENT },
         cardAction: { label: 'RockHeroSmith', title: 'Play with RockHeroSmith', isAvailable: isBandReady, run: openSongEntry },
     });
+    // Core's "Play as" menus (libraryCardActions, placement 'play-as'): the band screen with this
+    // song, on band-ready songs; greyed out while a session runs.
+    const cardActions = fb.libraryCardActions;
+    const unregisterPlayAs = cardActions && typeof cardActions.register === 'function'
+        ? cardActions.register({
+            id: 'rockherosmith.play-as', pluginId: MODE_ID, label: 'RockHeroSmith', hint: 'band screen',
+            group: 'Band', placement: 'play-as', order: 50,
+            applies: isBandReady, enabled: idle, run: openSongEntry,
+        })
+        : null;
     const hasBus = typeof fb.on === 'function';
     if (hasBus) fb.on('gamepad:start-pressed', onStart);
 
@@ -87,6 +97,7 @@ export function registerMainMode({ win, getScreen, getRuntime, showScreen }) {
         if (disposed) return;
         disposed = true;
         if (typeof unregister === 'function') unregister();
+        if (typeof unregisterPlayAs === 'function') unregisterPlayAs();
         if (hasBus && typeof fb.off === 'function') fb.off('gamepad:start-pressed', onStart);
     };
 }
