@@ -1,10 +1,30 @@
 # RockHeroSmith: band play as a main way to play feedBack
 
-Date: 2026-10-21. Status: design, awaiting Matt's approval. Reviewed by a builder check; its four open questions were answered by Matt. Supersedes the open questions in
+Date: 2026-10-21. Status: approved by Matt for an overnight unattended build (2026-10-21). Reviewed by a builder check; its four open questions were answered by Matt. Supersedes the open questions in
 `2026-10-22-build-a-band-main-mode-handoff.md`, which still holds the recon facts and the
 gotchas list (read its "Constraints and gotchas" section before building).
 
 Base spec for the mode itself: `2026-10-20-build-a-band-design.md` (and the plastic-controllers spec).
+
+## How this gets built: overnight, set and forget
+
+Matt, 2026-10-21: "this will be running all night, I don't want to be woken up … this is a set and
+forget plan, so I want Claude to work through as much as possible on its own. Try to go with best
+recommendation for everything, then we can reconcile in the morning after it's already built."
+
+- **No questions.** Every open choice takes the best recommendation and is recorded as a ruling in
+  the plan's ledger (`.superpowers/sdd/`) and in `MASTER.md`, for Matt to reconcile in the morning.
+- **Silent testing only, the whole run.** Nothing plays on the speakers, no notifications, no sounds:
+  hold autoplay, mute `#audio`, pause guard, synthetic events only. Assume sound tests pass (as in
+  the earlier BaB mandate). Don't send proactive/push notifications or phone pings overnight.
+- **Don't block.** If a step can't be done safely (e.g. a destructive action not pre-approved,
+  a failing test that needs Matt's judgment), skip it, note it in the morning report, and carry on
+  with everything else.
+- Pre-approved for this run: the GitHub repo rename, moving the installed `plugins/build_a_band`
+  aside (restorable), pushing feature branches to `origin` (Matt's forks). Not approved: opening PRs,
+  deleting anything, touching `main`/upstream remotes.
+- **Morning report:** a short summary at the end (what was built, test results, screenshots, every
+  ruling made, anything skipped) in `MASTER.md` and as the session's final message.
 
 ## Why
 
@@ -74,14 +94,28 @@ copy) is the builder's call. Matt's existing `build_a_band.prefs.v1` must migrat
 `build_a_band.prefs.v1` exists, copy it across, then leave the old key alone (do not delete — cheap
 rollback). Same pattern for any other storage key carrying the old id.
 
-Everything outside the plugin that names the old id must move with it (recon list):
+**Every plugin upstream or downstream of RockHeroSmith must work with the new naming** (Matt,
+2026-10-21). Plugins it talks to, and that talk to it: core `feedBack`, `five-fret`, `drums`,
+`stems`, `lyrics-karaoke`, `notedetect`, `scorecard`, `splitscreen`; `feedBack-desktop`,
+`multiplayer`, `autotune`, `nam-tone` and `feedpak-spec` have no references today (re-check with grep).
+For each, update runtime strings (screen ids, claim ids, `returnTo`, requester ids, globals), tests,
+READMEs and code comments naming the product, then run that repo's test suite. Any public API another
+plugin calls on BaB (e.g. `window.__buildABandRuntime`) gets the new name **plus a deprecated alias
+under the old name** for one release, so a stale installed plugin doesn't break. The same goes for
+cross-plugin bus events or claim ids if a stale peer could still emit or read the old form.
+
+Recon list of today's references (re-grep, case-insensitive, before starting):
 - core `static/v3/shell.js:55,69` (NAV entry, PROMOTED_PLUGINS entry, slot id);
 - `feedBack-plugin-five-fret` (screen.js:21,61,69,933; README; tests; CHANGELOG — CHANGELOG
   gets a new entry, old entries are history and stay);
 - `feedBack-plugin-drums/tests/screen.test.js:1584,1589` (`returnTo`);
 - `feedBack-plugin-stems/tests/claims.test.mjs` (claim ids `build_a_band:*`, requester);
-- comments in lyrics-karaoke, notedetect, scorecard, core `app.js`/`highway.js`/tests — update
+- comments in lyrics-karaoke (main.js, overrides.js, mic-hit.js, README), notedetect (screen.js,
+  plugin.css, tests), scorecard (visibility.js), core `app.js`/`highway.js`/`tests/js/*` — update
   where they name the id or the product, so grep for the old name comes back clean except history.
+- Branches: use `feature/build-a-band-stage` where a repo already has it. `five-fret` is on `main`
+  with band work on `feature/band-api`; put its rename on top of `feature/band-api` (builder checks
+  that's the branch the installed app runs). Add a CHANGELOG entry in each touched plugin.
 
 ### 2. Home hero: split hero
 
